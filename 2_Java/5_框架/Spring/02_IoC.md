@@ -356,6 +356,209 @@ beans时XML配置文件中最顶层的元素,它的层级结构如下：
     * `<map>` 
     * `<props>`
     * `<null>`
+  * `<lookup-method>`
+
+### 子标签
+
+spring通过配置bean的子标签控制**依赖注入**行为
+
+#### `<constructor-arg>  `
+
+bean对象在初始化时，默认使用无参构造
+
+可通过该标签使用有参构造进行实例化，注入属性成员值
+
+* `name`构造函数形参名，指定该标签是为那个形参赋值
+* `index` 构造函数形参列表索引，指定为第几个形参赋值
+* `value`如果关联的参数是基本数据类型，可通过该属性指定形参值
+* `type`指定关联的参数的类型
+* `ref`如果关联的参数是引用数据类型，可通过该属性指定形参，属性值为beanName
+
+#### `<property>  `
+
+bean对象初始化时，也可以使用setter方法进行成员变量的初始化
+
+* `name`要注入的成员属性名
+* `value`注入的值，如果是基本数据类型
+* `ref`注入的值，如果是引用数据类型
+
+**注意：**使用使用`<property>`的setter方法注入时，要保证对象提供了默认的无参构造
+
+#### `<constructor-arg>`和`<property>  `的子标签
+
+spring提供功能丰富的子标签，以方便注入集合，列表，map等常用容器
+
+子标签如下：
+
+* `<value>`功能同value
+
+  * `type`指定要注入的值
+
+* `<ref>` 功能同ref属性
+
+  * `bean `指定要注入的bean对象
+  * `parent`指定父容器中定义的队形
+
+* `<idref>` 类似于value，但多了一层检查，值必须属于容器中的beanName集合
+
+  * `bean`要注入的String值，必须是被容器管理的beanName
+
+* `<bean>`  内部bean，如普通bean功能一样，但只能被当前类调用
+
+  * 因为就只有当前对象引用内部`<bean>`所指定的对象，所以，内部`<bean>`的id不是必须的  
+
+* `<list>&<set>&<array>`  注入列表，集合，数组
+
+  * `value-type`指定集合泛型
+  * `merge`在bean继承关系中，对于集合属性，如果重写了配置属性，不设置merge属性，则也是重写了该集合。当merge=true，则将这个集合与父bean配置的集合合并。
+
+* `<map>` 注入表 属性有`value-type key-type merge`
+
+  * 该标签只有一个子标签`<entry>`来设置map的键值对
+
+    具有属性：`key value value-type key-ref value-ref`
+
+    特有子标签：`<key> <value>`
+
+* `<props>`注入`java.util.Properties`对象
+
+  * 具有属性`value-type merge`
+  * 具有子标签`prop`定义配置项
+
+* `<null>`注入null值
+
+#### `<lookup-method>`
+
+* `name:`指定注入的方法名
+* `bean:`指定方法返回的对象
+
+`<lookup-method>`指定的方法签名必须符合如下格式：
+
+~~~java
+<public|protected> [abstract] <return-type> theMethodName(no-arguments);
+~~~
+
+也就是说，该方法必须能被子类实现或者覆写，因为容器会未我们要进行方法注入的对象使用Cglib动态代理生成一个子类实现，替代当前对象。
+
+当指定方法被调用的时候，如果指定的bean是prototype型的，那么每次调用name指定方法时，容器可以返回都是不同的实例
+
+以上是使用方法注入的方式达到“每次调用都让容器返回新的对象实例”的目的，还可以使用下面方式达到相同的目的：
+
+##### BeanFactoryAware接口
+
+`BeanFactory`的`getBean`方法每次调用都会取得新的对象实例。
+
+所以想让对象拥有同样的功能，只需要让对象拥有一个`BeanFactory`的引用即可
+
+Spring框架提供了一个BeanFactoryAware接口，容器在实例化实现了该接口的bean定义的过程中，会自动将容器本身注入该bean。 这样， 该bean就持有了它所处的BeanFactory的引用,它的定义如下：
+
+~~~java
+public interface BeanFactoryAware extends Aware {
+
+	void setBeanFactory(BeanFactory beanFactory) throws BeansException;
+
+}
+~~~
+
+这样我们可以通过显现该接口：
+
+~~~java
+@Data
+public class Person implements BeanFactoryAware {
+    private BeanFactory beanFactory;
+    public Dog getDog() {
+        return (Dog)beanFactory.getBean("dog");
+    }
+    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+        this.beanFactory = beanFactory;
+    }
+}
+~~~
+
+配置为：
+
+~~~xml
+<bean id="person"  class="org.example.pojo.Person" autowire="constructor" scope="prototype">
+</bean>
+<bean id="dog" class="org.example.pojo.Dog" scope="prototype">
+    <property name="name" value="www"/>
+    <property name="age" value="3"/>
+</bean>
+~~~
+
+这样每次调用getDog方法，获取的都是不同的Dog实例
+
+实际上，方法注入动态生成的子类，完成的是与以上类似的逻辑，只不过实现细节上不同而已。  
+
+##### ObjectFactoryCreatingFactoryBean
+
+ObjectFactoryCreatingFactoryBean是spring提供的一个FactoryBean实现，它的方法返回一个ObjectFactory实例
+
+通过这个实例可以为我们返回容器管理的相关对象  
+
+它的定义如下：
+
+~~~java
+public class ObjectFactoryCreatingFactoryBean extends AbstractFactoryBean<ObjectFactory<Object>> {
+
+	@Nullable
+	private String targetBeanName;
+
+	public void setTargetBeanName(String targetBeanName) {
+		this.targetBeanName = targetBeanName;
+	}
+
+	@Override
+	public void afterPropertiesSet() throws Exception {
+		Assert.hasText(this.targetBeanName, "Property 'targetBeanName' is required");
+		super.afterPropertiesSet();
+	}
+
+
+	@Override
+	public Class<?> getObjectType() {
+		return ObjectFactory.class;
+	}
+
+	@Override
+	protected ObjectFactory<Object> createInstance() {
+		BeanFactory beanFactory = getBeanFactory();
+		Assert.state(beanFactory != null, "No BeanFactory available");
+		Assert.state(this.targetBeanName != null, "No target bean name specified");
+		return new TargetBeanObjectFactory(beanFactory, this.targetBeanName);
+	}
+
+	@SuppressWarnings("serial")
+	private static class TargetBeanObjectFactory implements ObjectFactory<Object>, Serializable {
+
+		private final BeanFactory beanFactory;
+
+		private final String targetBeanName;
+
+		public TargetBeanObjectFactory(BeanFactory beanFactory, String targetBeanName) {
+			this.beanFactory = beanFactory;
+			this.targetBeanName = targetBeanName;
+		}
+
+		@Override
+		public Object getObject() throws BeansException {
+			return this.beanFactory.getBean(this.targetBeanName);
+		}
+	}
+
+}
+
+~~~
+
+它的继承关系如下：
+
+![ObjectFactoryCreatingFactoryBean](https://gitee.com/wangziming707/note-pic/raw/master/img/ObjectFactoryCreatingFactoryBean.png)
+
+
+
+
+
+
 
 ### 属性
 
@@ -594,81 +797,6 @@ Object nextDayDate = container.getBean("nextDayDate");
 //获取工厂类本类的实例
 Object factoryBean = container.getBean("&nextDayDate");
 ~~~
-
-
-
-### 子标签
-
-spring通过配置bean的子标签控制**依赖注入**行为
-
-#### `<constructor-arg>  `
-
-bean对象在初始化时，默认使用无参构造
-
-可通过该标签使用有参构造进行实例化，注入属性成员值
-
-* `name`构造函数形参名，指定该标签是为那个形参赋值
-* `index` 构造函数形参列表索引，指定为第几个形参赋值
-* `value`如果关联的参数是基本数据类型，可通过该属性指定形参值
-* `type`指定关联的参数的类型
-* `ref`如果关联的参数是引用数据类型，可通过该属性指定形参，属性值为beanName
-
-#### `<property>  `
-
-bean对象初始化时，也可以使用setter方法进行成员变量的初始化
-
-* `name`要注入的成员属性名
-* `value`注入的值，如果是基本数据类型
-* `ref`注入的值，如果是引用数据类型
-
-**注意：**使用使用`<property>`的setter方法注入时，要保证对象提供了默认的无参构造
-
-#### `<constructor-arg>`和`<property>  `的子标签
-
-spring提供功能丰富的子标签，以方便注入集合，列表，map等常用容器
-
-子标签如下：
-
-* `<value>`功能同value
-
-  * `type`指定要注入的值
-
-* `<ref>` 功能同ref属性
-
-  * `bean `指定要注入的bean对象
-  * `parent`指定父容器中定义的队形
-
-* `<idref>` 类似于value，但多了一层检查，值必须属于容器中的beanName集合
-
-  * `bean`要注入的String值，必须是被容器管理的beanName
-
-* `<bean>`  内部bean，如普通bean功能一样，但只能被当前类调用
-
-  * 因为就只有当前对象引用内部`<bean>`所指定的对象，所以，内部`<bean>`的id不是必须的  
-
-* `<list>&<set>&<array>`  注入列表，集合，数组
-
-  * `value-type`指定集合泛型
-  * `merge`在bean继承关系中，对于集合属性，如果重写了配置属性，不设置merge属性，则也是重写了该集合。当merge=true，则将这个集合与父bean配置的集合合并。
-
-* `<map>` 注入表 属性有`value-type key-type merge`
-
-  * 该标签只有一个子标签`<entry>`来设置map的键值对
-
-    具有属性：`key value value-type key-ref value-ref`
-
-    特有子标签：`<key> <value>`
-
-* `<props>`注入`java.util.Properties`对象
-
-  * 具有属性`value-type merge`
-  * 具有子标签`prop`定义配置项
-
-* `<null>`注入null值
-
-
-
-
 
 
 
