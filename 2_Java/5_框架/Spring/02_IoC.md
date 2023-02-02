@@ -1,4 +1,4 @@
-# IoC基本概念
+# IoC概述
 
 在传统的Java SE的程序设计中，如果当前类依赖于某个类，我们会在类的构造函数中新建相应的依赖类对象，这样主动获取依赖的对象的设计会造成程序的高耦合
 
@@ -25,7 +25,7 @@ IoC Service Provider 主要职责有两个：
 * 配置文件方式：最常见的是通过XML文件来管理对象注册和对象间依赖关系  
 * 元数据方式：直接在类中使用元数据(注解？)信息来标注各个对象之间的依赖关系
 
-# Spring的IoC容器
+# Spring的IoC容器概述
 
 Spring的IoC容器是一个IoC Service Provider ，但是它除了提供基本的IoC支持外，还提供AOP框架支持、企业级服务集成等服务。
 
@@ -496,19 +496,106 @@ spring提供了两种基本的scope类型:
 
 该属性的值为工厂类的获取实例的方法，针对的是静态工厂方法
 
-通过工厂类获取实例的方法获取bean对象
+通过工厂类获取实例的方法获取bean对象:
 
-此时需要class为工厂类，factory-method为获取实例的方法时
-
-该bean的类型为工厂类生成的类的类型
+~~~xml
+<!-- class为工厂类 -->
+<!-- actory-method为获取实例的方法 -->
+<bean id="bar" class="...StaticBarInterfaceFactory" factory-method="getInstance"/>
+<!-- 该bean的类型为工厂类生成的类的类型 -->
+~~~
 
 如果获取实例方法有入参，可以通过`<constructor-arg>`标签为获取实例方法提供入参
+
+此时使用`<constructor-arg>`传入的是工厂方法的参数，而不是静态工厂方法实现类的构造方法的参数  
+
+~~~xml
+<bean id="bar" class="...StaticBarInterfaceFactory" factory-method="getInstance">
+    <constructor-arg>
+        <ref bean="foobar"/>
+    </constructor-arg>
+</bean>
+~~~
 
 #### `factory-bean  `
 
 针对非静态工厂，我们需要实例化工厂再获取工厂生产的对象
 
 此时可以用`factory-bean`代替静态工厂使用的`class`属性
+
+~~~xml
+<!-- 将工厂类注册到容器 -->
+<bean id="barFactory" class="...NonStaticBarInterfaceFactory"/>
+<!-- 指定factory-bean -->
+<bean id="bar" factory-bean="barFactory" factory-method="getInstance"/>
+~~~
+
+##### FactoryBean
+
+FactoryBean是Spring容器提供的一种可以扩展容器对象实例化逻辑的接口，当
+
+* 某些对象的实例化过程过于烦琐，通过XML配置过于复杂
+* 某些第三方库不能直接注册到Spring容器  
+
+可以考虑实现org.springframework.beans.factory.FactoryBean  接口，给出自己的对象实例化逻辑代码  
+
+接口如下:
+
+~~~java
+public interface FactoryBean<T> {
+
+	String OBJECT_TYPE_ATTRIBUTE = "factoryBeanObjectType";
+	//返回生产的对象实例
+	@Nullable
+	T getObject() throws Exception;
+	//返回的对象的类型
+	@Nullable
+	Class<?> getObjectType();
+	//所“生产”的对象是否要以singleton形式存在于容器中
+	default boolean isSingleton() {
+		return true;
+	}
+}
+~~~
+
+ 这样实现了FactoryBean接口的bean定义，通过正常的id引用，容器返回的是FactoryBean所“生产”的对象类型，而非FactoryBean实现本身  
+
+如果一定要取得FactoryBean本身的话，可以通过在bean定义的id之前加前缀`& `
+
+实例：
+
+实现了FactoryBean接口的类：
+
+~~~java
+public class NextDayDateFactoryBean implements FactoryBean {
+    public Object getObject() throws Exception {
+        return new DateTime().plusDays(1);
+    }
+    public Class getObjectType() {
+        return DateTime.class;
+    }
+    public boolean isSingleton() {
+        return false;
+    }
+}
+~~~
+
+xml定义：
+
+~~~xml
+<bean id="nextDayDate" class="...NextDayDateFactoryBean">
+~~~
+
+获取容器中对象：
+
+~~~java
+//获取下一天的DateTime
+Object nextDayDate = container.getBean("nextDayDate");
+//获取工厂类本类的实例
+Object factoryBean = container.getBean("&nextDayDate");
+~~~
+
+
 
 ### 子标签
 
@@ -578,6 +665,12 @@ spring提供功能丰富的子标签，以方便注入集合，列表，map等�
   * 具有子标签`prop`定义配置项
 
 * `<null>`注入null值
+
+
+
+
+
+
 
 # Bean对象
 
@@ -671,3 +764,8 @@ spring并未对bean的多线程做封装处理
 但不同的是：@Resource默认按照ByName自动注入  
 
  
+
+
+
+
+
