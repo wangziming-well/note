@@ -1,4 +1,4 @@
-# IoC基本概念
+# IoC概述
 
 在传统的Java SE的程序设计中，如果当前类依赖于某个类，我们会在类的构造函数中新建相应的依赖类对象，这样主动获取依赖的对象的设计会造成程序的高耦合
 
@@ -25,7 +25,7 @@ IoC Service Provider 主要职责有两个：
 * 配置文件方式：最常见的是通过XML文件来管理对象注册和对象间依赖关系  
 * 元数据方式：直接在类中使用元数据(注解？)信息来标注各个对象之间的依赖关系
 
-# Spring的IoC容器
+# Spring的IoC容器概述
 
 Spring的IoC容器是一个IoC Service Provider ，但是它除了提供基本的IoC支持外，还提供AOP框架支持、企业级服务集成等服务。
 
@@ -346,7 +346,7 @@ beans时XML配置文件中最顶层的元素,它的层级结构如下：
 
 ### 标签结构
 
-* `<bean>`:`[id|name|class|depends-on|autowire|parent|abstract|scope|lazy-init|factory-method|factory-bean]`
+* `<bean>`:`[id|name|class|depends-on|autowire|parent|abstract|scope|lazy-init|factory-method|factory-bean|init-method]`
   * `<constructor-arg>&<property>`
     * `<value>`
     * `<ref>` 
@@ -356,6 +356,9 @@ beans时XML配置文件中最顶层的元素,它的层级结构如下：
     * `<map>` 
     * `<props>`
     * `<null>`
+  * `<lookup-method>`
+
+
 
 ### 属性
 
@@ -496,19 +499,108 @@ spring提供了两种基本的scope类型:
 
 该属性的值为工厂类的获取实例的方法，针对的是静态工厂方法
 
-通过工厂类获取实例的方法获取bean对象
+通过工厂类获取实例的方法获取bean对象:
 
-此时需要class为工厂类，factory-method为获取实例的方法时
-
-该bean的类型为工厂类生成的类的类型
+~~~xml
+<!-- class为工厂类 -->
+<!-- actory-method为获取实例的方法 -->
+<bean id="bar" class="...StaticBarInterfaceFactory" factory-method="getInstance"/>
+<!-- 该bean的类型为工厂类生成的类的类型 -->
+~~~
 
 如果获取实例方法有入参，可以通过`<constructor-arg>`标签为获取实例方法提供入参
+
+此时使用`<constructor-arg>`传入的是工厂方法的参数，而不是静态工厂方法实现类的构造方法的参数  
+
+~~~xml
+<bean id="bar" class="...StaticBarInterfaceFactory" factory-method="getInstance">
+    <constructor-arg>
+        <ref bean="foobar"/>
+    </constructor-arg>
+</bean>
+~~~
 
 #### `factory-bean  `
 
 针对非静态工厂，我们需要实例化工厂再获取工厂生产的对象
 
 此时可以用`factory-bean`代替静态工厂使用的`class`属性
+
+~~~xml
+<!-- 将工厂类注册到容器 -->
+<bean id="barFactory" class="...NonStaticBarInterfaceFactory"/>
+<!-- 指定factory-bean -->
+<bean id="bar" factory-bean="barFactory" factory-method="getInstance"/>
+~~~
+
+##### FactoryBean
+
+FactoryBean是Spring容器提供的一种可以扩展容器对象实例化逻辑的接口，当
+
+* 某些对象的实例化过程过于烦琐，通过XML配置过于复杂
+* 某些第三方库不能直接注册到Spring容器  
+
+可以考虑实现org.springframework.beans.factory.FactoryBean  接口，给出自己的对象实例化逻辑代码  
+
+接口如下:
+
+~~~java
+public interface FactoryBean<T> {
+
+	String OBJECT_TYPE_ATTRIBUTE = "factoryBeanObjectType";
+	//返回生产的对象实例
+	@Nullable
+	T getObject() throws Exception;
+	//返回的对象的类型
+	@Nullable
+	Class<?> getObjectType();
+	//所“生产”的对象是否要以singleton形式存在于容器中
+	default boolean isSingleton() {
+		return true;
+	}
+}
+~~~
+
+ 这样实现了FactoryBean接口的bean定义，通过正常的id引用，容器返回的是FactoryBean所“生产”的对象类型，而非FactoryBean实现本身  
+
+如果一定要取得FactoryBean本身的话，可以通过在bean定义的id之前加前缀`& `
+
+实例：
+
+实现了FactoryBean接口的类：
+
+~~~java
+public class NextDayDateFactoryBean implements FactoryBean {
+    public Object getObject() throws Exception {
+        return new DateTime().plusDays(1);
+    }
+    public Class getObjectType() {
+        return DateTime.class;
+    }
+    public boolean isSingleton() {
+        return false;
+    }
+}
+~~~
+
+xml定义：
+
+~~~xml
+<bean id="nextDayDate" class="...NextDayDateFactoryBean">
+~~~
+
+获取容器中对象：
+
+~~~java
+//获取下一天的DateTime
+Object nextDayDate = container.getBean("nextDayDate");
+//获取工厂类本类的实例
+Object factoryBean = container.getBean("&nextDayDate");
+~~~
+
+#### `init-method`
+
+==TODO==
 
 ### 子标签
 
@@ -579,9 +671,281 @@ spring提供功能丰富的子标签，以方便注入集合，列表，map等�
 
 * `<null>`注入null值
 
-# Bean对象
+#### `<lookup-method>`
 
-bean对象是spring框架的核心对象之一
+实现方法注入：通过相应方法为主体对象注入依赖对象  
+
+* `name:`指定注入的方法名
+* `bean:`指定方法返回的对象
+
+`<lookup-method>`指定的方法签名必须符合如下格式：
+
+~~~java
+<public|protected> [abstract] <return-type> theMethodName(no-arguments);
+~~~
+
+也就是说，该方法必须能被子类实现或者覆写，因为容器会未我们要进行方法注入的对象使用Cglib动态代理生成一个子类实现，替代当前对象。
+
+当指定方法被调用的时候，如果指定的bean是prototype型的，那么每次调用name指定方法时，容器可以返回都是不同的实例
+
+以上是使用方法注入的方式达到“每次调用都让容器返回新的对象实例”的目的，还可以使用下面方式达到相同的目的：
+
+##### BeanFactoryAware接口
+
+`BeanFactory`的`getBean`方法每次调用都会取得新的对象实例。
+
+所以想让对象拥有同样的功能，只需要让对象拥有一个`BeanFactory`的引用即可
+
+Spring框架提供了一个BeanFactoryAware接口，容器在实例化实现了该接口的bean定义的过程中，会自动将容器本身注入该bean。 这样， 该bean就持有了它所处的BeanFactory的引用,它的定义如下：
+
+~~~java
+public interface BeanFactoryAware extends Aware {
+
+	void setBeanFactory(BeanFactory beanFactory) throws BeansException;
+
+}
+~~~
+
+这样我们可以通过实现该接口：
+
+~~~java
+@Data
+public class Person implements BeanFactoryAware {
+    private BeanFactory beanFactory;
+    public Dog getDog() {
+        return (Dog)beanFactory.getBean("dog");
+    }
+    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+        this.beanFactory = beanFactory;
+    }
+}
+~~~
+
+配置为：
+
+~~~xml
+<bean id="person"  class="org.example.pojo.Person" autowire="constructor" scope="prototype">
+</bean>
+<bean id="dog" class="org.example.pojo.Dog" scope="prototype">
+    <property name="name" value="www"/>
+    <property name="age" value="3"/>
+</bean>
+~~~
+
+这样每次调用getDog方法，获取的都是不同的Dog实例
+
+实际上，方法注入动态生成的子类，完成的是与以上类似的逻辑，只不过实现细节上不同而已。  
+
+##### ObjectFactoryCreatingFactoryBean
+
+ObjectFactoryCreatingFactoryBean是spring提供的一个FactoryBean实现，它的方法返回一个ObjectFactory实例
+
+通过这个实例可以为我们返回容器管理的相关对象  
+
+它的定义如下：
+
+~~~java
+public class ObjectFactoryCreatingFactoryBean extends AbstractFactoryBean<ObjectFactory<Object>> {
+
+	@Nullable
+	private String targetBeanName;
+
+	public void setTargetBeanName(String targetBeanName) {
+		this.targetBeanName = targetBeanName;
+	}
+
+	@Override
+	public void afterPropertiesSet() throws Exception {
+		Assert.hasText(this.targetBeanName, "Property 'targetBeanName' is required");
+		super.afterPropertiesSet();
+	}
+
+	@Override
+	public Class<?> getObjectType() {
+		return ObjectFactory.class;
+	}
+
+	@Override
+	protected ObjectFactory<Object> createInstance() {
+		BeanFactory beanFactory = getBeanFactory();
+		Assert.state(beanFactory != null, "No BeanFactory available");
+		Assert.state(this.targetBeanName != null, "No target bean name specified");
+		return new TargetBeanObjectFactory(beanFactory, this.targetBeanName);
+	}
+
+	@SuppressWarnings("serial")
+	private static class TargetBeanObjectFactory implements ObjectFactory<Object>, Serializable {
+
+		private final BeanFactory beanFactory;
+
+		private final String targetBeanName;
+
+		public TargetBeanObjectFactory(BeanFactory beanFactory, String targetBeanName) {
+			this.beanFactory = beanFactory;
+			this.targetBeanName = targetBeanName;
+		}
+
+		@Override
+		public Object getObject() throws BeansException {
+			return this.beanFactory.getBean(this.targetBeanName);
+		}
+	}
+}
+~~~
+
+它的继承关系如下：
+
+![ObjectFactoryCreatingFactoryBean](https://gitee.com/wangziming707/note-pic/raw/master/img/ObjectFactoryCreatingFactoryBean.png)
+
+通过以上可以看出:
+
+* `ObjectFactoryCreatingFactoryBean`实现了`BeanFactoryAware`接口最终获取对象实例依然是通过`BeanFactoryAware`接口返回的容器对象的引用来完成的
+
+* 它还实现了`FactoryBean`所以通过id将直接获取它生产的对象，这里就是`TargetBeanObjectFactory`的实例
+
+它返回的ObjectFactory实例只是特定于与Spring容器进行交互的一个实现而已。使用它的好处就是，隔离了客户端对象对BeanFactory的直接引用。  
+
+实例：
+
+* spring配置：
+
+~~~xml
+<bean id="dog" class="org.example.pojo.Dog" scope="prototype">
+    <property name="name" value="www"/>
+    <property name="age" value="3"/>
+</bean>
+<bean id="dogFactory" class="org.springframework.beans.factory.config.ObjectFactoryCreatingFactoryBean">
+    <property name="targetBeanName">
+        <idref bean="dog"/>
+    </property>
+</bean>
+<bean id="person"  class="org.example.pojo.Person">
+    <property name="dogFactory" ref="dogFactory"/>
+</bean>
+~~~
+
+* Java代码：
+
+~~~java
+@Data
+public class Dog {
+    String name;
+    int age;
+}
+
+@Data
+public class Person {
+    private ObjectFactory<Dog> dogFactory;
+    public Dog getDog(){
+        return dogFactory.getObject();
+    }
+}
+~~~
+
+#### `<replaced-method>`
+
+该标签可以实现方法替换
+
+可以用新的方法实现覆盖掉原来某个方法的实现逻辑  
+
+它有如下属性：
+
+* name:要替换的方法名
+* replacer:指定替换者类，该类必须实现MethodReplacer接口，会将方法替换成reimplement方法
+
+使用该标签需要用到`MethodReplacer`接口：
+
+~~~java
+public interface MethodReplacer {
+	Object reimplement(Object obj, Method method, Object[] args) throws Throwable;
+}
+~~~
+
+它有子标签`<arg-type>`
+
+如果要替换的方法存在参数，或者对象存在多个重载的方法，可以通过`<arg-type>`明确指定将要替换的方法参数类型  
+
+实例：
+
+~~~java
+public class Demo {
+
+    public void print(){
+        System.out.println("我是原函数");
+    }
+}
+
+public class DemoReplacer implements MethodReplacer {
+    
+    public Object reimplement(Object obj, Method method, Object[] args) throws Throwable {
+        System.out.println("我是替换后函数");
+        return null;
+    }
+}
+~~~
+
+配置文件：
+
+~~~xml
+<bean id="demoReplacer" class="org.example.pojo.DemoReplacer"/>
+<bean id="demo" class="org.example.pojo.Demo">
+    <replaced-method name="print" replacer="demoReplacer"/>
+</bean>
+~~~
+
+# Spring IoC原理
+
+Spring的IoC容器所起的作用如图所示：
+
+![SpringIoC作用](https://gitee.com/wangziming707/note-pic/raw/master/img/SpringIoC%E4%BD%9C%E7%94%A8.png)
+
+它会以某种方式加载Configuration Metadata(通常也就是XML格式的配置信息)，然后根据这些信息绑定整个系统的对象，最终组装成一个可用的基于轻量级容器的应用系统。
+
+Spring的IoC容器实现上述功能的过程，可大致划分为两个阶段：
+
+* 容器启动阶段
+  * 最开始，容器会通过某种途径加载Configuration Metadata，除了代码方式，大部分情况下，容器需要依赖某些工具类(`BeanDefinitionReader`)对加载的Configuration Metadata进行解析和分析并将分析后的信息编组为对应的`BeanDefinition`
+  * 然后将`BeanDefinition`注册到对应的`BeanDefinitionRegistry  `
+* Bean实例化阶段
+  * 当容器收到某个bean的请求时，或者因依赖关系容器需要隐式地调用getBean方法时
+  * 容器会首先检查所请求的对象之前是否已经初始化
+    * 如果有，直接返回对象
+    * 如果没有  根据注册的BeanDefinition所提供的信息实例化被请求对象，并为其注入依赖。如果该对象实现了某些回调接口，也会根据回调接口的要求来装配它。当该对象装配完毕之后，容器会立即将其返回请求方使用。  
+
+Spring的IoC容器在实现的时候，充分运用了这两个实现阶段的不同特点，在每个阶段都加入了相
+应的容器扩展点，以便我们可以根据具体场景的需要加入自定义的扩展逻辑  
+
+## `BeanFactoryPostProcessor  `
+
+Spring提供了一种叫做`BeanFactoryPostProcessor`的容器扩展机制 .该机制允许我们在容器实
+例化相应对象之前，对注册到容器的BeanDefinition所保存的信息做相应的修改。这就相当于在容器实现的第一阶段最后加入一道工序，让我们对最终的BeanDefinition做一些额外的操作，比如修改其中bean定义的某些属性，为bean定义增加其他信息等  
+
+如果要自定义实现BeanFactoryPostProcessor，通常我们需要实现org.springframework.
+beans.factory.config.BeanFactoryPostProcessor接口  
+
+因为一个容器可能拥有多个BeanFactoryPostProcessor，这个时候可能需要实现类同时实现Spring的org.springframework.core.Ordered接口，以保证各个BeanFactoryPostProcessor可以按照预先设定的顺序执行（如果顺序紧要的话）  
+
+接口定义如下：
+
+~~~java
+~~~
+
+
+
+但是，因为Spring已经提供了几个现成的BeanFactoryPostProcessor实现类，所以，大多时候，我们很少自己去实现某个BeanFactoryPostProcessor。常用的有：
+
+* PropertyPlaceholderConfigurer  
+
+* PropertyOverrideConfigurer  
+* CustomEditorConfigurer  
+
+
+
+
+
+
+
+
 
 ## Bean 生命周期
 
@@ -671,3 +1035,8 @@ spring并未对bean的多线程做封装处理
 但不同的是：@Resource默认按照ByName自动注入  
 
  
+
+
+
+
+
