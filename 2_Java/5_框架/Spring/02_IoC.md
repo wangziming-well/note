@@ -17,7 +17,7 @@ IoC Service Provider 是一个抽象出来的概念，它可以代指任何将Io
 IoC Service Provider 主要职责有两个：
 
 * 业务对象的构建管理：在IoC场景中，业务对象无需创建对象，这部分工作交给了IoC Service Provider
-* 业务对象间的依赖绑定：IoC Service Provider通过结合之前构建和管理的所有业务对象，以及各个业务对象间可以识别的依赖关系，将这些对象所依赖的对象注入绑定，从而保证每个业务对象在使用的时候，可以处于就绪状态  
+* 业务对象间的依赖绑定：IoC Service Provider通过结合之前构建和管理的所有业务对象，以及各个业务对象间可以识别的依赖关系，将这些对象所依赖的对象注入绑定，从而保证每个业务对象在使用的时候，可以处于就绪状态
 
 为了完成上述职责，IoC Service Provider 需要记录注册对象的信息(对象间的依赖关系等)：
 
@@ -600,7 +600,15 @@ Object factoryBean = container.getBean("&nextDayDate");
 
 #### `init-method`
 
-==TODO==
+指定bean的方法名，在对象初始化时调用指定方法
+
+作用同`InitializingBean  `
+
+#### `destroy-method  `
+
+指定bean的方法名，在对象销毁时调用指定方法
+
+作用同`DisposableBean  `
 
 ### 子标签
 
@@ -814,12 +822,12 @@ public class ObjectFactoryCreatingFactoryBean extends AbstractFactoryBean<Object
     <property name="name" value="www"/>
     <property name="age" value="3"/>
 </bean>
-<bean id="dogFactory" class="org.springframework.beans.factory.config.ObjectFactoryCreatingFactoryBean">
+<bean id="dogFactory" class="...ObjectFactoryCreatingFactoryBean">
     <property name="targetBeanName">
         <idref bean="dog"/>
     </property>
 </bean>
-<bean id="person"  class="org.example.pojo.Person">
+<bean id="person"  class="...Person">
     <property name="dogFactory" ref="dogFactory"/>
 </bean>
 ~~~
@@ -915,10 +923,11 @@ Spring的IoC容器实现上述功能的过程，可大致划分为两个阶段�
 Spring的IoC容器在实现的时候，充分运用了这两个实现阶段的不同特点，在每个阶段都加入了相
 应的容器扩展点，以便我们可以根据具体场景的需要加入自定义的扩展逻辑  
 
-## `BeanFactoryPostProcessor  `
+## 容器启动阶段
 
-Spring提供了一种叫做`BeanFactoryPostProcessor`的容器扩展机制 .该机制允许我们在容器实
-例化相应对象之前，对注册到容器的BeanDefinition所保存的信息做相应的修改。这就相当于在容器实现的第一阶段最后加入一道工序，让我们对最终的BeanDefinition做一些额外的操作，比如修改其中bean定义的某些属性，为bean定义增加其他信息等  
+容器启动阶段主要是将bean配置信息读取并加载成BeanDefinition。
+
+Spring提供了一种叫做`BeanFactoryPostProcessor`的容器扩展机制 .该机制允许我们在容器实例化相应对象之前，对注册到容器的BeanDefinition所保存的信息做相应的修改。这就相当于在容器启动阶段最后加入一道工序，让我们对最终的BeanDefinition做一些额外的操作，比如修改其中bean定义的某些属性，为bean定义增加其他信息等  
 
 如果要自定义实现BeanFactoryPostProcessor，通常我们需要实现org.springframework.
 beans.factory.config.BeanFactoryPostProcessor接口  
@@ -928,72 +937,293 @@ beans.factory.config.BeanFactoryPostProcessor接口
 接口定义如下：
 
 ~~~java
+@FunctionalInterface
+public interface BeanFactoryPostProcessor {
+    void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException;
+}
 ~~~
-
-
 
 但是，因为Spring已经提供了几个现成的BeanFactoryPostProcessor实现类，所以，大多时候，我们很少自己去实现某个BeanFactoryPostProcessor。常用的有：
 
-* PropertyPlaceholderConfigurer  
+* `PropertyPlaceholderConfigurer  `(该方法现已过时)
+* `PropertyOverrideConfigurer `
+* `CustomEditorConfigurer  `
 
-* PropertyOverrideConfigurer  
-* CustomEditorConfigurer  
+### 使用`BeanFactoryPostProcessor`
 
+两 种 方 式 来 应 用 `BeanFactoryPostProcessor `， 分 别 针 对 基 本 的 IoC 容 器BeanFactory和较为先进的容器`ApplicationContext`。  
 
+* 手动装配`BeanFactory`使用的`BeanFactoryPostProcessor `：
 
+    ~~~java
+    //声明BeanFactory并加载xml配置文件
+    DefaultListableBeanFactory beanFactory = new DefaultListableBeanFactory();
+    XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(beanFactory);
+    reader.loadBeanDefinitions("spring.xml");
+    //声明要使用的BeanFactoryPostProcessor
+    PropertyPlaceholderConfigurer propertyPostProcessor = new PropertyPlaceholderConfigurer();
+    propertyPostProcessor.setLocation(new ClassPathResource("demo.properties"));
+    //执行后处理操作
+    propertyPostProcessor.postProcessBeanFactory(beanFactory);
+    ~~~
 
+* 通过ApplicationContext使用BeanFactoryPostProcessor  
 
+    ApplicationContext会自动识别配置文件中的BeanFactoryPostProcessor并应用它
 
+    所以只需要将BeanFactoryPostProcessor添加到配置文件中即可生效
 
+    ~~~xml
+    <bean class="...PropertyPlaceholderConfigurer">
+        <property name="location" value="demo.properties"/>
+    </bean>
+    ~~~
 
+### `PropertyPlaceholderConfigurer  `
 
-## Bean 生命周期
-
-Spring Bean 的生命周期有四个阶段
-
-* 实例化(Instantiation):当容器启动结束后，实例化所有的bean
-* 属性赋值(Populate):依赖注入，Spring根据BeanDefinition中的信息 以及 通过BeanWrapper提供的设置属性的接口完成依赖注入
-* 初始化(Initialization)
-  * 检查Aware接口，如果bean对象实现了Aware接口，spring会调用接口的set方法，将指定的信息加载到bean中
-  * 检查BeanPostProcessor  接口，如果bean对象实现了该接口，那么spring会调用接口的postProcessBeforeInitialization(Object obj, String s)  方法，实现一些自定义的处理
-  * InitializingBean 与 init-method  ，如果Bean在Spring配置文件中配置了 init-method 属性，则会自动调用其配置的初始化方法  
-  * 检查BeanPostProcessor  接口，如果bean对象实现了该接口，那么spring会调用接口的，postProcessAfterInitialization(Object obj, String s)方法  
-* 销毁(Destruction)
-  * 检查 DisposableBean  接口，会调用其实现的destroy()方法；  
-  * destroy-method  ：如果这个Bean的Spring配置中配置了destroy-method属性，会自动调用其配置的销毁方法。  
-
-## Bean线程安全
-
-spring并未对bean的多线程做封装处理
-
-对于一个单例bean，是否线程安全看它是否是无状态的(不保存数据)，如果是无状态的，那么显然线程是安全的，否则，就有线程安全问题
-
-解决方案：
-
-* 对有状态的bean 可以将它的 scope 设置为 Prototype 保证每个线程获取的对象和对象的数据都是独立的
-
-
-
-## 循环依赖
-
-在spring中，两个bean对象互相依赖，那么在创建阶段，这两个对象会因为互相依赖而无法创建成功，两个对象都会卡在属性赋值阶段
-
-解决方案： spring 引入了三级缓存(三个Map)：
-
-- singletonObjects,  一级缓存
-- earlySingletonObjects,  二级缓存
-- singletonFactories 三级缓存
-
-在bean对象还未创建成功时，就将它的引用地址暴露出去，以供其他对象获取
+PropertyPlaceholderConfigurer允许我们在XML配置文件中使用占位符（PlaceHolder），并将这些占位符所代表的资源单独配置到简单的properties文件中来加载。 
 
 实例：
 
-1. 对象A要创建到Spring容器中，从一级缓存singletonObject获取A，不存在，开始实例化A，最终在三级缓存singletonObjectFactory添加(A，A的函数式接口创建方法)，这时候A有了自己的内存地址
-2. 设置属性B，B也从一级缓存singletonObject获取B，不存在，开始实例化B，最终在三级缓存singletonObjectFactory添加(B，B的函数式接口创建方法)，这时候B有了自己的内存地址
-3. B中开始给属性A赋值，此时会找到三级缓存中的A，并将A放入二级缓存中。删除三级缓存
-4. B初始化完成，从三级缓存singletonObjectFactory直接put到一级缓存singletonObject，并删除二级和三级缓存的自己
-5. A成功得到B，A完成初始化动作，从二级缓存中移入一级缓存，并删除二级和三级缓存的自己
-6. 最终A和B都进入一级缓存中待用户使用
+如果PropertyPlaceholderConfigurer读取装配的properties文件如下：
+
+~~~properties
+dog.name = haha
+dog.age = 3
+~~~
+
+那么可以直接在xml配置文件中通过占位符使用这些属性和值 
+
+~~~xml
+<bean id="dog" class="...Dog">
+    <property name="name" >
+        <value>${dog.name}</value>
+    </property>
+    <property name="age">
+        <value>${dog.age}</value>
+    </property>
+</bean>
+~~~
+
+通过这样的方式就将业务相关的配置信息与spring的ioc配置分别管理
+
+使用了PropertyPlaceholderConfigurer后，它替换占位符的逻辑如下：
+
+* BeanFactory在第一个阶段加载完成所有配置的配置信息是，BeanDefinition中保持的信息仍然是占位符形式的，如${dog.age}
+* 当PropertyPlaceholderConfigurer调用postProcessBeanFactory进行后处理时，会将properties文件中的配置信息来替换相应BeanDefinition中占位符所表示的属性值
+
+### `PropertyOverrideConfigurer  `
+
+PropertyOverrideConfigurer  可以通过读取相应规则的properties文件将bean定义的property信息进行覆盖替换  
+
+PropertyOverrideConfigurer读取的properties文件应该满足如下格式：
+
+~~~properties
+beanName.propertyName=value
+~~~
+
+这样，将将PropertyOverrideConfigurer加载到容器之后，bean对象xml文件中的值，将被properties文件中的值覆盖
+
+实例：
+
+properties配置：
+
+~~~properties
+dog.name = haha
+dog.age = 10
+~~~
+
+springIoC配置：
+
+~~~xml
+<bean class="...PropertyOverrideConfigurer">
+    <property name="location" value="demo.properties"/>
+</bean>
+
+<bean id="dog" class="...Dog" scope="prototype">
+    <property name="name" value="www" />
+    <property name="age" value="3"/>
+</bean>
+~~~
+
+这样进入dog bean进入第二阶段前，`name `和`dog `将由原来的`www`和`3 `替换为 `haha `和`10`
+
+**注意：**
+
+当容器中配置的多个PropertyOverrideConfigurer对同一个bean定义的同一个property值进行处理的时候，最后一个将会生效。
+
+### `CustomEditorConfigurer  `
+
+==TODO==
+
+
+
+
+
+## Bean实例化阶段
+
+第一阶段容器启动阶段结束后，容器目前拥有所有对象的BeanDefinition来保存实例化阶段将要用的必要信息
+
+只有当请求方调用BeanFactory的getBean()来请求对象实例时，才会可能触发Bean实例化阶段的活动  
+
+getBean()方法可以被客户端现实地调用，也可以在容器内部被隐式地调用，隐式调用有如下情况：
+
+* 如果请求的对象有依赖对象，且依赖依赖对象没有实例化；那么容器会先内部调用getBean()实例化依赖对象
+
+    然后再实例化被请求的对象
+
+* 对BeanFactory来说：对象实例化默认采用延迟初始化。只有当getBean被显示调用时，容器才会开始实例化对象；但是ApplicationContext  启动后就会实例化所有的bean，这样的实例化也是容器隐式进行的
+
+调用getBean()方法时会先检查bean是否已经实例化，如果没有，会调用createBean()方法来进行具体的对象实例化  
+
+* 可以在AbstractBeanFactory类的代码中查看到getBean()方法的完整实现逻辑
+* 可以在其子类AbstractAutowireCapableBeanFactory的代码中查看createBean()方法的实现逻辑(doCreateBean)
+
+实例化过程如图：
+
+![Bean的实例化过程](https://gitee.com/wangziming707/note-pic/raw/master/img/Bean%E7%9A%84%E5%AE%9E%E4%BE%8B%E5%8C%96%E8%BF%87%E7%A8%8B.png)
+
+### 实例化bean对象
+
+容器在实例化bean时，采用“策略模式(Strategy Pattern)”
+
+可以通过反射或者CGLIB动态字节码生成来初始化bean实例或者动态生成其子类
+
+实例化策略的定义接口及其实现的继承关系如下：
+
+![CglibSubclassingInstantiationStrategy](https://gitee.com/wangziming707/note-pic/raw/master/img/CglibSubclassingInstantiationStrategy.png)
+
+* `InstantiationStrategy  `是实例化策略的抽象接口  
+
+* 其直接子类`SimpleInstantiationStrategy`实现了简单的对象实例化功能，可以通过反射来实例化对象
+
+* `CglibSubclassingInstantiationStrategy`继承了`SimpleInstantiationStrategy`的以反射方式实例化对象的功能，并且通过CGLIB的动态字节码生成功能，该策略实现类可以动态生成某个类的子类，进而满足了方法注入所需的对象实例化需求  
+
+默认情况下，容器内部采用的是CglibSubclassingInstantiationStrategy,通过其和相应的BeanDefinition来构造对象实例
+
+### `BeanWrapper  `
+
+上一步容器并不会直接返回构造完成的对象实例，而是以BeanWrapper对构造完成的对象实例进行包裹，返回相应的BeanWrapper实例  
+
+BeanWrapper接口通常在Spring框架内部使用，它在spring中只有一个实现类BeanWrapperImpl。其作用是对某个bean进行“包裹”，然后对这个“包裹”的bean进行操作，比如设置或者获取bean的相应属性值  
+
+BeanWrapperImpl的继承关系如下：
+
+![BeanWrapperImpl](https://gitee.com/wangziming707/note-pic/raw/master/img/BeanWrapperImpl.png)
+
+* BeanWrapper继承了PropertyAccessor接口，可以以统一的方式对对象属性进行访问，设置对象属性值  
+
+* BeanWrapper定义同时又直接或者间接继承了PropertyEditorRegistry和TypeConverter接口
+
+    所以BeanWrapper会使用容器注册的PropertyEditor来进行转换类型  
+
+### `Aware`
+
+当对象实例化完成并且相关属性以及依赖设置完成后，Spring容器会检查当前bean是否实现了Aware接口
+
+(`AbstractAutowireCapableBeanFactory.doCreateBean`方法中调用的`initializeBean`的第一步:调用`invokeAwareMethods`)
+
+如果是，则将这些Aware接口定义中规定的依赖注入给当前对象实例 
+
+Aware接口及其子接口：
+
+![Aware](https://gitee.com/wangziming707/note-pic/raw/master/img/Aware.png)
+
+* `BeanNameAware  `:如果Spring容器检测到当前对象实例实现了该接口，会将该对象实例的bean定义对应的beanName设置到当前对象实例  
+* `BeanClassLoaderAware  `:如果容器检测到当前对象实例实现了该接口,会将对应加载当前bean的`Classloader`注入当前对象实例    默认会使用加载`org.springframework.util.ClassUtils`类的`Classloader`。  
+* `BeanFactoryAware  `如果Spring容器检测到当前对象实例实现了该接口，会将该对象实例的bean定义的所属beanFactory引用设置到当前对象实例  
+
+`BeanFactory`会检查以上三个`Aware`接口，除此之外`ApplicationContext  `还会额外检查下面接口：
+
+(见`ApplicationContextAwareProcessor.invokeAwareInterfaces`)
+
+* `ResourceLoaderAware  `:将当前ApplicationContext自身设置到对象实例  （因为`ApplicationContext  `实现了`ResourceLoader  `接口）
+* `ApplicationEventPublisherAware  `将自身注入当前对象  （因为`ApplicationContext  `实现了`ApplicationEventPublisher  `接口  ）
+* `MessageSourceAware  `将自身注入当前对象  （因为`ApplicationContext  `实现了`MessageSource`接口  ）
+* `ApplicationContextAware  `将自身注入当前对象  
+
+### `BeanPostProcessor  `
+
+和`BeanFactoryPostProcessor`作用类似
+
+实现`BeanFactoryPostProcessor`的`BeanFactory`会在启动阶段的最后进行后处理
+
+实现`BeanFactoryPostProcessor`的`Bean`会在实例化后的合适时机进行后处理
+
+它的定义如下:
+
+~~~java
+public interface BeanPostProcessor {
+	@Nullable
+	default Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+		return bean;
+	}
+
+	@Nullable
+	default Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+		return bean;
+	}
+}
+~~~
+
+接口定义了两个方法:
+
+* `postProcessBeforeInitialization `会在检查`Aware`步骤后随即被检查调用（见流程图）(`AbstractAutowireCapableBeanFactory.doCreateBean`方法中调用的`initializeBean`的第二步：调用`applyBeanPostProcessorsBeforeInitialization`)
+
+* `postProcessAfterInitialization`会在检查`init-method`步骤后随即被检查调用(见流程图)
+
+    (`AbstractAutowireCapableBeanFactory.doCreateBean`方法中调用的`initializeBean`的第最后一步：调用`applyBeanPostProcessorsAfterInitialization`)
+
+**应用场景:**
+
+通常使用`BeanPostProcessor  `的场景时处理标记接口实现类,或者为当前对象提供代理实现
+
+比如ApplicationContext对应的那些Aware接口实际上就是通过BeanPostProcessor的方式进行处理的  
+
+(见`ApplicationContextAwareProcessor.postProcessBeforeInitialization`)
+
+Spring的AOP则使用BeanPostProcessor来为对象生成相应的代理对象  
+
+**除此之外:**
+
+实际上,有一种特殊的`BeanPostProcessor  `:`InstantiationAwareBeanPostProcessor  `
+
+如果bean对象实现了`InstantiationAwareBeanPostProcessor  `接口,那么在实例化bean对象步骤之前,会使用
+
+`InstantiationAwareBeanPostProcessor  `来构造对象实例,构造成功后直接返回对象实例;而不会按照常规流程继续执行
+
+### `InitializingBean`
+
+InitializingBean是容器内部广泛使用的一个对象生命周期标识接口，其定义如下  :
+
+~~~java
+public interface InitializingBean {
+	void afterPropertiesSet() throws Exception;
+}
+~~~
+
+Spring容器在实例化过程中完成"BeanPostProcessor的前置处理 "过程后,会检查对象是否实现了InitializingBean接口,如果是,则会调用其afterPropertiesSet()方法进一步调整对象实例的状态  
+
+(`AbstractAutowireCapableBeanFactory.doCreateBean`方法中调用的`initializeBean`的第三步：调用`invokeInitMethods`)
+
+如果直接让业务对象实现这个接口,显得Spring容器比较有侵入性.作为代替,可以使用`<bean>`的`init-method`属性
+
+### `DisposableBean  `
+
+如果singleton类型的bean对象实现了`DisposableBean`接口,那么容器将为该实例注册一个用于对象销毁的回调(Callback),在对象实例销毁之前,执行销毁逻辑
+
+~~~java
+public interface DisposableBean {
+	void destroy() throws Exception;
+}
+~~~
+
+如果直接让业务对象实现这个接口,显得Spring容器比较有侵入性.作为代替,可以使用`<bean>`的`destroy-method`属性
+
+可以通过BeanFactory销毁容器管理的所有singleton对象:
+
+* `BeanFactory`:`ConfigurableBeanFactory  `提供的`destroySingletons()  `方法
+* `ApplicationContext  `:`AbstractApplicationContext  `提供的`registerShutdownHook()`方法
 
 
 
@@ -1039,4 +1269,45 @@ spring并未对bean的多线程做封装处理
 
 
 
+
+
+
+# 其他
+
+
+
+
+
+## Bean线程安全
+
+spring并未对bean的多线程做封装处理
+
+对于一个单例bean，是否线程安全看它是否是无状态的(不保存数据)，如果是无状态的，那么显然线程是安全的，否则，就有线程安全问题
+
+解决方案：
+
+* 对有状态的bean 可以将它的 scope 设置为 Prototype 保证每个线程获取的对象和对象的数据都是独立的
+
+
+
+## 循环依赖
+
+在spring中，两个bean对象互相依赖，那么在创建阶段，这两个对象会因为互相依赖而无法创建成功，两个对象都会卡在属性赋值阶段
+
+解决方案： spring 引入了三级缓存(三个Map)：
+
+- singletonObjects,  一级缓存
+- earlySingletonObjects,  二级缓存
+- singletonFactories 三级缓存
+
+在bean对象还未创建成功时，就将它的引用地址暴露出去，以供其他对象获取
+
+实例：
+
+1. 对象A要创建到Spring容器中，从一级缓存singletonObject获取A，不存在，开始实例化A，最终在三级缓存singletonObjectFactory添加(A，A的函数式接口创建方法)，这时候A有了自己的内存地址
+2. 设置属性B，B也从一级缓存singletonObject获取B，不存在，开始实例化B，最终在三级缓存singletonObjectFactory添加(B，B的函数式接口创建方法)，这时候B有了自己的内存地址
+3. B中开始给属性A赋值，此时会找到三级缓存中的A，并将A放入二级缓存中。删除三级缓存
+4. B初始化完成，从三级缓存singletonObjectFactory直接put到一级缓存singletonObject，并删除二级和三级缓存的自己
+5. A成功得到B，A完成初始化动作，从二级缓存中移入一级缓存，并删除二级和三级缓存的自己
+6. 最终A和B都进入一级缓存中待用户使用
 
