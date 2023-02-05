@@ -1054,11 +1054,17 @@ springIoC配置：
 
 ### `CustomEditorConfigurer  `
 
-==TODO==
+`CustomEditorConfigurer  `辅助性地将后期会用到的信息注册到容器，对`BeanDefinition`没有做任何变动  
 
+spring容器通过一般通过XML配置文件来配置bean对象的类型,而XML只能记载字符串,但最终要转换为对象类型
 
+完成这种由字符串到具体对象的转换，都需要这种转换规则相关的信息，而CustomEditorConfigurer就是帮助我们传达类似信息的
 
+Spring内部通过JavaBean的PropertyEditor来帮助进行String类型到其他类型的转换工作  
 
+CustomEditorConfigurer可以完成PropertyEditor到容器的注册
+
+但现在主要通过PropertyEditorRegistrar  来注册PropertyEditor
 
 ## Bean实例化阶段
 
@@ -1225,8 +1231,6 @@ public interface DisposableBean {
 * `BeanFactory`:`ConfigurableBeanFactory  `提供的`destroySingletons()  `方法
 * `ApplicationContext  `:`AbstractApplicationContext  `提供的`registerShutdownHook()`方法
 
-
-
 # 基于注解的IOC
 
 ## 注解扫描
@@ -1264,19 +1268,7 @@ public interface DisposableBean {
 
 但不同的是：@Resource默认按照ByName自动注入  
 
- 
-
-
-
-
-
-
-
 # 其他
-
-
-
-
 
 ## Bean线程安全
 
