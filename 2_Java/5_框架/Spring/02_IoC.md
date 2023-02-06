@@ -87,7 +87,7 @@ public interface BeanFactory {
 
 以上代码的方法基本都是查询相关：getBean 获取对象；containsBean 查询对象是否存在；getType 查询对象类型等
 
-## BeanFactory的对象注册与依赖绑定方式
+## 对象注册与依赖绑定方式
 
 `BeanFactory`作为一个IoC Service Provider 为了能明确管理对象以及对象间的依赖关系，同样需要记录和管理这些信息。`BeanFactory`支持之前提到的三种方式管理
 
@@ -1231,42 +1231,196 @@ public interface DisposableBean {
 * `BeanFactory`:`ConfigurableBeanFactory  `提供的`destroySingletons()  `方法
 * `ApplicationContext  `:`AbstractApplicationContext  `提供的`registerShutdownHook()`方法
 
-# 基于注解的IOC
 
-## 注解扫描
 
-`<context:component-scan>`标签可以配置注解扫描，spring会扫描该标签指定的包下的所有类，并将被注解标记为bean 的对象交给spring容器管理
+# ApplicationContext
 
-该标签有如下属性：
+ApplicationContext是Spring提供的更高级的容器，相较于BeanFactory，它提供了更多的功能:
 
-* `base-package`指定扫描的包
+![ApplicationContext](https://gitee.com/wangziming707/note-pic/raw/master/img/ApplicationContext.png)
 
-配置注解扫描：
+包括BeanFactoryPostProcessor、 BeanPostProcessor以及其他特殊类型bean的自动识别、容器启动后bean实例的自动初始化、国际化的信息支持、容器内事件发布等  
 
-~~~xml
-<!--扫描指定包下的所有注解-->
-<context:component-scan base-package="com.bjpn"/>
+Spring 为ApplicationContext提供了几个常用的实现：
+
+* `FileSystemXmlApplicationContext  `:从文件系统加载bean定义以及相关资源的ApplicationContext实现  
+* `ClassPathXmlApplicationContext  `:从Classpath加载bean定义以及相关资源的ApplicationContext实现  
+* `XmlWebApplicationContext  `Web应用程序的ApplicationContext实现  
+
+## 统一资源加载策略
+
+Spring提供了一套基于org.springframework.core.io.Resource和org.springframework.core.io.ResourceLoader接口的资源抽象和加载策略。  
+
+### `Resource  `
+
+Spring框架内部使用`Resource`接口作为所有资源的抽象和访问接口：
+
+它的定义如下：
+
+~~~java
+public interface Resource extends InputStreamSource {
+
+	boolean exists();
+
+	default boolean isReadable() {
+		return exists();
+	}
+
+	default boolean isOpen() {
+		return false;
+	}
+
+	default boolean isFile() {
+		return false;
+	}
+
+	URL getURL() throws IOException;
+
+	URI getURI() throws IOException;
+
+	File getFile() throws IOException;
+
+	default ReadableByteChannel readableChannel() throws IOException {
+		return Channels.newChannel(getInputStream());
+	}
+
+	long contentLength() throws IOException;
+
+	long lastModified() throws IOException;
+
+	Resource createRelative(String relativePath) throws IOException;
+
+	@Nullable
+	String getFilename();
+
+	String getDescription();
+
+}
 ~~~
 
-## 注解
+Spring根据资源的不同类型提供了一些实现类：
 
-实体类注解：
+* `ByteArrayResource `将字节（ byte）数组提供的数据作为一种资源进行封装  
+* `ClassPathResource `该实现从Java应用程序的ClassPath中加载具体资源并进行封装  可以使用指定的类加载器（ ClassLoader）或者给定的类进行资源加载。   
+* `FileSystemResource `对java.io.File类型的封装，  
+* `UrlResource `通过java.net.URL进行的具体资源查找定位的实现类  
+* `InputStreamResource  `将给定的InputStream视为一种资源的Resource实现类，较为少用  
 
-* `@controller`表示处理器类
-* `@Service`当前类为业务层
-* `@Respository`当前类为持久层
-* `@Component`普通类
+### `ResourceLoader`
 
-以上注解都有name属性，以指定bean的beanName；不写默认是类名的驼峰式
+`Resource`定义了资源，`ResourceLoader`定义了如何查找和定位这些资源
 
-依赖注入注解：
+`ResourceLoader`接口是资源查找定位策略的统一抽象  
 
-* `@Autowired`在属性上，表示该属性由容器根据set方法进行依赖注入
-* `@Qualifier`辅助注解，指定要注入的类（在属性为接口，且项目中该接口不止有一个实现类时）
+它的定义如下：
 
-除了spring提供的`@Autowired`注解，javax包还提供了`@Resource`同样可以实现依赖注入
+~~~java
+public interface ResourceLoader {
 
-但不同的是：@Resource默认按照ByName自动注入  
+	String CLASSPATH_URL_PREFIX = ResourceUtils.CLASSPATH_URL_PREFIX;
+
+	Resource getResource(String location);
+
+	@Nullable
+	ClassLoader getClassLoader();
+
+}
+~~~
+
+通过`Resource.getResource(String location)`方法我们就可以根据指定的资源位置，定位到具体的资源实例。
+
+#### `DefaultResourceLoader`
+
+DefaultResourceLoader 是ResourceLoader的一个默认的实现类，它默认的资源查找处理逻辑如下：
+
+* 首先检查资源路径是否以`classpath:`前缀打头，如果是，则尝试构造ClassPathResource类型资源并返回  
+* 资源路径不是以`classpath:`前缀打头：
+  * 通过URL来定位资源，如果没抛出MalformedURLException，有则会构造UrlResource类型的资源并返回  
+  * 如果还是无法根据资源路径定位指定的资源，则委派getResourceByPath(String) 方法来定位资源  ：默认实现逻辑是，构造ClassPathResource类型的资源并返回
+
+如果最终没有找到符合条件的相应资源， getResourceByPath(String)方法就会构造一个实际上并不存在的资源并返回  
+
+#### `FileSystemResourceLoader  `
+
+为了避免`DefaultResourceLoader`在最后`getResourceByPath(String)`方法上的不恰当处理,可以使用`FileSystemResourceLoader  `,它继承自`DefaultResourceLoader`但覆写了`getResourceByPath(String) ` 使之从文件系统加载资源并以FileSystemResource类型返回  
+
+#### `ResourcePatternResolver`
+
+`ResourcePatternResolver `接口是`ResourceLoader  `的拓展,它的定义如下:
+
+~~~java
+
+public interface ResourcePatternResolver extends ResourceLoader {
+
+	String CLASSPATH_ALL_URL_PREFIX = "classpath*:";
+
+	Resource[] getResources(String locationPattern) throws IOException;
+
+}
+~~~
+
+它的getResources方法可以根据指定的资源路径匹配模式 返回多个Resource实例  
+
+##### `PathMatchingResourcePatternResolver  `
+
+`PathMatchingResourcePatternResolver`是`ResourcePatternResolver`最常用的实现。
+
+在构造`PathMatchingResourcePatternResolver`实例的时候，可以指定一个`ResourceLoader`，如果不指定的话，则 `PathMatchingResourcePatternResolver`内 部 会 默 认 构 造 一 个 `DefaultResourceLoader`实例  
+
+`PathMatchingResourcePatternResolver`内部会将匹配后确定的资源路径，
+委派给它的`ResourceLoader`来查找和定位资源  
+
+### ApplicationContext与ResourceLoader
+
+从之前的ApplicationContext继承关系图中可以看到，它继承了`ResourcePatternResolver  `,所以也间接继承了`ResourceLoader`
+
+所以，任何的`ApplicationContext`实现都可以看作是一个`ResourceLoader`甚至`ResourcePatternResolver  `
+
+通常，所有的`ApplicationContext  `实现类都直接或间接地继承`AbstractApplicationContext`  
+
+`AbstractApplicationContext  `直接继承`DefaultResourceLoader`,所以它的`getResource  `就是直接使用的`DefaultResourceLoader  `
+
+而`getResources `使用的是`PathMatchingResourcePatternResolver  `的实例完成
+
+这样 ApplicationContext就支持了Spring的统一资源加载
+
+作为ResourceLoader的ApplicationContext显然可以直接调用getResource方法来进行资源定位获取，但除此之外，作为容器和ResourceLoader身份的ApplicationContext显然后更多的应用
+
+#### ResourceLoader类型的注入
+
+之前的Aware章节已经提到过 `ResourceLoaderAware  `会将`ApplicationContext`‘容器自身作为`ResourceLoader`注入到bean对象中
+
+这样就可以在bean对象中直接使用ResourceLoader
+
+享受Spring提供的统一资源加载服务
+
+#### Resource类型的注入
+
+如果使用BeanFactory，那么对于那些Spring容器提供的默认的PropertyEditors无法识别的对象类型，我们可以提供自定义的PropertyEditor实现并注册到容器中，以供容器做类型转换的时候使用。
+
+默认情况下，BeanFactory容器不会为Resource类型提供相应的PropertyEditor  
+
+但ApplicationContext默认就可以正确识别Resource类型并转换后注入相关对象
+
+它在启动时，会通过ResourceEditorRegistrar  来注册ResourceEditor  到容器中
+
+ResourceEditor  就是Spring提供的针对Resource类型的PropertyEditor  
+
+所以如果使用ApplicationContext，那么可以直接将XML文件中的RUL字符串转换为Resource对象
+
+#### 特定ApplicationContext的Resource加载行为
+
+对于URL所表示的资源路径来说，通常开头会有一个协议前缀，比如`file:`、 `http:`、``ftp:  `等
+
+除此之外，Spring还拓展了协议的前缀的集合：提供了`classpath :`、`classpath*:`前缀
+
+ `classpath*`:与`classpath:`的唯一区别就在于，如果能够在classpath中找到多个指定的资源，则返回多个
+
+对于特定的`ApplicationContext`实现，有不同的默认资源加载行为：
+
+* `ClassPathXmlApplicationContext  `: 在实例化提供xml配置文件时和Resource类型的注入时，提供的URL 如果没有指定前缀，将默认使用`classpath:` 或者`classpath*: `前缀，从classpath下定位资源
+
+* `FileSystemXmlApplicationContext  `: 在实例化提供xml配置文件时和Resource类型的注入时，提供的URL 如果没有指定前缀，将默认使用`file:`前缀，从文件系统定位资源
 
 # 其他
 
@@ -1303,3 +1457,39 @@ spring并未对bean的多线程做封装处理
 5. A成功得到B，A完成初始化动作，从二级缓存中移入一级缓存，并删除二级和三级缓存的自己
 6. 最终A和B都进入一级缓存中待用户使用
 
+## 基于注解的IOC
+
+### 注解扫描
+
+`<context:component-scan>`标签可以配置注解扫描，spring会扫描该标签指定的包下的所有类，并将被注解标记为bean 的对象交给spring容器管理
+
+该标签有如下属性：
+
+* `base-package`指定扫描的包
+
+配置注解扫描：
+
+~~~xml
+<!--扫描指定包下的所有注解-->
+<context:component-scan base-package="com.bjpn"/>
+~~~
+
+### 注解
+
+实体类注解：
+
+* `@controller`表示处理器类
+* `@Service`当前类为业务层
+* `@Respository`当前类为持久层
+* `@Component`普通类
+
+以上注解都有name属性，以指定bean的beanName；不写默认是类名的驼峰式
+
+依赖注入注解：
+
+* `@Autowired`在属性上，表示该属性由容器根据set方法进行依赖注入
+* `@Qualifier`辅助注解，指定要注入的类（在属性为接口，且项目中该接口不止有一个实现类时）
+
+除了spring提供的`@Autowired`注解，javax包还提供了`@Resource`同样可以实现依赖注入
+
+但不同的是：@Resource默认按照ByName自动注入  
