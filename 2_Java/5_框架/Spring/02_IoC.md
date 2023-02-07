@@ -10,7 +10,7 @@
 
 IoC和DI是对同一个概念的不同角度的描述
 
-# IoC Service Provider
+## IoC Service Provider
 
 IoC Service Provider 是一个抽象出来的概念，它可以代指任何将IoC场景中的业务对象绑定到一起的实现方式。Spring的IoC容器是一个IoC Service Provider
 
@@ -25,7 +25,7 @@ IoC Service Provider 主要职责有两个：
 * 配置文件方式：最常见的是通过XML文件来管理对象注册和对象间依赖关系  
 * 元数据方式：直接在类中使用元数据(注解？)信息来标注各个对象之间的依赖关系
 
-# Spring的IoC容器概述
+## Spring的IoC容器
 
 Spring的IoC容器是一个IoC Service Provider ，但是它除了提供基本的IoC支持外，还提供AOP框架支持、企业级服务集成等服务。
 
@@ -1422,6 +1422,204 @@ ResourceEditor  就是Spring提供的针对Resource类型的PropertyEditor
 
 * `FileSystemXmlApplicationContext  `: 在实例化提供xml配置文件时和Resource类型的注入时，提供的URL 如果没有指定前缀，将默认使用`file:`前缀，从文件系统定位资源
 
+## 国际化信息支持
+
+### MessageSource
+
+Java SE提供了`Locale  `、`ResourceBundle  `接口以提供国际化支持
+
+Spring对Java SE 的国际化基础上，进一步抽象了国际化信息的访问接口，也就是org.springframework.context.MessageSource  接口，定义如下：
+
+~~~java
+public interface MessageSource {
+	//根据传入的资源条目的键(code) 、信息参数(args)、以及Locale来查找信息;如果没有找到，则返回指定的 defaultMessage
+	@Nullable
+	String getMessage(String code, @Nullable Object[] args, @Nullable String defaultMessage, Locale locale);
+	//根据传入的资源条目的键(code) 、信息参数(args)、以及Locale来查找信息
+	String getMessage(String code, @Nullable Object[] args, Locale locale) throws NoSuchMessageException;
+	//根据传入的MessageSourceResolvable、以及Locale来查找信息 MessageSourceResolvable 是对code、args、defaultMessage的封装
+	String getMessage(MessageSourceResolvable resolvable, Locale locale) throws NoSuchMessageException;
+
+}
+~~~
+
+Spring提供了三种MessageSource的实现：
+
+* `StaticMessageSource`：MessageSource接口的简单实现，可以通过编程的方式添加信息条目，多用于测试，不应该用于正式的生产环境  
+* `ResourceBundleMessageSource`:基于标准的`java.util.`而实现的`MessageSource`，对其父类`AbstractMessageSource`的行为进行了扩展，提供对多个`ResourceBundle`的缓存以提高查询速度。同时，对于参数化的信息和非参数化信息的处理进行了优化，并对用于参数化信息格式化的`MessageFormat`实例也进行了缓存。它是最常用的、用于正式生产环境下的`MessageSource`实现    
+* `ReloadableResourceBundleMessageSource  `:同样基于标准的`java.util.ResourceBundle`而构建的`MessageSource`实现类 ，但通过其`cacheSeconds`属性可以指定时间段，以定期刷新并检查底层的properties资源文件是否有变更。对于properties资源文件的加载方式也与`ResourceBundleMessageSource`有所不同，可以通过`ResourceLoader`来加载信息资源文件。 使用`ReloadableResourceBundleMessageSource`时，
+  应该避免将信息资源文件放到classpath中，因为这无助于`ReloadableResourceBundleMessageSource`定期加载文件变更。  
+
+### ApplicationContext和MessageSource
+
+通过ApplicationContext的继承关系可知，ApplicationContext也实现了MessageSource
+
+在默认情况下， ApplicationContext将委派容器中一个名称为messageSource的MessageSource接口实现来完成MessageSource应该完成的职责。如果找不到这样一个名字的MessageSource实现， ApplicationContext内部会默认实例化一个不含任何内容的StaticMessageSource实例，以保证相应的方法调用。所以通常情况下，如果要提供容器内的国际化信息支持，我们需要进行如下的配置：
+
+~~~xml
+<bean id="messageSource" class="...MessageSource实现类">
+    <property name="basenames">
+        <list>
+            <value>basename</value>
+            ...
+        </list>
+    </property>
+</bean>
+~~~
+
+这样配置好后，可以直接使用依赖注入的方式让其他的bean支持国际化
+
+也可以让bean实现MessageSourceAware  将ApplicationContext对象作为MessageSource注入到bean对象中
+
+## 容器内事件发布
+
+Spring SE 提供了一套基于` java.util.EventObject`类和`java.util.EventListener`接口的事件发布规范
+
+ApplicationContext容器内部基于此规范实现了一套事件发布规范
+
+Spring的ApplicationContext容器内的事件发布机制，主要用于单一容器内的简单消息通知和处
+理，并不适合分布式、多进程、多容器之间的事件通知。  
+
+### `ApplicationEvent  `
+
+Spring容器内自定义的事件类型，继承自`EventObject`
+
+默认情况下，Spring提供了三个实现：
+
+* `ContextClosedEvent  `:` ApplicationContext`容器在即将关闭的时候发布的事件类型  
+* `ContextRefreshedEvent  `: `ApplicationContext`容器在初始化或者刷新的时候发布的事件类型  
+
+* `RequestHandledEvent`： Web请求处理后发布的事件，其有一子类`ServletRequestHandledEvent`提供特定于Java EE的Servlet相关事件  
+
+### `ApplicationListener  `
+
+ApplicationContext容器内使用的自定义事件监听器接口定义，继承自java.util.EventListener。 
+
+它的定义如下：
+
+~~~java
+@FunctionalInterface
+public interface ApplicationListener<E extends ApplicationEvent> extends EventListener {
+	void onApplicationEvent(E event);
+}
+~~~
+
+ApplicationContext容器在启动时，会自动识别并加载EventListener类型bean定义，一旦容器内有事件发布，将通知这些注册到容器的EventListener。  
+
+### `ApplicationEventPublisher`
+
+ApplicationContext继承了 ApplicationEventPublisher，它的定义如下：
+
+```java
+@FunctionalInterface
+public interface ApplicationEventPublisher {
+
+   default void publishEvent(ApplicationEvent event) {
+      publishEvent((Object) event);
+   }
+
+   void publishEvent(Object event);
+
+}
+```
+
+接口提供了`publishEvent`方法，所以ApplicationContext还能作为事件发布者的角色
+
+ApplicationContext容器的具体实现类 把实现事件的发布和监听器的注册任务委托给了ApplicationEventMulticaster  接口的实现类
+
+### `ApplicationEventMulticaster  `
+
+该接口定义了具体事件监听器的注册管理以及事件发布的方法 :
+
+~~~java
+public interface ApplicationEventMulticaster {
+
+	void addApplicationListener(ApplicationListener<?> listener);
+
+	void addApplicationListenerBean(String listenerBeanName);
+
+	void removeApplicationListener(ApplicationListener<?> listener);
+
+	void removeApplicationListenerBean(String listenerBeanName);
+
+	void removeAllListeners();
+
+	void multicastEvent(ApplicationEvent event);
+
+	void multicastEvent(ApplicationEvent event, @Nullable ResolvableType eventType);
+
+}
+~~~
+
+它有以下实现：
+
+* 抽象实现类`AbstractApplicationEventMulticaster`它实现了事件监听器的管理
+  功能；出于灵活性和扩展性考虑，事件的发布功能则委托给了其子类  
+
+* 实现类`SimpleApplicationEventMulticaster`: `AbstractApplicationEventMulticaster`的一个子类实现，添加了事件发布功能的实现，其默认使用了SyncTaskExecutor进行事件的发布，事件是同步顺序发布的
+
+### 应用
+
+需要自定义ApplicationEvent 事件
+
+需要自定义的监听器 ApplicationListener并注册到 ApplicationContext容器中
+
+需要自定义的事件发布者ApplicationEventPublisher并注册到ApplicationContext容器中
+
+将ApplicationEventPublisher注入到bean中
+
+bean就拥有了发布事件的能力
+
+## 加载多配置文件
+
+在创建容器时，可以一次性加载多个配置文件到ApplicationContext容器中：
+
+~~~java
+//使用字符串数组
+String[] locations = new String[]{ "conf/dao-tier.springxml", 
+"conf/view-tier.springxml", "conf/business-tier.springxml"};
+ApplicationContext container = new ClassPathXmlApplicationContext(locations);
+//使用通配符
+ApplicationContext container = new FileSystemXmlApplicationContext("conf/**/*.springxml")
+~~~
+
+# 基于注解的IOC
+
+## 注解扫描
+
+`<context:component-scan>`标签可以配置注解扫描，spring会扫描该标签指定的包下的所有类，并将被注解标记为bean 的对象交给spring容器管理
+
+该标签有如下属性：
+
+* `base-package`指定扫描的包
+
+配置注解扫描：
+
+~~~xml
+<!--扫描指定包下的所有注解-->
+<context:component-scan base-package="com.bjpn"/>
+~~~
+
+## 注解
+
+实体类注解：
+
+* `@controller`表示处理器类
+* `@Service`当前类为业务层
+* `@Respository`当前类为持久层
+* `@Component`普通类
+
+以上注解都有name属性，以指定bean的beanName；不写默认是类名的驼峰式
+
+依赖注入注解：
+
+* `@Autowired`在属性上，容器按照类型为该属性自动依赖注入（通过setter方法）
+* `@Qualifier`：`@Autowired`的辅助注解，指定beanName，以byName的方式自动注入
+
+除了spring提供的`@Autowired`注解，javax包还提供了`@Resource`同样可以实现依赖注入
+
+但不同的是：@Resource默认按照ByName自动注入  
+
 # 其他
 
 ## Bean线程安全
@@ -1433,8 +1631,6 @@ spring并未对bean的多线程做封装处理
 解决方案：
 
 * 对有状态的bean 可以将它的 scope 设置为 Prototype 保证每个线程获取的对象和对象的数据都是独立的
-
-
 
 ## 循环依赖
 
@@ -1457,39 +1653,3 @@ spring并未对bean的多线程做封装处理
 5. A成功得到B，A完成初始化动作，从二级缓存中移入一级缓存，并删除二级和三级缓存的自己
 6. 最终A和B都进入一级缓存中待用户使用
 
-## 基于注解的IOC
-
-### 注解扫描
-
-`<context:component-scan>`标签可以配置注解扫描，spring会扫描该标签指定的包下的所有类，并将被注解标记为bean 的对象交给spring容器管理
-
-该标签有如下属性：
-
-* `base-package`指定扫描的包
-
-配置注解扫描：
-
-~~~xml
-<!--扫描指定包下的所有注解-->
-<context:component-scan base-package="com.bjpn"/>
-~~~
-
-### 注解
-
-实体类注解：
-
-* `@controller`表示处理器类
-* `@Service`当前类为业务层
-* `@Respository`当前类为持久层
-* `@Component`普通类
-
-以上注解都有name属性，以指定bean的beanName；不写默认是类名的驼峰式
-
-依赖注入注解：
-
-* `@Autowired`在属性上，表示该属性由容器根据set方法进行依赖注入
-* `@Qualifier`辅助注解，指定要注入的类（在属性为接口，且项目中该接口不止有一个实现类时）
-
-除了spring提供的`@Autowired`注解，javax包还提供了`@Resource`同样可以实现依赖注入
-
-但不同的是：@Resource默认按照ByName自动注入  
