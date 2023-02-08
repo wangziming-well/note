@@ -123,13 +123,25 @@ Pointcut概念表示的是Joinpoint的表述方式。可以看作一个或多个
 
 #### Pointcut表述方式
 
+当前的AOP产品所使用的Pointcut表达形式通常可以简单划分为以下几种：
 
+* 直接指定Joinpoint所在方法名称：这种 Pointcut 表述方式比较简单，而且功能单一，通常只限于支持方法级别Joinpoint的AOP框架、只针对方法调用类型的Joinpoint、只针对方法执行类型的Joinpoint
 
+    这种表述方式通常只限于Joinpoint较少且比较简单的情况
 
+* 正则表达式：是比较普遍的Pointcut表达方式，可以充分利用正则表达式的强大功能，来归纳表述需要符合二某种条件的多组Joinpoint；Spring AOP 就是使用这种表达方式
 
-
+* 使用特定的Pointcut表述语言：最为强大的表达Pointcut的方式，灵活性也很好，但具体实现复杂，AspectJ使用这种方式来指定Pointcut
 
 #### Pointcut运算
+
+Pointcut可以看作Joinpoint的集合，所以可以进行类似集合的运算
+
+可以使用and 或者 or 等逻辑运算 进行并 交运算
+
+### Advice
+
+
 
 
 
