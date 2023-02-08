@@ -920,8 +920,7 @@ Spring的IoC容器实现上述功能的过程，可大致划分为两个阶段�
     * 如果有，直接返回对象
     * 如果没有  根据注册的BeanDefinition所提供的信息实例化被请求对象，并为其注入依赖。如果该对象实现了某些回调接口，也会根据回调接口的要求来装配它。当该对象装配完毕之后，容器会立即将其返回请求方使用。  
 
-Spring的IoC容器在实现的时候，充分运用了这两个实现阶段的不同特点，在每个阶段都加入了相
-应的容器扩展点，以便我们可以根据具体场景的需要加入自定义的扩展逻辑  
+Spring的IoC容器在实现的时候，充分运用了这两个实现阶段的不同特点，在每个阶段都加入了相应的容器扩展点，以便我们可以根据具体场景的需要加入自定义的扩展逻辑  
 
 ## 容器启动阶段
 
@@ -1214,6 +1213,8 @@ Spring容器在实例化过程中完成"BeanPostProcessor的前置处理 "过程
 
 如果直接让业务对象实现这个接口,显得Spring容器比较有侵入性.作为代替,可以使用`<bean>`的`init-method`属性
 
+`InitializingBean`接口和`init-method`属性可同时使用
+
 ### `DisposableBean  `
 
 如果singleton类型的bean对象实现了`DisposableBean`接口,那么容器将为该实例注册一个用于对象销毁的回调(Callback),在对象实例销毁之前,执行销毁逻辑
@@ -1225,6 +1226,8 @@ public interface DisposableBean {
 ~~~
 
 如果直接让业务对象实现这个接口,显得Spring容器比较有侵入性.作为代替,可以使用`<bean>`的`destroy-method`属性
+
+`DisposableBean`接口和`destroy-method`属性可同时使用
 
 可以通过BeanFactory销毁容器管理的所有singleton对象:
 
