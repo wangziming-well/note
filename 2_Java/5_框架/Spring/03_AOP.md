@@ -96,6 +96,8 @@ Java 程序的class 都是通过相应的类加载器（ClassLoader）加载到J
 
 ## AOP组成概念
 
+![AOP各个概念示意图](https://gitee.com/wangziming707/note-pic/raw/master/img/AOP%E5%90%84%E4%B8%AA%E6%A6%82%E5%BF%B5%E7%A4%BA%E6%84%8F%E5%9B%BE.png)
+
 ### Joinpoint
 
 在系统运行之前，AOP的功能模块都需要织入到OOP的功能模块中。所以，要进行这样的织入过程，我们需要知道在系统的哪些执行点上进行织入操作
@@ -141,9 +143,45 @@ Pointcut可以看作Joinpoint的集合，所以可以进行类似集合的运算
 
 ### Advice
 
+ Advice是单一横切关注点逻辑的载体，它代表将会织入到Joinpoint的横切逻辑
 
+Advice之于Aspect，就像 Mehtod之于Class
 
+按照Advice在Joinpoint位置执行时机的差异或者完成功能的不同，Advice可以分成多种具体的形式
 
+* Before Advice ：在Joinpoint指定位置之前执行的Advice类型
+
+* After Advice：在Joinpoint指定位置之后执行的Advice，该类型的Advice可以细分为以下三种：
+
+  * After returning Advice :当前Joinpoint执行流程正常完成后才会执行
+  * After throwing Advice :当前Joinpoint执行过程中抛出异常的情况下才会执行
+  * After Adive:不管Joinpoint处执行流程是正常结束，还是抛出异常都会执行
+
+* Around Advice ：对附加其上的Joinpoint进行包裹，可以在Joinpoint之前和之后都指定相应的逻辑
+
+* Introduction : 与之前的几种Advice不同，它不是根据横切逻辑在Joinpoint出的执行时机来区分的，而是根据它可以完成的功能而区别与其他Advice类型
+
+  Introduction可以为原有的对象添加新的特性或者行为
+
+### Aspect
+
+Aspect是对系统中的横切关注点逻辑进行模块化封装的AOP概念实体。
+
+通常情况下，Aspect可以包含多个Pointcut以及相关Advice定义。
+
+### Weaving&Weaver
+
+AOP的横切逻辑组织完成后，需要通过织入器(Weaver)的织入(Weaving)过程，才能将AOP集成到现有业务系统上
+
+织入器的职责就是完成横切关注点到系统的最终织入
+
+AspectJ通过编译器ajc完成织入操作，那么ajc就是AspectJ的织入器
+
+Spring AOP使用一组类来完成最终的织入操作，ProxyFactory类则是Spring AOP中最通用的织入器
+
+### Target
+
+符合Pointcut所指定的条件，将在织入过程中被织入横切逻辑的对象，称为目标对象(Target)
 
 
 
