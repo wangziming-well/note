@@ -54,7 +54,7 @@ AOP的织入过程是在系统运行开始之后进行，而不是预先编译�
 
 因为动态AOP采用对系统字节码进行操作的方式完成Aspect到系统的织入，所以难免会造成一定的运行时性能损失
 
-## Java中的AOP
+## Java实现AOP
 
 在Java平台上可以使用过多种方式实现AOP
 
@@ -185,57 +185,353 @@ Spring AOP使用一组类来完成最终的织入操作，ProxyFactory类则是S
 
 
 
-# Spring AOP
+# Spring AOP原理
 
+Spring AOP是Spring核心框架的重要组成部分，与Spring IOC容器和Spring框架对其他JavaEE服务的集成 构成的Spring框架的核心
 
+Spring AOP采用 Java作为AOP的实现语言(AOL)，在Java语言的基础之上，Spring AOP对AOP的概念进行了适当的抽象和实现
 
+Spring AOP属于动态AOP采用动态代理机制和字节码生成技术实现。而动态代理是通过代理模式实现的(Proxy Pattern)
 
+## 代理模式
 
+在代理机制中：代理处于请求者和被请求者之间，可以隔绝两者直接的直接交互，代理者全权代理被请求者，拥有它的全部职能
 
+实现了代理机制的设计模式，就叫代理模式，在代理模式中，通常涉及4种角色：
 
+![代理模式](https://gitee.com/wangziming707/note-pic/raw/master/img/%E4%BB%A3%E7%90%86%E6%A8%A1%E5%BC%8F.png)
 
+* ISubject: 该几口是对被访问者或者访问者资源的抽象
+* RealSubject:被访问者或者被访问资源的具体实现类
+* ProxySubject:被访问者或者被访问资源的代理实现类，该类持有ISubject接口的一个具体实例
+* Client:代表访问者的抽象角色，Client将会访问ISubject类型的对象或者资源，再代理场景中，Client无法直接访问RealSubject获取资源，而是通过ProxySubject
 
+在代理模式中，ProxySubject常常在RealSubject提供的资源基础上添加一些逻辑功能
 
+在AOP中，Target就是 RealSubject，在为这个Target创建代理对象时，可以将横切逻辑添加到这个代理对象中。
 
+但是，这样这样静态代理的方式，即使Joinpoint相同，如果对应的Target类型不同，那么就需要针对的所有的Target类型，创建对应的代理对象，但是实际上，这些代理对象所要添加的横切逻辑时一样的，
 
+## 动态代理
 
+动态代理能够解决静态代理实现AOP出现的问题
 
+JDK提供了一种动态代理的规范：`java.lang.reflect.Proxy`类和`java.lang.reflect.InvocationHandler`接口
 
+可以通过Proxy类的newProxyInstance方法获取代理对象实例，它的方法签名如下：
 
-
-
-
-
-
-
-
-
-
-
-
-## AsperctJ实现AOP
-
-Spring整合了Asperct框架以实现AOP
-
-### maven依赖
-
-~~~xml
-<dependency>
-    <groupId>org.springframework</groupId>
-    <artifactId>spring-aspects</artifactId>
-    <version>5.2.5.RELEASE</version>
-</dependency>
+~~~java
+public static Object newProxyInstance(ClassLoader loader,Class<?>[] interfaces,InvocationHandler h)
 ~~~
 
-### 通知类型
+需要传入RealSubject的ClassLoader,和RealSubject的接口类定义和RealSubject的InvocationHandler
 
-* 前置通知 `@Before`
-* 后置通知`@After`
-* 环绕通知`@Around`
-* 异常通知`@AfterThrowing`
-* 最终通知`@AfterReturning`
+InvocationHandler定义如下：
 
-### 切入表达式
+~~~java
+public interface InvocationHandler {
+
+    public Object invoke(Object proxy, Method method, Object[] args)
+        throws Throwable;
+}
+~~~
+
+在invoke方法中调用被代理类的实际资源方法，并进行一些额外的处理
+
+下面是实例：
+
+定义被代理对象和接口：
+
+~~~java
+//subject接口
+public interface ITarget {
+    void request();
+}
+//subject实现类
+public class Target implements ITarget {
+    public void request(){
+        System.out.println("request方法执行");
+    }
+}
+~~~
+
+定义ITarget的InvocationHandler
+
+~~~java
+public class MyInvocationHandler implements InvocationHandler {
+
+    private final ITarget target;
+
+    public MyInvocationHandler(ITarget target) {
+        this.target = target;
+    }
+
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        if (method.getName().equals("request")){
+            System.out.println("在方法调用前执行本句子");
+            Object invoke = method.invoke(target, args);
+            System.out.println("在方法调用后执行本句子");
+            return invoke;
+        }
+        return null;
+    }
+}
+~~~
+
+生成代理对象：
+
+~~~java
+Target target = new Target();
+ITarget iTarget =(ITarget) Proxy.newProxyInstance(
+    target.getClass().getClassLoader(),
+    new Class[]{ITarget.class},
+    new MyInvocationHandler(target)
+);
+iTarget.request();
+~~~
+
+这样通过动态代理的方式，就实现了AOP
+
+InvocationHandler是实现横切逻辑的地方，是AOP中的Advice
+
+该种方式实现的AOP要求目标类型必须实现相应的Interface
+
+Spring AOP 默认使用动态代理的方式生成代理对象实现AOP
+
+如果目标对象没有Interface Spring AOP会尝试使用CGLIB(Code Generation Library)的动态字节码生成类库，为目标对象生成动态的代理对象实例
+
+## 动态字节码生成
+
+使用动态字节码生成技术扩展对象行为的原理是：我们可以对目标对象进行继承，生成相应的子类，子类通过覆写来扩展父类的行为。
+
+只要将横切逻辑放入到子类中，然后让系统使用扩展后的子类，就能达到织入的效果了。
+
+借助CGLIB动态字节码生成库，可以在系统允许期间动态得为目标对象生成相应的扩展子类
+
+具体的可以通过CGLIB提供的Enhancer 类和 MethodInterceptor接口实现代理子类的生成
+
+MethodInterceptor接口定义：
+
+~~~java
+//用以增强目标类
+public interface MethodInterceptor
+extends Callback
+{
+
+    public Object intercept(Object obj, java.lang.reflect.Method method, Object[] args,MethodProxy proxy) throws Throwable;
+
+}
+~~~
+
+参数说明：
+
+* obj:cglib生成的代理对象
+* method:被代理对象的方法
+* atgs:传入方法的参数
+* proxy:代理的的方法
+
+Enhancer 提供了下面方法以增强类：
+
+~~~java
+//设置将要被继承生成子类的被增强类
+void setSuperclass(Class superclass);
+//设置回调函数，用以增强子类的方法
+void setCallback(final Callback callback);
+//生成子类
+Object create();
+~~~
+
+**实例：**
+
+* 目标类(被增强类)：
+
+~~~java
+public class Target {
+    public void print(){
+        System.out.println("执行print函数");
+    }
+}
+~~~
+
+* 定义回调:
+
+~~~java
+public class PrintCallable implements MethodInterceptor {
+    public Object intercept(Object obj, Method method, Object[] args, MethodProxy proxy) throws Throwable {
+        if (method.getName().equals("print")){
+            System.out.println("方法执行前逻辑");
+            Object o = proxy.invokeSuper(obj, args);
+            System.out.println("方法执行后逻辑");
+            return o;
+        }
+        return null;
+    }
+}
+~~~
+
+* 实现增强
+
+~~~java
+Enhancer enhancer = new Enhancer();
+enhancer.setSuperclass(Target.class);
+enhancer.setCallback(new PrintCallable());
+Target target =(Target) enhancer.create();
+target.print();
+~~~
+
+
+
+# SpringAOP概念实体
+
+## Joinpoint
+
+通过之前描述的SpringAOP的实现方式，我们可以看出SpringAOP只支持方法执行类型的Joinpoint，但这样已经能够应付大部分的需求了，如果想要更强大的AOP支持，可以使用AspectJ之类的AOP产品
+
+## Pointcut
+
+Spring中定义了接口`Pointcut`作为其AOP框架中所有PointCut的最顶级抽象，其定义如下：
+
+~~~java
+public interface Pointcut {
+
+	ClassFilter getClassFilter();
+
+	MethodMatcher getMethodMatcher();
+
+	Pointcut TRUE = TruePointcut.INSTANCE;
+
+}
+~~~
+
+定义了两个方法用来捕获系统中的Pointcut
+
+并提供了一个`TruePointcut`实例，如果`Pointcut`类型为`TruePointcut`，默认会对系统中的所有对象和对象上的所有方法进行匹配。
+
+### ClassFilter
+
+ClassFilter接口的作用是对Joinpoint所处的对象进行Class级别的匹配，其定义如下：
+
+~~~java
+@FunctionalInterface
+public interface ClassFilter {
+
+	boolean matches(Class<?> clazz);
+
+	ClassFilter TRUE = TrueClassFilter.INSTANCE;
+
+}
+~~~
+
+matches 传入一个Class，当方法返回true时，表示该Class匹配Pointcut所规定的类型
+
+### MethodMatcher
+
+MethodMatcher对Joinpoint所处的方法进行匹配，定义如下：
+
+~~~java
+public interface MethodMatcher {
+
+	boolean matches(Method method, Class<?> targetClass);
+
+	boolean isRuntime();
+
+	boolean matches(Method method, Class<?> targetClass, Object... args);
+
+	MethodMatcher TRUE = TrueMethodMatcher.INSTANCE;
+
+}
+~~~
+
+MethodMatcher 重载定义了两个matches方法，他们的去呗就是是否会对方法参数进行校验
+
+根据isRuntime的返回值情况，MethodMatcher有两大不同的实现抽象类：
+
+#### StaticMethodMatcher
+
+StaticMethodMatcher定义如下：
+
+~~~java
+public abstract class StaticMethodMatcher implements MethodMatcher {
+	@Override
+	public final boolean isRuntime() {
+		return false;
+	}
+
+	@Override
+	public final boolean matches(Method method, Class<?> targetClass, Object... args) {
+		// should never be invoked because isRuntime() returns false
+		throw new UnsupportedOperationException("Illegal MethodMatcher usage");
+	}
+}
+~~~
+
+它覆写的`isRuntime()`方法，固定返回`false`
+
+当`isRuntime`返回`false`时，MethodMatcher不会对方法参数进行校验，所以该类实现了方法`matches(Method method, Class<?> targetClass, Object... args)`如果调用了验证参数的matches方法，就直接抛出`UnsupportedOperationException`
+
+#### DynamicMethodMatcher
+
+DynamicMethodMatcher定义如下：
+
+~~~java
+public abstract class DynamicMethodMatcher implements MethodMatcher {
+	@Override
+	public final boolean isRuntime() {
+		return true;
+	}
+
+	@Override
+	public boolean matches(Method method, Class<?> targetClass) {
+		return true;
+	}
+}
+~~~
+
+它覆写的`isRuntime()`方法，固定返回`true`
+
+当`isRuntime`返回`true`时，进行方法匹配时：
+
+* 首先调用`matches(Method method, Class<?> targetClass)`进行不校验参数的匹配，如果返回false则不匹配
+* 如果上一步返回true，则在调用`boolean matches(Method method, Class<?> targetClass, Object... args)`方法进行校验参数的匹配，如果返回true，才算匹配
+
+所以该方法覆写了`matches(Method method, Class<?> targetClass) `方法，让其默认返回true，这样当调用DynamicMethodMatcher进行匹配时，会直接调用进行校验参数的 matches方法
+
+### 常用Pointcut
+
+spring提供了许多Pointcut实现，以供满足不同的匹配需求，以下给出常用的四线
+
+* `NameMatchMethodPointcut`通过方法名进行匹配
+
+  除了可以指定方法名，还可以使用`*`通配符进行简单的模糊匹配
+
+* `JdkRegexpMethodPointcut`通过正则表达式匹配
+
+  匹配的是方法的方法签名，而不是单单方法名
+
+* `AnnotationMatchingPointcut`通过注解匹配
+
+  拥有指定注解的方法和类，如果是类，匹配类下所有方法
+
+* `ComposablePointcut`可以提供pointcut逻辑运算，通过union和intersection进行交并运算，也可以通过，Pointcuts工具类
+* `ControlFlowPointcut`可以匹配被指定类调用的指定方法
+
+## Advice
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 其他
+
+## 切入表达式
 
 AspectJ 用切入表达式的形式指定切入点
 
@@ -287,7 +583,7 @@ execution(public void com.bjpn.service.UserService.addUser(..))
 
 
 
-### 非注解方式实现AOP
+## 非注解方式实现AOP
 
 * 目标类：
 
@@ -333,7 +629,7 @@ public class Log {
 </aop:config>
 ~~~
 
-### 注解方式实现AOP
+## 注解方式实现AOP
 
 * 配置
 
@@ -341,8 +637,6 @@ public class Log {
 <!--开启AOP注解-->
 <aop:aspectj-autoproxy/>
 ~~~
-
-
 
 * 目标类
 
