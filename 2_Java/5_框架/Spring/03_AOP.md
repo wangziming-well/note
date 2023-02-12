@@ -517,13 +517,307 @@ spring提供了许多Pointcut实现，以供满足不同的匹配需求，以下
 
 ## Advice
 
+String提供了Advice接口作为AOP Advice的顶级抽象，Advice实现了将被织入到Pointcut规定的Joinpoint处的横切逻辑。在Spring中，Advice按照自身实例(instance)能否在目标对象类的所有实例中共享这一标准，可以划分为：per-class类型的Advice和per-instance类型的Advice
+
+### per-class
+
+per-class类型的Advice是指：该类型的Advice的实例可以在目标对象类的所有实例之间共享
+
+这种类型的Advice通常只是提供方法拦截的功能，不会为目标对象保持任何状态或者添加新的特性
+
+per-class类型的Advice类型接口的继承关系如下：
+
+![perClassAdvice](https://gitee.com/wangziming707/note-pic/raw/master/img/perClassAdvice.png)
 
 
 
+#### MethodBeforeAdvice
 
+Before Advice所实现的横切逻辑将在相应的Joinpoint之前执行
 
+Spring提供的`BeforeAdvice`是标志接口，没有定义任何方法，要在Spring中实现Before Advice,可以实现`MethodBeforeAdvice`接口，其定义如下：
 
+~~~java
+public interface MethodBeforeAdvice extends BeforeAdvice {
 
+	void before(Method method, Object[] args, @Nullable Object target) throws Throwable;
+
+}
+~~~
+
+在before方法中提供横切逻辑
+
+#### `ThrowsAdvice`
+
+String 中定义的`ThrowsAdvice `对应的 AOP概念中的AfterThrowingAdvice
+
+该接口没有定义任何方法，是标志接口，但在实现该接口时，方法定义要遵循如下规则：
+
+~~~java
+public void afterThrowing([Method method, Object[] args,Object target,] Exception ex)
+~~~
+
+前三个参数可以省略，可以根据拦截的`Throwable`的不同类型，重载定义多个`afterThrowing`方法，
+
+框架将会使用Java 反射机制调用这些方法
+
+#### `AfterReturningAdvice`
+
+`AfterReturningAdvice`接口定义如下：
+
+~~~java
+public interface AfterReturningAdvice extends AfterAdvice {
+
+	void afterReturning(@Nullable Object returnValue, Method method, Object[] args, @Nullable Object target) throws Throwable;
+
+}
+~~~
+
+通过`AfterReturningAdvice`我们可以访问当前Joinpoint的方法返回值、方法、方法参数以及所在的目标对象。
+
+#### MethodInterceptor
+
+Spring并没有直接定义对应的Around Advice接口，而是使用了AOP Alliance的标准接口`MethodInterceptor`:
+
+~~~java
+public interface MethodInterceptor extends Interceptor {
+
+	Object invoke(MethodInvocation invocation) throws Throwable;
+
+}
+~~~
+
+通过 `MethodInterceptor.invoke`方法的`MethodInvocation`参数，我们可以控制相应Joinpoint的拦截行为：
+
+通过调用`MethodInvocation`的`proceed()`方法，可以让程序执行继续沿着调用链传播。如果在invoke方法中没有调用`proceed()`方法，程序将在当前`MethodInterceptor`处停止
+
+我们可以在`proceed()`方法(也就是Joinpoint处的逻辑)执行前后插入相应的逻辑，甚至捕获`proceed()`方法可能抛出的异常，这就是它能履行Around Advice职责的原因
+
+### per-instance
+
+per-instance类型的Advice不会再目标类的所有实例之间共享，会为不同的实例对象保存它们各自的状态和相关逻辑
+
+在Spring AOP中，Introduction是唯一的per-instance型Advice
+
+Introduction 可以在不改动目标类定义的情况下，为目标类添加新的属性和行为
+
+在Spring中，为目标对象添加新的属性和行为必须声明相应的接口以及相应的实现。这样，再通过特定的拦截器将新的接口定义以及实现类中的逻辑附加到目标对象之上。
+
+#### IntroductionInterceptor
+
+这个特定的拦截器就是`IntroductionInterceptor`,其定义如下：
+
+~~~java
+public interface IntroductionInterceptor extends MethodInterceptor, DynamicIntroductionAdvice {
+
+}
+~~~
+
+它的继承关系如下：
+
+![IntroductionInterceptor](https://gitee.com/wangziming707/note-pic/raw/master/img/IntroductionInterceptor.png)
+
+它继承了`MethodInterceptor`和`DynamicIntroductionAdvice`
+
+`DynamicIntroductionAdvice`的定义如下：
+
+~~~java
+public interface DynamicIntroductionAdvice extends Advice {
+
+	boolean implementsInterface(Class<?> intf);
+
+}
+~~~
+
+通过`DynamicIntroductionAdvice`，可以界定当前的`IntroductionInterceptor`为那些接口提供相应的拦截功能。
+
+通过`MethodInterceptor`,`IntroductionInterceptor`可以处理新添加的接口上的方法调用
+
+`IntroductionInterceptor`有两个具体的实现类：
+
+* `DelegatingIntroductionInterceptor`
+* `DelegatePerTargetObjectIntroductionInterceptor`
+
+#### DelegatingIntroductionInterceptor
+
+`DelegatingIntroductionInterceptor`不会自己实现将要添加到目标对象上的新的逻辑行为，而是委派(delegate)给其他实现类
+
+具体实例如下：
+
+~~~java
+Tester tester = new Tester();
+        DelegatingIntroductionInterceptor advice = new DelegatingIntroductionInterceptor(tester);
+~~~
+
+将`tester`交给`DelegatingIntroductionInterceptor`,这样在织入时，会将tester的方法织入到目标对象中
+
+#### DelegatePerTargetObjectIntroductionInterceptor
+
+`DelegatePerTargetObjectIntroductionInterceptor`会在内部持有一个目标对象与相应Introduction逻辑实现类之间的映射关系。
+
+当每个目标对象上的新定义的接口方法被调用的时候`DelegatePerTargetObjectIntroductionInterceptor`会拦截这些调用，然后找到映射关系中目标对象实例对应的Introduction实现类实例。
+
+所以不需要给`DelegatePerTargetObjectIntroductionInterceptor`提供delegate接口实例，只需要delegete接口类型和对应的实现类的类型就可以了
+
+具体使用实例如下：
+
+~~~java
+DelegatePerTargetObjectIntroductionInterceptor advice = new DelegatePerTargetObjectIntroductionInterceptor(Tester.class, ITester.class);
+~~~
+
+## Aspect
+
+AOP理论中的Aspect定义中可以有多个Pointcut和多个Advice
+
+而spring提供的Aspect：Advisor通常只持有一个Pointcut和一个Advice
+
+所以Advisor是一种特殊的Aspect
+
+Advisor可以划分为两类：
+
+![Advisor](https://gitee.com/wangziming707/note-pic/raw/master/img/Advisor.png)
+
+### PointcutAdvisor
+
+PointcutAdvisor体系的继承关系如下：
+
+![PointcutAdvisor](https://gitee.com/wangziming707/note-pic/raw/master/img/PointcutAdvisor.png)
+
+* `DefaultPointcutAdvisor`是最通用的`PointcutAdvisor`,除了不能指定Introduction类型的Advice外，剩下任何类型的Pointcut和Advice都可以通过它来使用,
+
+    其内部维护了一个Pointcut类型属性和一个Advice类型属性，可以通过构造函数为其赋值，也可以通过setter方法赋值
+
+* `NameMatchMethodPointcutAdvisor`,它限定了内部可以使用的Pointcut类型为`NameMatchMethodPointcut`,且不可更改，Advice仍然除了Introduction外其他类型都可以
+
+* `RegexpMethodPointcutAdvisor`,它限定了内部可以使用的Pointcut类型为`AbstractRegexpMethodPointcut`,且不可更改，Advice仍然除了Introduction外其他类型都可以
+
+除此之外还有一个比较少用的`DefaultBeanFactoryPointcutAdvisor`,它实现了`BeanFactoryAware`接口，所以它必须被注册在BeanFactory容器中，它会自动通过容器中的Advice注册的beanName，来关联对应的Advice
+
+### IntroductionAdvisor
+
+IntroductionAdvisor仅限于Introduction的使用场景
+
+IntroductionAdvisor体系比较简单，只有一个DefaultIntroductionAdvisor
+
+![DefaultIntroductionAdvisor](https://gitee.com/wangziming707/note-pic/raw/master/img/DefaultIntroductionAdvisor.png)
+
+DefaultIntroductionAdvisor只可以指定Introduction型的Advice(IntroductionInterceptor)以及被拦截的接口类型
+
+### Ordered
+
+在之前的继承关系图中可以看出，所以的Advisor实现类都直接或者间接的实现了Ordered接口
+
+Ordered接口用以处理同一Joinpoint处有多个Advisor的情况
+
+Ordered用以指定此时的执行优先级
+
+如果没有指定优先级，默认按照它们的声明顺序来应用它们
+
+## Weaver
+
+在Spring AOP中，使用类 ProxyFactory作为织入器,
+
+只需要为ProxyFactory必要的原材料，就可以通过它生产出代理对象了:
+
+~~~java
+//ProxyFactory提供的方法:
+public void setTarget(Object target); //设置目标对象
+void addAdvisor(Advisor advisor); //添加Advisor
+public Object getProxy(); //获取代理对象
+~~~
+
+使用ProxyFactory需要指定下面两个最基本的东西：
+
+* 要被织入的目标对象：可以通过ProxyFactory的构造方法或者setter方法传入
+* 要织入到目标对象的Aspect，也就是Advisor，除了指定Advisor，可以直接指定Advice
+    * 对于Introduction之外的Advice类型，ProxyFactory内部会为这些Advice构造相应的Advisor，不过构造出的Advisor中的Pointcut为Pointcut.TRUE
+    * 对于Introduction类型的Advice：
+        * 若是IntroductionInfo的子类实现，因为本身包含了必要的描述信息，内部会为其构造一个DefaultIntroductionAdvisor
+        * 若不是IntroductionInfo的子类实现而是DynamicIntroductionAdvice的实现，将抛出AopConfigException异常
+
+### 基于接口的代理
+
+默认情况下，如果目标类实现了相应接口，那么ProxyFactory就会对目标类进行基于接口的代理，但是我们也可以使用ProxyFactory提供的方法：
+
+~~~java
+void setInterfaces(Class<?>... interfaces) 
+~~~
+
+来通知ProxyFactory强制使用基于接口的代理(在既可以使用接口代理，也可以使用类的代理的情况下)
+
+### 基于类的代理
+
+默认情况下，如果目标类没有实现任何接口，那么ProxyFactory会对目标类对目标类进行基于类的代理，但是我们也可以使用ProxyFactory提供的方法：
+
+~~~java
+void setProxyTargetClass(boolean proxyTargetClass); //传入true，使用基于类的代理
+~~~
+
+来通知ProxyFactory强制使用基于类的代理(在既可以使用接口代理，也可以使用类的代理的情况下)
+
+### Introduction的织入
+
+* 进行Introduction的织入时，不需要指定Pointcut
+* Spring的Introduction支持只能通过接口定义为当前对象添加新的行为
+
+使用ProxyFactory进行Introduction 的织入实例：
+
+~~~java
+//创建advice
+Tester tester = new Tester();
+DelegatingIntroductionInterceptor advice = new DelegatingIntroductionInterceptor(tester);
+//创建weaver
+Developer developer = new Developer();
+ProxyFactory weaver = new ProxyFactory(developer);
+//设置weaver
+weaver.setInterfaces(IDeveloper.class,ITester.class);
+weaver.addAdvice(advice);
+//获取并使用代理
+Object proxy = weaver.getProxy();
+((IDeveloper)proxy).developSoftware();
+((ITester)proxy).testSoftware();
+~~~
+
+基于类的代理：
+
+~~~java
+//创建advice
+Tester tester = new Tester();
+DelegatingIntroductionInterceptor advice = new DelegatingIntroductionInterceptor(tester);
+//创建weaver
+Developer developer = new Developer();
+ProxyFactory weaver = new ProxyFactory(developer);
+//设置weaver
+weaver.setProxyTargetClass(true);
+weaver.setInterfaces(ITester.class);
+weaver.addAdvice(advice);
+//获取并使用代理
+Object proxy = weaver.getProxy();
+((Developer)proxy).developSoftware();
+((ITester)proxy).testSoftware();
+~~~
+
+### PrxoyFactory原理
+
+#### AopProxy
+
+Spring AOP框架内使用AopProxy对使用不同的代理实现机制进行了适度的抽象，
+
+它的定义如下:
+
+~~~java
+public interface AopProxy {
+	Object getProxy();
+
+	Object getProxy(@Nullable ClassLoader classLoader);
+}
+~~~
+
+它的体系继承关系如下：
+
+![AopProxy](https://gitee.com/wangziming707/note-pic/raw/master/img/AopProxy.png)
+
+一般通过AopProxyFactory获取AopProxy实例：
 
 
 
