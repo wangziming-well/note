@@ -691,17 +691,17 @@ PointcutAdvisor体系的继承关系如下：
 
 * `RegexpMethodPointcutAdvisor`,它限定了内部可以使用的Pointcut类型为`AbstractRegexpMethodPointcut`,且不可更改，Advice仍然除了Introduction外其他类型都可以
 
-除此之外还有一个比较少用的`DefaultBeanFactoryPointcutAdvisor`,它实现了`BeanFactoryAware`接口，所以它必须被注册在BeanFactory容器中，它会自动通过容器中的Advice注册的beanName，来关联对应的Advice
+除此之外还有一个比较少用的`DefaultBeanFactoryPointcutAdvisor`,它实现了`BeanFactoryAware`接口，所以它必须被注册在`BeanFactory`容器中，它会自动通过容器中的Advice注册的beanName，来关联对应的Advice
 
 ### IntroductionAdvisor
 
-IntroductionAdvisor仅限于Introduction的使用场景
+`IntroductionAdvisor`仅限于Introduction的使用场景
 
-IntroductionAdvisor体系比较简单，只有一个DefaultIntroductionAdvisor
+`IntroductionAdvisor`体系比较简单，只有一个`DefaultIntroductionAdvisor`
 
 ![DefaultIntroductionAdvisor](https://gitee.com/wangziming707/note-pic/raw/master/img/DefaultIntroductionAdvisor.png)
 
-DefaultIntroductionAdvisor只可以指定Introduction型的Advice(IntroductionInterceptor)以及被拦截的接口类型
+`DefaultIntroductionAdvisor`只可以指定`Introduction`型的Advice(`IntroductionInterceptor`)以及被拦截的接口类型
 
 ### Ordered
 
@@ -715,16 +715,144 @@ Ordered用以指定此时的执行优先级
 
 ## Weaver
 
-在Spring AOP中，使用类 ProxyFactory作为织入器,
+SpringAOP提供的weaver都继承了`ProxyCreatorSupport`：
 
-只需要为ProxyFactory必要的原材料，就可以通过它生产出代理对象了:
+![ProxyCreatorSupport](https://gitee.com/wangziming707/note-pic/raw/master/img/ProxyCreatorSupport.png)
+
+### `ProxyCreatorSupport`
+
+Spring AOP 提供的织入器都会继承`ProxyCreatorSupport`，获取它提供的AOP织入的公用逻辑支持
+
+* `ProxyCreatorSupport`继承了`AdvisedSupport`，它提供了生成代理的必要信息
+* `ProxyCreatorSupport`内部持有了`AopProxyFactory`，通过它获取`AopProxy`；`AopProxy`用于创建对象
+
+#### `AopProxy`
+
+Spring AOP框架内使用AopProxy对使用不同的代理实现机制进行了适度的抽象，
+
+AopProxy的定义如下:
 
 ~~~java
-//ProxyFactory提供的方法:
-public void setTarget(Object target); //设置目标对象
-void addAdvisor(Advisor advisor); //添加Advisor
-public Object getProxy(); //获取代理对象
+public interface AopProxy {
+	Object getProxy();
+
+	Object getProxy(@Nullable ClassLoader classLoader);
+}
 ~~~
+
+它的体系继承关系如下：
+
+![AopProxy](https://gitee.com/wangziming707/note-pic/raw/master/img/AopProxy.png)
+
+##### `AopProxyFactory`
+
+一般通过AopProxyFactory获取AopProxy实例，AopProxyFactory定义如下：
+
+~~~java
+public interface AopProxyFactory {
+	AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException;
+}
+~~~
+
+它只有一个实现类DefaultAopProxyFactory，其生成逻辑如下：
+
+~~~java
+if (config.isPotimize() || config.isProxyTargetClass() || hasNoUserSuppliedProxyInterfaces){
+    //创建Cglib2AopProsxy实例并返回
+} else{
+    //创建JdkDynamicAopProxy实例并返回
+}
+~~~
+
+#### `AdvisedSupport`
+
+`ProxyCreatorSupport`继承自`AdvisedSupport`，并且`AopProxyFactory`根据传入的`AdvisedSupport `来判断生成 `AopProxy`实例
+
+`AdvisedSupport`提供了生成代理对象的必要信息
+
+`AdvisedSupport`实现了两个接口：
+
+* `ProxyConfig`:记载生成代理对象的控制信息
+* `Advised`:供生成代理对象的具体信息
+
+##### `ProxyConfig`
+
+`ProxyConfig`记载生成代理对象的控制信息，它定义了5个Boolean型的属性。分别控制在生成代理对象的时候，应该采取哪些措施：
+
+* proxyTargetClass：若为true，ProxyFactory会使用CGLIB对目标对象进行代理，默认值为false
+
+* optimize：主要用于告知代理对象是否需要采取进一步的优化措施，如代理对象生成之后，即使为其添加或移除了相应的Advice，代理对象也可以忽略这种变动。
+
+  当该属性为true时，ProxyFactory会使用CGLIB进行代理对象的生成。默认值为false
+
+* opaque:用于控制生成的代理对象是否可以强制转型为Advised，默认值为false，表示可以强制转型为Advised，我们可以通过Advised查询代理对象的一些状态
+
+* exposeProxy:若为true，可以让SpringAOP在生成代理对象时，将当前代理对象绑定到ThreadLocal。如果目标对象需要访问当前代理对象，可以通过AopContext.currentProxy()取得，处于性能考虑，默认值false
+
+* frozen:若为true，当针对代理对象生成的各项信息配置完成后，则不允许修改
+
+  默认值为false
+
+##### `Advised`
+
+`Advised`提供生成代理对象的具体信息，默认情况下，SpringAOP提供的代理对象都可以强制转化为Advised类型，其定义如下：
+
+~~~java
+public interface Advised extends TargetClassAware {
+	boolean isFrozen();
+
+	boolean isProxyTargetClass();
+
+	Class<?>[] getProxiedInterfaces();
+
+	boolean isInterfaceProxied(Class<?> intf);
+
+	void setTargetSource(TargetSource targetSource);
+
+	TargetSource getTargetSource();
+
+	void setExposeProxy(boolean exposeProxy);
+
+	boolean isExposeProxy();
+
+	void setPreFiltered(boolean preFiltered);
+
+	boolean isPreFiltered();
+
+	Advisor[] getAdvisors();
+
+	void addAdvisor(Advisor advisor) throws AopConfigException;
+
+	void addAdvisor(int pos, Advisor advisor) throws AopConfigException;
+
+	boolean removeAdvisor(Advisor advisor);
+
+	void removeAdvisor(int index) throws AopConfigException;
+
+	int indexOf(Advisor advisor);
+
+	boolean replaceAdvisor(Advisor a, Advisor b) throws AopConfigException;
+
+	void addAdvice(Advice advice) throws AopConfigException;
+
+	void addAdvice(int pos, Advice advice) throws AopConfigException;
+
+	boolean removeAdvice(Advice advice);
+
+	int indexOf(Advice advice);
+
+	String toProxyConfigString();
+
+}
+~~~
+
+我们可以使用Advised接口相应代理对象所持有的Advisor，进行添加Advisor、移除Advisor等相关动作。
+
+
+
+### `ProxyFactory`
+
+ProxyFactory是SpringAOP提供的最基本的weaver
 
 使用ProxyFactory需要指定下面两个最基本的东西：
 
@@ -735,7 +863,7 @@ public Object getProxy(); //获取代理对象
         * 若是IntroductionInfo的子类实现，因为本身包含了必要的描述信息，内部会为其构造一个DefaultIntroductionAdvisor
         * 若不是IntroductionInfo的子类实现而是DynamicIntroductionAdvice的实现，将抛出AopConfigException异常
 
-### 基于接口的代理
+#### 基于接口的代理
 
 默认情况下，如果目标类实现了相应接口，那么ProxyFactory就会对目标类进行基于接口的代理，但是我们也可以使用ProxyFactory提供的方法：
 
@@ -745,7 +873,7 @@ void setInterfaces(Class<?>... interfaces)
 
 来通知ProxyFactory强制使用基于接口的代理(在既可以使用接口代理，也可以使用类的代理的情况下)
 
-### 基于类的代理
+#### 基于类的代理
 
 默认情况下，如果目标类没有实现任何接口，那么ProxyFactory会对目标类对目标类进行基于类的代理，但是我们也可以使用ProxyFactory提供的方法：
 
@@ -755,7 +883,7 @@ void setProxyTargetClass(boolean proxyTargetClass); //传入true，使用基于�
 
 来通知ProxyFactory强制使用基于类的代理(在既可以使用接口代理，也可以使用类的代理的情况下)
 
-### Introduction的织入
+#### Introduction的织入
 
 * 进行Introduction的织入时，不需要指定Pointcut
 * Spring的Introduction支持只能通过接口定义为当前对象添加新的行为
@@ -797,27 +925,19 @@ Object proxy = weaver.getProxy();
 ((ITester)proxy).testSoftware();
 ~~~
 
-### PrxoyFactory原理
+### `ProxyFactoryBean`
 
-#### AopProxy
+从继承关系上看`ProxyFactoryBean`继承了`ProxyCreatorSupport`并实现了`FactoryBean`
 
-Spring AOP框架内使用AopProxy对使用不同的代理实现机制进行了适度的抽象，
+所以说它是一个生成代理的 工厂Bean
 
-它的定义如下:
+我们知道`FactoryBean`在容器里被调用时，将直接返回`getObject()`方法的返回值。
 
-~~~java
-public interface AopProxy {
-	Object getProxy();
 
-	Object getProxy(@Nullable ClassLoader classLoader);
-}
-~~~
 
-它的体系继承关系如下：
 
-![AopProxy](https://gitee.com/wangziming707/note-pic/raw/master/img/AopProxy.png)
 
-一般通过AopProxyFactory获取AopProxy实例：
+
 
 
 
