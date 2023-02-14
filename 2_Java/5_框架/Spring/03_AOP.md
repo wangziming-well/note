@@ -595,7 +595,7 @@ public interface MethodInterceptor extends Interceptor {
 
 ### per-instance
 
-per-instance类型的Advice不会再目标类的所有实例之间共享，会为不同的实例对象保存它们各自的状态和相关逻辑
+per-instance类型的Advice不会在目标类的所有实例之间共享，会为不同的实例对象保存它们各自的状态和相关逻辑
 
 在Spring AOP中，Introduction是唯一的per-instance型Advice
 
@@ -652,6 +652,8 @@ Tester tester = new Tester();
 将`tester`交给`DelegatingIntroductionInterceptor`,这样在织入时，会将tester的方法织入到目标对象中
 
 #### DelegatePerTargetObjectIntroductionInterceptor
+
+
 
 `DelegatePerTargetObjectIntroductionInterceptor`会在内部持有一个目标对象与相应Introduction逻辑实现类之间的映射关系。
 
@@ -933,11 +935,143 @@ Object proxy = weaver.getProxy();
 
 我们知道`FactoryBean`在容器里被调用时，将直接返回`getObject()`方法的返回值。
 
+在`ProxyFactoryBean`中，`getObject()`方法返回的就是对应的代理对象
 
+#### 配置属性
 
+`ProxyFactoryBean`继承了`ProxyCreatorSupport`，所以继承了它所有的配置属性，除此之外它还有自己独有的属性：
 
+* `proxyInterfaces`：指定代理对象的接口类型，如果要为代理对象添加新的接口逻辑，需要在此处指定，和setInterfaces等效
 
+* `interceptorNames`：可以指定多个将要织入到目标对象的Advice、拦截器以及Advisor
+  * 可以在某个元素之后添加通配符`*`进行匹配
+* `singleton`:设置代理对象是否是每次返回同一个
 
+#### 实例
+
+**per-class：**
+
+~~~xml
+<!-- 定义advisor -->
+<bean id="advisor" class="org.springframework.aop.support.DefaultPointcutAdvisor">
+    <property name="pointcut">
+        <bean class="org.springframework.aop.TruePointcut"/>
+    </property>
+    <property name="advice">
+        <bean class="com.wzm.spring.aop.container.MyMethodInterceptor"/>
+    </property>
+</bean>
+<!-- 定义ProxyFactoryBean -->
+<bean id="demo" class="org.springframework.aop.framework.ProxyFactoryBean">
+    <property name="target">
+        <bean class="com.wzm.spring.pojo.impl.Developer"/>
+    </property>
+    <property name="interceptorNames">
+        <list>
+            <value>advisor</value>
+        </list>
+    </property>
+</bean>
+~~~
+
+**per-instance：**
+
+* 使用`DelegatingIntroductionInterceptor`
+
+~~~xml
+<bean id="target" class="com.wzm.spring.pojo.impl.Target" scope="prototype"/>
+<bean id="interceptor" class="org.springframework.aop.support.DelegatingIntroductionInterceptor">
+    <constructor-arg>
+        <bean class="com.wzm.spring.pojo.impl.Counter"/>
+    </constructor-arg>
+</bean>
+<bean id="introductionTarget" class="org.springframework.aop.framework.ProxyFactoryBean" scope="prototype">
+    <property name="targetName" value="target"/>
+    <property name="proxyInterfaces">
+        <list>
+            <value>com.wzm.spring.pojo.ITarget</value>
+            <value>com.wzm.spring.pojo.ICounter</value>
+        </list>
+    </property>
+    <property name="interceptorNames">
+        <list>
+            <value>interceptor</value>
+        </list>
+    </property>
+</bean>
+~~~
+
+获取代理：
+
+~~~java
+ClassPathXmlApplicationContext container = new ClassPathXmlApplicationContext("spring.xml");
+ICounter proxy1 =(ICounter) container.getBean("introductionTarget");
+ICounter proxy2 =(ICounter) container.getBean("introductionTarget");
+System.out.println(proxy1.getCounter());
+System.out.println(proxy1.getCounter());
+System.out.println(proxy2.getCounter());
+~~~
+
+之前已经介绍过`DelegatingIntroductionInterceptor`织入的类时公用的，
+
+proxy1和proxy2公用一个counter实例，所以上述代码会输出1，2，3
+
+* `DelegatePerTargetObjectIntroductionInterceptor`使用：
+
+~~~xml
+<bean id="target" class="com.wzm.spring.pojo.impl.Target" scope="prototype"/>
+<bean id="interceptor" class="org.springframework.aop.support.DelegatePerTargetObjectIntroductionInterceptor">
+    <constructor-arg index="0" value="com.wzm.spring.pojo.impl.Counter"/>
+    <constructor-arg index="1" value="com.wzm.spring.pojo.ICounter"/>
+</bean>
+<bean id="introductionTarget" class="org.springframework.aop.framework.ProxyFactoryBean" scope="prototype">
+    <property name="targetName" value="target"/>
+    <property name="proxyInterfaces">
+        <list>
+            <value>com.wzm.spring.pojo.ITarget</value>
+            <value>com.wzm.spring.pojo.ICounter</value>
+        </list>
+    </property>
+    <property name="interceptorNames">
+        <list>
+            <value>interceptor</value>
+        </list>
+    </property>
+</bean>
+~~~
+
+获取代理：
+
+~~~java
+ClassPathXmlApplicationContext container = new ClassPathXmlApplicationContext("spring.xml");
+ICounter proxy1 =(ICounter) container.getBean("introductionTarget");
+ICounter proxy2 =(ICounter) container.getBean("introductionTarget");
+System.out.println(proxy1.getCounter());
+System.out.println(proxy1.getCounter());
+System.out.println(proxy2.getCounter());
+~~~
+
+因为`DelegatePerTargetObjectIntroductionInterceptor`的特性，即使是公用一个Interceptor，它也会为每个代理对象保存单独的状态，所以，上面代理输出结果，1，2，1
+
+### AutoProxy
+
+SpringAOP给出了自动代理(AutoProxy)机制，可以帮助我们解决使用`ProxyFactoryBean`配置工作量比较大的问题,要使用自动代理，需要使用ApplicationContext，自动代理体系继承关系如下：
+
+![AutoProxyCreator](https://gitee.com/wangziming707/note-pic/raw/master/img/AutoProxyCreator.png)
+
+自动代理的逻辑主要集成在  `AbstractAutoProxyCreator`中，它继承了BeanPostProcessor，主要在`BeanPostProcessor`的`postProcessBeforeInitialization()`方法中完成拦截并织入横切逻辑的
+
+常用的AutoProxyCreator如下：
+
+* `BeanNameAutoProxyCreator`
+* `DefaultAdvisorAutoProxyCreator`
+
+#### `BeanNameAutoProxyCreator`
+
+`BeanNameAutoProxyCreator`内部有两个属性：
+
+* `beanNames`:指定容器内要被代理的目标对象的beanName
+* `interceptorNames`: 指定要应用到目标对象上的Advisor、advice或者拦截器
 
 
 
