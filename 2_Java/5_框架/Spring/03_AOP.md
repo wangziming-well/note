@@ -1066,12 +1066,348 @@ SpringAOP给出了自动代理(AutoProxy)机制，可以帮助我们解决使用
 * `BeanNameAutoProxyCreator`
 * `DefaultAdvisorAutoProxyCreator`
 
+如果要实现自定义的AutoProxyCreator，比如实现基于注解的自动代理；可以在`AbstractAutoProxyCreator`或者`AbstractAdvisorAutoProxyCreator`的基础上进行扩展；重写`BeanPostProcessor`的拦截方法
+
 #### `BeanNameAutoProxyCreator`
 
 `BeanNameAutoProxyCreator`内部有两个属性：
 
-* `beanNames`:指定容器内要被代理的目标对象的beanName
+* `beanNames`:指定容器内要被代理的目标对象的beanName,可以使用通配符`*`以简化配置
 * `interceptorNames`: 指定要应用到目标对象上的Advisor、advice或者拦截器
+
+**实例:**
+
+~~~xml
+<bean id="target" class="com.wzm.spring.pojo.impl.Target" scope="prototype"/>
+<bean id="interceptor" class="com.wzm.spring.aop.container.MyMethodInterceptor"/>
+<bean class="org.springframework.aop.framework.autoproxy.BeanNameAutoProxyCreator">
+    <property name="beanNames">
+        <list>
+            <idref bean="target"/>
+        </list>
+    </property>
+    <property name="interceptorNames">
+        <list>
+            <idref bean="interceptor"/>
+        </list>
+    </property>
+</bean>
+~~~
+
+#### `DefaultAdvisorAutoProxyCreator`
+
+只需要在ApplicationContext中注册该bean，它就会自动进行扫描容器中的advisor，并进行自动织入
+
+~~~xml
+<!-- 定义DefaultAdvisorAutoProxyCreator -->
+<bean class="org.springframework.aop.framework.autoproxy.DefaultAdvisorAutoProxyCreator"/>
+<!-- 定义advisor -->
+<bean class="org.springframework.aop.support.DefaultPointcutAdvisor">
+    <property name="pointcut">
+        <bean class="org.springframework.aop.support.JdkRegexpMethodPointcut">
+            <property name="pattern" value=".*execute.*"/>
+        </bean>
+    </property>
+    <property name="advice">
+        <bean class="com.wzm.spring.aop.container.MyMethodInterceptor"/>
+    </property>
+</bean>
+<!-- target -->
+<bean id="target" class="com.wzm.spring.pojo.impl.Target" scope="prototype"/>
+~~~
+
+因为DefaultAdvisorAutoProxyCreator处理的范围比较大，所以需要精细设置Advisor的pointcut定义
+
+## TargetSource
+
+在使用ProxyFactory、ProxyFactoryBean时，通过它的setTarget()方法指定具体的目标对象，ProxyFactoryBean还可以通过setTargetName()指定目标对象在Ioc容器中的beanName
+
+实际上，这些设置目标对象的方法底层都是通过TargetSource实现类对目标对象进行封装，实现了设置目标对象的统一处理
+
+所以我们也可以直接通过setTargetSource方法来完成目标对象的设置
+
+TargetSource可以看作目标对象的容器:
+
+* 提供一个目标对象池，每次从TargetSource取得的目标对象都是从目标对象池中取得
+
+* TargetSource实现类可以持有多个目标对象实例，每次方法调用时，会按照某种规则，返回相应的目标对象实例
+
+当然它也可以持有一个目标对象实例。
+
+定义如下：
+
+~~~java
+public interface TargetSource extends TargetClassAware {
+	//	返回目标对象类型
+	@Override
+	@Nullable
+	Class<?> getTargetClass();
+	// 是否返回同一个目标对象实例,如果为false，具体调用时会调用releaseTarget方法释放对象
+	boolean isStatic();
+	// 返回目标对象实例
+	@Nullable
+	Object getTarget() throws Exception;
+	//释放当前调用的目标对象 
+	void releaseTarget(Object target) throws Exception;
+
+}
+~~~
+
+它的常用实现：
+
+* `SingletonTargetSource`
+
+  内部只持有一个目标对象，每次方法调用都会返回这同一个目标对象
+
+  可以直接在创建SingletonTargetSource实例时，在构造方法上传入目标对象实例
+
+* `PrototypeTargetSource`
+
+  内部只持有一个目标对象，每次方法调用时会返回一个新的目标对象实例供调用
+
+  * 目标对象的bean定义的scope必须时prototype的
+  * 只能通过targetBeanName指定目标对象的bean定义名称而不是直接引用
+
+* `HotSwappableTargetSource`
+
+  内部只持有一个目标对象，但可以通过 `swap()`方法替换持有的目标对象
+
+* `CommonsPool2TargetSource`
+
+  内部只有一个目标对象池，相同的类不同的实例，使用方法PrototypeTargetSource相同
+
+* `ThreadLocalTargetSource`
+
+  为不同的线程提供不同的目标对象，是基于ThreadLocal的简单封装
+
+# @AspectJ形式的AOP
+
+Spring2.0发布后，Spring AOP 支持新的使用方式
+
+* 支持AspectJ5发布的@AspectJ形式的AOP实现方式，可以直接使用POJO来定义Aspect以及相关的Advice，并使用一套标准的注解来标注这些POJO，SpringAOP会根据注解信息查找相关的Aspect定义，并将其声明的横切逻辑织入当前系统
+* 简化了XML配置方式。使用新的基于XSD的配置方式，可以使用aop独有的命名空间
+
+@AspectJ代表一种定义Aspect的风格，这种方式是从AspectJ引入的，但最终的实现机制还是SpringAOP的代理模式
+
+## 使用方式
+
+可以通过POJO和注解标注的方式定义Aspect：
+
+~~~java
+@Aspect
+@Component
+public class LogAspect {
+    @Pointcut("execution(* *..pojo.*.*(..))")
+    public void pointcutName(){}
+
+    @Around("pointcutName()")
+    public Object beforeExecute(ProceedingJoinPoint joinPoint) throws Throwable {
+        System.out.println("方法执行前");
+        Object proceed = joinPoint.proceed();
+        System.out.println("方法执行前");
+        return proceed;
+    }
+}
+~~~
+
+* `@Aspect`标记当前类为aspect
+* `@Pointcut`将pointcut绑定到当前方法上
+* `@Around @After @Before` 标记当前方法为横切逻辑
+
+定义好Aspect后，我们可以使用如下方式织入：
+
+### 编程方式织入
+
+我们在介绍Weaver是，在继承体系中有一个`AspectJProxyFactory`没有介绍，它就是适用于@AspectJ方式的织入器的，具体织入过程如下：
+
+~~~java
+AspectJProxyFactory weaver = new AspectJProxyFactory();
+weaver.setTarget(new Target());
+weaver.addAspect(LogAspect.class);
+ITarget proxy = weaver.getProxy();
+proxy.execute();
+~~~
+
+织入方式和ProxyFactory差不多
+
+### 自动代理织入
+
+在介绍AutoProxy自动代理是，继承体系中有一个`AspectJAwareAdvisorAutoProxyCreator`没有介绍，它就是适用于@AspectJ方式的自动代理类，只需要将其注册到容器中：
+
+~~~xml
+<bean class="org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator"/>
+<bean id="target" class="com.wzm.spring.pojo.impl.Target"/>
+<bean class="com.wzm.spring.aspectj.LogAspect"/>
+~~~
+
+或者使用xsd形式的配置方式：
+
+~~~xml
+<!-- 扫描aspect和target类-->
+<context:component-scan base-package="com.wzm.spring.pojo,com.wzm.spring.aspectj"/>
+<!-- 开启aspectj自动代理-->
+<aop:aspectj-autoproxy/>
+~~~
+
+## @AspectJ形式的Pointcut
+
+在`@Aspect`所标注的Aspect定义类内使用`@Pointcut`注解，指定AspectJ形式的Pointcut表达式后，将注解标注到某个方法上即可
+
+@AspectJ形式的Pointcut声明有如下两个部分：
+
+* Pointcut Expression
+* Pointcut Signature
+
+### Pointcut Expression
+
+Pointcut Expression：切入点表达式的载体为`@Pointcut`，该注解是方法级别的，所以表达式也只能在某个方法上声明；Pointcut Expression所附着的方法称为该Pointcut Expression的Pointcut Signature(切入点签名)
+
+Pointcut Expression由两部分组成：
+
+* Pointcut Desinator(Pointcut标识符)。表明该Pointcut将以怎样的行为来匹配表达式
+* 表达式匹配模式，在Pointcut标识符之内可以指定具体的匹配模式
+
+Pointcut Expression 支持`&& || !`逻辑运算
+
+#### Pointcut Desinator
+
+AspectJ的Pointcut表达式可用的Pointcut标识符很丰富，基本包含所有的Joinpoint类型的表述，但是SpringAOP只支持方法级别的Joinpoint，所以可以使用的标识符只有少数的几个：
+
+##### execution
+
+execution:匹配拥有指定方法签名的Joinpoint，使用execution标识符的Pointcut表达式的规定格式如下：
+
+`execution(modifiers-pattern? ret-type-pattern declariong-type-pattern? name-pattern(param-pattern) throws-pattern?)`
+
+* `?`表示可选匹配
+* `modifiers-pattern`匹配访问权限类型 可省略
+* `ret-type-pattern`匹配返回值类型
+* `declaring-type-pattern`匹配包名类名 可省略
+* `name-pattern(param-pattern)`匹配方法名(参数)
+* `throws-pattern`匹配异常 可省略
+
+以上匹配可以由符号表示含义：
+
+* `*`表示相邻的多个任意字符
+
+* `..`
+  * 在方法参数中，表示任意多个参数
+  * 在包名后，表示当前包及其子包路径
+
+* `+`
+  * 在类名后，表示当前类及其子类
+  * 在接口后，表示当前接口及其实现类
+
+示例：
+
+~~~java
+举例：
+execution(public * *(..)) ;
+指定切入点为：任意公共方法。
+execution(* set*(..)) ;
+指定切入点为：任何一个以“set”开始的方法。
+execution(* com.xyz.service.*.*(..)) ;
+指定切入点为：定义在 service 包里的任意类的任意方法。
+execution(* com.xyz.service..*.*(..));
+指定切入点为：定义在 service 包或者子包里的任意类的任意方法。“..”出现在类名中时，后
+面必须跟“*”，
+表示包、子包下的所有类。
+execution(* *..service.*.*(..));
+指定所有包下的 serivce 子包下所有类（接口）中所有方法为切入点
+execution(public void com.bjpn.service.UserService.addUser(String ));
+~~~
+
+##### within
+
+within标识符只接受类型声明，它将会匹配指定类型下所有的Joinpoint
+
+因为SpringAOP只支持方法级别的Joinpoint，所以使用within指定某个类后，它将匹配指定类所声明的所有方法执行
+
+示例：
+
+~~~java
+举例
+within(com.demo.spring.*);
+匹配com.demo.spring包下所有类型内部的方法级别的Joinpoint
+within(com.demo.spring..*);
+匹配com.demo.spring包以及子包下所有类型内部的方法级别的Joinpoint
+~~~
+
+##### this&target
+
+在AspectJ中：
+
+* this代指调用方法一方所在的对象(caller)
+* target代指被调用方法所在的对象(calle)
+
+示例：`this(A) && target(B)`表示A调用B上的方法时才会匹配
+
+SpringAOP中的this和target标识符语义有别于AspectJ中的两个标识符的原始语义：
+
+* this代指目标对象的代理对象
+* target代指目标对象
+
+实际上，从代理模式来看，代理对象通常和目标对象的类型是相同的，因为
+
+目标对象和它的代理对象实现同一个接口。
+
+假设我们有如下对象定义：
+
+~~~java
+public interface ITarget{
+    ...
+}
+public class Target implements ITarget{
+    ...
+}
+~~~
+
+* `this(ITarget)`和`target(ITarget)`
+  * 基于接口的代理：目标对象Target实现了ITarget，代理对象同样实现了ITarget；以上表达式效果相同
+  * 基于类的代理：目标对象Target实现了ITarget，代理对象继承了Target间接实现了ITarget；以上表达式效果相同
+
+* `this(Target)`和`target(Target)`
+  * 基于接口的代理：目标对象本身就是Target，代理对象只是ITarget的实现类；以上表达式效果不同
+  * 基于类的代理：目标对象本身就是Target，代理对象继承了Target；以上表达式效果相同
+
+通常this和target标志符都在Pointcut表达式中于其他标志符结合使用，进一步加强匹配的限定规则
+
+##### args
+
+
+
+
+
+### Pointcut Signature
+
+Pointcut Signature：在这里是一个方法定义，它是Poincut Expression的载体，Pointcut Signature 所在的方法定义要求返回类型必须是void
+
+方法的范围修饰符在aspect中语义与java相同：
+
+* public 型的Pointcut Signature可以在其他Aspect定义中引用
+* private型的Pointcut Signature只能在当前Aspect定义中引用
+
+可以将Pointcut Signature作为相应Pointcut Expression的标识符，在Pointcut Expression的定义中取代重复的Pointcut表达式，示例如下：
+
+~~~java
+@Pointcut("execution(void mehtod1())")
+public void method1Execution(){}
+
+@Pointcut("method1Execution()")
+private void stillMethodExecution(){}
+~~~
+
+
+
+# 基于Schema的AOP
+
+
+
+
+
+
+
+
 
 
 
@@ -1085,49 +1421,9 @@ AspectJ 用切入表达式的形式指定切入点
 
 表达式形式为:
 
-`execution(modifiers-pattern? ret-type-pattern declariong-type-pattern? name-pattern(param-pattern) throws-pattern?)`
 
-* `?`表示可选匹配
-* `modifiers-pattern`匹配访问权限类型
-* `ret-type-pattern`匹配返回值类型
-* `declaring-type-pattern`匹配包名类名
-* `name-pattern(param-pattern)`匹配方法名(参数)
-* `throws-pattern`匹配异常
 
-以上匹配可以由符号表示含义：
 
-* `*`
-
-  0至多个任意字符
-
-* `..`
-
-  * 在方法参数中，表示任意多个参数
-  * 在包名后，表示当前包及其子包路径
-
-* `+`
-
-  * 在类名后，表示当前类及其子类
-  * 在接口后，表示当前接口及其实现类
-
-示例：
-
-~~~java
-举例：
-execution(public * *(..)) 
-指定切入点为：任意公共方法。
-execution(* set*(..)) 
-指定切入点为：任何一个以“set”开始的方法。
-execution(* com.xyz.service.*.*(..)) 
-指定切入点为：定义在 service 包里的任意类的任意方法。
-execution(* com.xyz.service..*.*(..))
-指定切入点为：定义在 service 包或者子包里的任意类的任意方法。“..”出现在类名中时，后
-面必须跟“*”，
-表示包、子包下的所有类。
-execution(* *..service.*.*(..))
-指定所有包下的 serivce 子包下所有类（接口）中所有方法为切入点
-execution(public void com.bjpn.service.UserService.addUser(..))
-~~~
 
 
 
