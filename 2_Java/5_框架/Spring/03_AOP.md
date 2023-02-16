@@ -1374,9 +1374,56 @@ public class Target implements ITarget{
 
 ##### args
 
+该标志符用来匹配拥有指定参数类型、指定参数数量的方法级Joinpoint
 
+与execution标志符可以直接匹配方法参数类型签名不同，args的会在运行时动态检查参数类型
 
+比如对于表达式`args(com.demo.spring.User)`，即使方法签名是`public boolean login(Object user)`，只要在运行时传入的是User实例，表达式仍然可以捕捉到该Joinpoint
 
+##### 注解类标识符
+
+注解类标识符，将匹配被指定注解标识的类/方法，并根据不同注解标识符进行不同规则的匹配
+
+* `@within`只接受注解类型，并对被指定注解类型所标注的类生效，匹配被指定注解类型所标注的类的所有方法
+* `@Target`只接受注解类型，如果目标对象拥有`@Target`标志符所指定的注解类型，那么对象内部所有的Joinpoint将被匹配，对于SpringAOP 中，就是目标对象中的所有方法级别的Joinpoint将被匹配
+* `@args`只接受注解类型且只能指定一个，如果该次传入的参数类型被`@args`所指定的注解标注，那么当前Joinpoint将被匹配
+
+* `@annotation`匹配被`@annotation`指定的注解标注的方法
+
+**演示：**
+
+首先自定义一个注解：
+
+~~~java
+@Retention(RetentionPolicy.RUNTIME)
+@Target({ElementType.METHOD,ElementType.TYPE})
+public @interface Test {
+
+}
+~~~
+
+然后在某aspect中定义pointcut:
+
+~~~java
+@Pointcut("@within(com.wzm.spring.annotation.Test)")
+public void demo(){}
+~~~
+
+该pointcut可以匹配下面类的所有方法：
+
+~~~java
+@Test
+@Component
+public class Foo {
+    public void method1(){
+        System.out.println("method1");
+    }
+
+    public void method2(){
+        System.out.println("method2");
+    }
+}
+~~~
 
 ### Pointcut Signature
 
@@ -1396,6 +1443,33 @@ public void method1Execution(){}
 @Pointcut("method1Execution()")
 private void stillMethodExecution(){}
 ~~~
+
+### 原理
+
+@AspectJ形式声明的Pointcut表达式，在SpringAOP内部会被解析为`AspectJExpressionPointcut`实例，它的继承体系如下:
+
+![AspectJExpressionPointcut](https://gitee.com/wangziming707/note-pic/raw/master/img/AspectJExpressionPointcut.png)
+
+在`AspectJProxyFactory`或者`AnnotationAwareAspectJAutoProxyCreator`通过反射或者Aspect中@Pointcut定义的AspectJ形式的Pointcut定义后，会构造一个对应的`AspectJExpressionPointcut`实例,其内部持有通过反射获得的Pointcut表达式
+
+`AspectJExpressionPointcut`是`Pointcut`的实现，也属于SpringAOP的`Pointcut`定义之一，
+
+仍然通过ClassFilter 和 MethodMatcher来进行Joinpoint的匹配，只是具体匹配委托给了AspectJ类库
+
+## @AspectJ形式的Advice
+
+@AspectJ形式的Advice就是在@Aspect标注的Aspect定义类中的被Advice注解标注的普通方法
+
+可以用于标注的对应Advice定义方法的注解有：
+
+* `@Before`
+* `@AfterReturning`
+* `@AfterThrowing`
+* `@After`
+* `@Around`
+* `@DeclareParents`
+
+
 
 
 
