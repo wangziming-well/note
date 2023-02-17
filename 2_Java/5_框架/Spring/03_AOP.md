@@ -581,9 +581,7 @@ Spring并没有直接定义对应的Around Advice接口，而是使用了AOP All
 
 ~~~java
 public interface MethodInterceptor extends Interceptor {
-
 	Object invoke(MethodInvocation invocation) throws Throwable;
-
 }
 ~~~
 
@@ -609,7 +607,6 @@ Introduction 可以在不改动目标类定义的情况下，为目标类添加�
 
 ~~~java
 public interface IntroductionInterceptor extends MethodInterceptor, DynamicIntroductionAdvice {
-
 }
 ~~~
 
@@ -623,9 +620,7 @@ public interface IntroductionInterceptor extends MethodInterceptor, DynamicIntro
 
 ~~~java
 public interface DynamicIntroductionAdvice extends Advice {
-
 	boolean implementsInterface(Class<?> intf);
-
 }
 ~~~
 
@@ -652,8 +647,6 @@ Tester tester = new Tester();
 将`tester`交给`DelegatingIntroductionInterceptor`,这样在织入时，会将tester的方法织入到目标对象中
 
 #### DelegatePerTargetObjectIntroductionInterceptor
-
-
 
 `DelegatePerTargetObjectIntroductionInterceptor`会在内部持有一个目标对象与相应Introduction逻辑实现类之间的映射关系。
 
@@ -849,8 +842,6 @@ public interface Advised extends TargetClassAware {
 ~~~
 
 我们可以使用Advised接口相应代理对象所持有的Advisor，进行添加Advisor、移除Advisor等相关动作。
-
-
 
 ### `ProxyFactory`
 
@@ -1189,6 +1180,8 @@ Spring2.0发布后，Spring AOP 支持新的使用方式
 
 @AspectJ代表一种定义Aspect的风格，这种方式是从AspectJ引入的，但最终的实现机制还是SpringAOP的代理模式
 
+简单的POJO+@Aspect就是一个@AspectJ形式的Aspect
+
 ## 使用方式
 
 可以通过POJO和注解标注的方式定义Aspect：
@@ -1462,16 +1455,171 @@ private void stillMethodExecution(){}
 
 可以用于标注的对应Advice定义方法的注解有：
 
-* `@Before`
-* `@AfterReturning`
-* `@AfterThrowing`
-* `@After`
-* `@Around`
-* `@DeclareParents`
+* `@Before`：用于标注Before Advice定义所在的方法
+* `@AfterReturning`：用于标注After Returning Advice定义所在的方法
+* `@AfterThrowing`：用于标注After Throwing Advice定义所在的方法
+* `@After`：用于标注After Advice定义所在的方法
+* `@Around`：用于标注Around Advice定义所在的方法，即拦截器类型的Advice
+* `@DeclareParents`用于标注Introduction类型的Advice，该注解对应标注对象的域而不是方法
 
+### `@Before`
 
+它的成员变量value必须指定，可以直接指定Poincut Expression ，也可以指定单独声明的Pointcut Signature
 
+示例：
 
+~~~java
+@Pointcut("@within(com.wzm.spring.annotation.Test)")
+public void demo(){}
+
+@Before("demo()")
+public Object beforeExecute() {
+    ...
+}
+~~~
+
+或者：
+
+~~~java
+@Before("@within(com.wzm.spring.annotation.Test)")
+public Object beforeExecute() {
+    ...
+}
+~~~
+
+#### 访问方法参数
+
+我们可能会需要在Advice定义中访问Joinpoint处的方法参数，可以通过如下两种方式：
+
+* `Joinpoint`:可以将BeforeAdvice的方法的第一个参数声明为`JoinPoint`类型，通过它可以获取Joinpoint处方法的参数值。或者方法的其他信息：
+
+  ~~~java
+  @Before("pointcut()")
+  public void beforeAdvice(JoinPoint joinPoint){
+      Object[] args = joinPoint.getArgs();
+  	...
+  }
+  ~~~
+
+* `args`绑定：`args`标志符除了可以指定方法参数类型，还可以指定参数名称
+
+  当指定的是参数名称时，它会将这个参数名称绑定到对象的Advice方法
+
+  ~~~java
+  @Before("pointcut() && args(count)")
+  public void beforeAdvice(int count){
+      ...
+  }
+  ~~~
+
+  * args指定的参数名称必须和Advice定义所在方法的参数名称相同
+  * Advice定义所在方法的参数类型也会参与匹配，上述例子不会匹配`String count`
+
+上述两种访问方法参数的方式可以同时使用，但JoinPoint必须在第一个参数位置
+
+**拓展使用：**
+
+* 除了 Around Advice 和 Introduction 外，其他的Advice类型都可以在Advice定义所在方法的第一个参数位置声明JoinPoint类型的参数
+
+* 除了 execution标志符不会直接指定对象类型之外，其他的标志符都可以直接指定对象类型；
+
+  这些标志符和`args`一样，他们也可以指定参数名称，作用和`args`指定参数并绑定到Advice上是一样的
+
+### `@AfterThrowing`
+
+`@AfterThrowing`有一个独有属性`throwing`，它限定了Advice定义方法的参数名----必须和该属性值相同；并将相应的异常绑定的具体的方法参数上
+
+示例:
+
+~~~java
+@AfterThrowing(pointcut = "execution(* *..AfterThrowingTarget.*(..))",throwing = "e")
+public void advice(RuntimeException e){
+    System.out.println(e.getMessage());
+}
+~~~
+
+使用JoinPoint也可以完成同样的事情
+
+### `@AfterReturning`
+
+`@AfterReturning`有一个独有属性`returning`,它将方法返回值绑定到Advice定义的所在方法：
+
+~~~java
+@AfterReturning(pointcut = "within(com.wzm.spring.aspectj.entity.AfterReturningTarget)",returning = "result")
+public void advice(String result){
+    ...
+}
+~~~
+
+### `@After`
+
+不管Joinpoint处方法是抛出异常，还是正常返回，都能触发After Advice 的执行，该类型的Advice适合做一些网络连接、数据库资源的释放
+
+### `@AroundAdvice`
+
+之前提过，`@Before @AfterReturning @AfterThrowing @After`所标注的方法的第一个参数可以为`JoinPoint`类型
+
+但对于`@AroundAdvice`来说，它的第一个参数必须是`ProceedingJoinPoint`类型
+
+通常情况下，我们需要通过`ProceedingJoinPoint`的`proceed()`方法继续调用链的执行
+
+示例：
+
+~~~java
+@Around("execution(* *..AroundTarget.*(..))")
+public Object advice(ProceedingJoinPoint joinPoint) throws Throwable {
+    ...
+    Object proceed = joinPoint.proceed();
+    ...
+    return proceed;
+}
+~~~
+
+调用`ProceedingJoinPoint`的`proceed()`时，可以传入`Object[]`数组来对传入的参数进行处理：
+
+~~~java
+@Around("execution(* *..AroundTarget.*(..)) && args(message)")
+public Object advice(ProceedingJoinPoint joinPoint,String message) throws Throwable {
+    message = message +"...该条消息已被处理";
+    return joinPoint.proceed(new Object[]{message});
+}
+~~~
+
+除了使用`args`标志符，也可以使用ProceedingJoinPoint来获取方法参数
+
+### `@DeclareParents`
+
+@DeclareParents指定Introduction类型的Advice
+
+该注解只能标注Aspect类中的实例变量
+
+Introduction类型的Advice可以将新添加的行为逻辑以新的接口定义添加到目标对象上
+
+实例变量的类型对应的就是新增加的接口类型
+
+示例：
+
+~~~java
+@Aspect
+@Component
+public class IntroductionAspect {
+
+    @DeclareParents(
+            value = "com.wzm.spring.aspectj.entity.IntroductionTarget",
+            defaultImpl = Counter.class)
+    ICounter counter;
+
+}
+~~~
+
+### Advice的执行顺序
+
+对于多个Advice，如果它们匹配同一个Joinpoint，他们的执行顺序有一定的规则：
+
+* 在同一个Aspect定义中，Advice的执行顺序由声明顺序决定,先声明的拥有高优先级
+  * 对于Before Advice 高优先级的先运行
+  * 对于After Advice 高优先级的后运行
+* 在不同的Aspect定义中，根据Ordered接口的规范决定优先级`getOrder()`返回值小的优先级高
 
 # 基于Schema的AOP
 
