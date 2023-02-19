@@ -1623,116 +1623,144 @@ public class IntroductionAspect {
 
 # 基于Schema的AOP
 
-
-
-
-
-
-
-
-
-
-
-
-
-# 其他
-
-## 切入表达式
-
-AspectJ 用切入表达式的形式指定切入点
-
-表达式形式为:
-
-
-
-
-
-
-
-## 非注解方式实现AOP
-
-* 目标类：
-
-~~~java
-@Component
-public class ATM {
-    public void addMoney(){
-        System.out.println("存储");
-    }
-}
-~~~
-
-* 增强类：
-
-~~~java
-@Component
-public class Log {
-    public void operationLog(){
-        System.out.println("记录操作");
-    }
-    public void balanceLog(){
-        System.out.println("记录余额");
-    }
-}
-~~~
-
-* 配置：
-
-要在存款操作前记录操作，在存款操作后记录余额
+要使用基于Schema的AOP，IoC容器的配置文件应该使用基于Schema的XML，同时在文件头中增加针对AOP的命名空间声明：
 
 ~~~xml
-<!--配置AOP-->
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/context
+       https://www.springframework.org/schema/context/spring-context.xsd
+       http://www.springframework.org/schema/aop
+       http://www.springframework.org/schema/aop/spring-aop-4.3.xsd">
+</beans>
+~~~
+
+在spring-aop规定的命名空间下，可以使用标签`<aop:config>`来进行aop配置，它只有一个属性`proxy-target-class`用以控制是使用基于类的代理还是基于接口的代理
+
+它内部有三个子元素，结构如下：
+
+* `<aop:config>` : 
+    * `<aop:pointcut>`
+    * `<aop:advisor>`
+    * `<aop:aspect>`
+
+它们在config标签中的定义顺序必须如上排序
+
+## `<aop:pointcut>`
+
+`<aop:config>`内部可以声明一个或者多个`<aop:pointcut>`，可以被`<aop:advisor>`或者`<aop:aspect>`引用
+
+它有如下属性：
+
+* `id`：指定当前Pointcut定义的标志id
+* `expression`指定当前Pointcut的 Pointcut Expression
+
+**注意：**
+
+ Pointcut Expression可以用 `&& || !`来进行逻辑运算，但在xml文件中禁止使用`&&`字符，所以我们可以用`and or not`来替代
+
+## `<aop:advisor>`
+
+用以定义Advisor，也就是SpringAOP中的Aspect，它有如下属性：
+
+* id：指定当前Advisor定义的标志id
+* pointcut-ref：指定当前Advisor对应的Pointcut的对象引用，或者`<aop:advisor>`的id
+* pointcut:指定AspectJ形式的Pointcut表达式
+* advice-ref:指定当前Advisor对应的Advice对象引用
+* order:指定当前Advisor的顺序
+
+示例：
+
+~~~xml
+<bean id="advice" class="com.wzm.spring.schema.MyMethodInterceptor"/>
+<bean id="pointcut" class="org.springframework.aop.support.JdkRegexpMethodPointcut">
+    <property name="pattern" value=".*execute.*"/>
+</bean>
+<bean id="target2" class="com.wzm.spring.pojo.impl.Target"/>
+
 <aop:config>
-    <!--配置切面-->
-    <!--表示这个切面的增强类是log-->
-    <aop:aspect ref="log">
-        <!--在切面上配置切点-->
-        <aop:pointcut id="addMoney" expression="execution(* com.bjpn.bean.*.addMoney(..))"/>
-        <!--设置通知，在指定切点以指定通知方式调用指定方法-->
-        <aop:before method="operationLog" pointcut-ref="addMoney"/>
-        <aop:after method="balanceLog" pointcut-ref="addMoney"/>
+    <aop:pointcut id="pointcutId" expression="execution(* *..*(..))"/>
+    <!--pointcut-ref指定对象引用-->
+    <aop:advisor advice-ref="advice" pointcut-ref="pointcut"/>
+    <!--pointcut-ref指定<aop:pointcut>id-->
+    <aop:advisor advice-ref="advice" pointcut-ref="pointcutId"/>
+    <!--pointcut指定pointcut expression-->
+    <aop:advisor advice-ref="advice" pointcut="execution(* *..*(..))"/>
+</aop:config>
+~~~
+
+## `<aop:aspect>`
+
+通过`<aop:aspect>`，可以基于POJO对象定义Aspect    
+
+它有以下属性：
+
+* `id`Aspect定义在配置文件中的id
+* `ref`指向Aspect定义对应的容器内的bean定义
+* `order`Aspect定义对应的顺序号
+
+它内部可以有如下标签：
+
+### Pointcut
+
+* `<aop:pointcut>`和 `<aop:config>`内的`<aop:pointcut>`一样，不过只能在`<aop:aspect>`内部被引用
+
+### Advice
+
+* `<aop:beofre>`
+* `<aop:after-returning>`
+    * `returning`指定返回值的参数名,该值需要与方法声明中的参数名称相同
+* `<aop:after-throwing>`
+    * `throwing`:指定异常的参数名称，该值要与方法声明中的参数名称相同
+* `<aop:after>`
+* `<aop:around>`
+* `<aop:declare-parents>`
+    * `type-matching`:指定将要对那些目标对象进行Introduction逻辑织入
+    * `implement-interface`：指定新增加的Introduction行为的接口定义类型
+    * `default-impl`:指定增加的Introduction行为的接口定义的默认实现类
+
+**注意：**
+
+除了`<aop:declare-parents>`外，其他Advice标签都具有以下属性：
+
+* `method `：指定Advice对应的方法
+* `arg-names`:指定Advice对应的方法的参数名 多个参数名用逗号隔开
+* `pointcut-ref`:指定 引用的`<aop:pointcut>`的id
+* `pointcut`:指定Pointcut表达式
+
+以绑定pointcut和附着方法
+
+示例：
+
+~~~xml
+<bean id="aspectDemo" class="com.wzm.spring.schema.AspectDemo"/>
+<aop:config>
+    <aop:aspect id="aspectDemo" ref="aspectDemo">
+        <aop:pointcut id="p" expression="execution(* *..Target.*(..))"/>
+        <aop:before method="doBefore" pointcut-ref="p" arg-names="joinpoint"/>
+        <aop:after-returning method="doAfterReturning" pointcut-ref="p" returning="result"/>
+        <aop:after-throwing method="doAfterThrowing" pointcut-ref="p" throwing="e"/>
+        <aop:after method="doAfter" pointcut-ref="p"/>
+        <aop:around method="doAround" pointcut-ref="p"/>
+        <aop:declare-parents types-matching="com.wzm.spring.pojo.impl.Target"
+                             implement-interface="com.wzm.spring.pojo.ICounter"
+                             default-impl="com.wzm.spring.pojo.impl.Counter"/>
     </aop:aspect>
 </aop:config>
 ~~~
 
-## 注解方式实现AOP
+# 由代理机制衍生的问题
 
-* 配置
+==todo==
 
-~~~xml
-<!--开启AOP注解-->
-<aop:aspectj-autoproxy/>
-~~~
 
-* 目标类
 
-~~~java
-@Component("atm")
-public class ATM {
-    public void addMoney(){
-        System.out.println("存储");
-    }
-}
-~~~
 
-* 增强类
 
-~~~java
-@Component
-@Aspect
-public class Log {
-	//设置切点，需要再定义一个方法，当做切点的名称
-    @Pointcut("execution(* com.bjpn.bean.*.addMoney(..))")
-    public void addMoneyP(){}
 
-    @After("addMoneyP()")
-    public void operationLog(){
-        System.out.println("记录操作");
-    }
-    @Before("addMoneyP()")
-    public void balanceLog(){
-        System.out.println("记录余额");
-    }
-}
-~~~
 
