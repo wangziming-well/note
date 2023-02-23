@@ -8,7 +8,11 @@ HttpClient则提供了更加全面和高效的HTTP功能
 
 HttpClient包实现了HTTP标准和客户端
 
-## 示例
+# 示例代码
+
+下面通过示例代码学习HttpClient库的使用
+
+## Classic
 
 ### Get请求
 
@@ -28,7 +32,11 @@ try (CloseableHttpClient httpClient = HttpClients.createDefault()){
 ~~~
 
 * 底层的HTTP连接由response持有.
+
 * 为了确保正确释放系统资源，用户必须从finally子句调用`CloseableHttpResponse.close()`
+
+  这里写到try的括号中，try代码块结束后会自动释放httpClient资源
+
 * 如果响应内容未被完全使用(`EntityUtils.consume(entity)`)，则底层连接不能被安全地重用，并将被连接管理器关闭和丢弃。
 
 ### Post请求
@@ -52,7 +60,7 @@ try (CloseableHttpClient httpClient = HttpClients.createDefault()){
 }
 ~~~
 
-### Fluent API
+
 
 
 
