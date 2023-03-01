@@ -31,5 +31,31 @@ JDBC API就十分适合用模板方法模式封装，不管是谁来进行数据
 
 所以可以定义一个Callback接口，实现Callback接口以实现执行sql语句并获取结果
 
-# JdbcTemplate继承体系
+# JdbcTemplate类
+
+## 继承关系
+
+JdbcTemplate类的定义如下：
+
+~~~java
+public class JdbcTemplate extends JdbcAccessor implements JdbcOperations
+~~~
+
+它继承了JdbcAccessor类并实现了JdbcOperations接口。
+
+* JdbcOperations接口声明了JDBC查询更新等操作集合
+* JdbcAccessor是一个抽象类，为子类提供一些公有的属性：
+    * DataSource：JDBC获取数据源的统一接口
+    * SQLExceptionTranslator: 定义Spring对SQLException进行统一转译的行为。
+
+## 方法
+
+JdbcTemplate提供的模板方法可划分为四类：
+
+* 面向Connection的模板方法：使用ConnectionCallback回调接口所公开的Connection进行数据访问，不需要关心Connection的获取和释放。通常情况下，应避免直接使用面向Connection层面的模板方法进行数据访问。
+* 
+
+
+
+
 
