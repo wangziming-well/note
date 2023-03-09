@@ -53,7 +53,16 @@ public class JdbcTemplate extends JdbcAccessor implements JdbcOperations
 JdbcTemplate提供的模板方法可划分为四类：
 
 * 面向Connection的模板方法：使用ConnectionCallback回调接口所公开的Connection进行数据访问，不需要关心Connection的获取和释放。通常情况下，应避免直接使用面向Connection层面的模板方法进行数据访问。
-* 
+
+* 面向Statement的模板方法：主要处理基于静态的SQL的数据访问请求。
+
+  使用StatementCallback回调接口对外公开Statement类型的操作句柄。
+
+* 面向PreparedStatement的模板方法：使用包含查询参数的SQL请求。使用PreparedStatement可以避免sql注入。
+
+  通过PreparedStatementCreator回调接口公开Connection以允许PreparedStatement的创建。PreparedStatement创建后，会公开给PreparedStatementCallback回调接口，以支持其使用PreparedStatement进行数据访问。
+
+* 面向CallableStatement的模板方法。JDBC支持使用CallableStatement进行数据库存储过程的访问。
 
 
 

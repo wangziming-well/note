@@ -1,3 +1,21 @@
+# JDBC简述
+
+JDBC是Java平台进行数据库连接的标准API
+
+JDBC的规范接口定义在 `java.sql`和`javax.sql`包下
+
+java本身没有提供这些接口的实现；具体的实现是由各个数据库厂商分别提供的，即他们提供JDBC驱动程序。
+
+这样，即使不同数据库提供的驱动不同，Java程序员仍然可以通过一套API来操作访问它们。
+
+## JDBC驱动程序的注册
+
+
+
+
+
+
+
 # jdbc类继承关系
 
 * java.sql.DriverManager
