@@ -8,45 +8,99 @@ java本身没有提供这些接口的实现；具体的实现是由各个数据�
 
 这样，即使不同数据库提供的驱动不同，Java程序员仍然可以通过一套API来操作访问它们。
 
-## JDBC驱动程序的注册
-
-
-
-
-
-
-
-# jdbc类继承关系
-
-* java.sql.DriverManager
-* java.sql.Connection
-* java.sql.Statement
-    * java.sql.PreparedStatement
-* java.sql.ResultSet
-
 # DriverManager
 
-## 描述
+java.sql包下提供了驱动管理器类`DriverManager`它有两个主要功能：
 
-管理一组 JDBC 驱动程序的基本服务。
+* 注册和管理各个数据库厂商提供的驱动程序
+* 提供对数据库的连接Connection
 
-## 静态方法
+## 管理驱动
 
-* static void registerDriver(Driver driver) 
-              向 DriverManager 注册给定驱动程序。 
+`DriverManager`内部维护了一个驱动器信息(DriverInfo)数组:
 
-注意：一般用反射的方式注册驱动：
+~~~JAVA
+    private final static CopyOnWriteArrayList<DriverInfo> registeredDrivers = new CopyOnWriteArrayList<>();
+~~~
+
+`DriverInfo`类内部持有具体的Driver类，具体的Driver类提供具体的`Connection`对象
+
+通过Connection对象，我们可以访问数据库
+
+`DriverManager`提供了一下与驱动注册相关的方法:
 
 ~~~java
+//注册驱动，实质上是向registeredDrivers数组添加一个持有driver实例的DriverInfo
+public static void registerDriver(java.sql.Driver driver)
+//取消注册驱动，实质上是将driver移除registeredDrivers数组
+public static void deregisterDriver(Driver driver)
+~~~
+
+## 获取连接
+
+注册驱动后，可以通过`DriverManager`获取连接，它提供了以下获取连接的重载方法：
+
+~~~java
+public static Connection getConnection(String url)
+
+public static Connection getConnection(String url,String user, String password) 
+    
+public static Connection getConnection(String url,java.util.Properties info)
+~~~
+
+以上重载方法实际上调用的是：
+
+~~~java
+private static Connection getConnection(
+        String url, java.util.Properties info, Class<?> caller)
+~~~
+
+该方法的内部逻辑实际上就是循环registeredDrivers数组,通过`DriverInfo`持有的`Driver`的`connect`方法获取连接；它会返回获取到的第一个Connection
+
+## 示例
+
+要使用特定的JDBC驱动程序，首先需要获取相应的jar包，以mysql提供的驱动程序为例，它的maven依赖为：
+
+~~~xml
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>8.0.28</version>
+</dependency>
+~~~
+
+这个jar包下`com.mysql.cj.jdbc`包下提供了以下类:
+
+~~~java
+public class Driver extends NonRegisteringDriver implements java.sql.Driver {
+    static {
+        try {
+            java.sql.DriverManager.registerDriver(new Driver());
+        } catch (SQLException E) {
+            throw new RuntimeException("Can't register driver!");
+        }
+    }
+
+    public Driver() throws SQLException {
+        // Required for Class.forName().newInstance()
+    }
+}
+~~~
+
+可以看到它定义的静态代码块中执行了DriverManager.registerDriver()方法将自己注册到驱动管理器中了；
+
+所以想要执行注册，只需要实例化该类就行，可以通过以下方式实例化该类:
+
+~~~java
+//直接用new关键字实例化类
+new com.mysql.cj.jdbc.Driver();
+//使用Class.forName()方法
 Class.forName("com.mysql.cj.jdbc.Driver");
 ~~~
 
-* static Connection getConnection(String url, String user, String password) 
-              试图建立到给定数据库 URL 的连接。 
+实际上在 JDK 6 及以后的版本中，使用 JDBC 连接数据库时，已经不再需要显式地调用 `Class.forName()` 方法来加载和注册数据库驱动程序了，因为 JDBC 4.0 规范中定义了自动加载和注册驱动程序的机制，只要在类路径下包含了数据库驱动程序的 JAR 包，JDBC 就会自动加载和注册该驱动程序。
 
 # Connection
-
-## 描述
 
 与特定数据库的连接（会话）。在连接上下文中执行 SQL 语句并返回结果。
 
