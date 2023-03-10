@@ -55,7 +55,7 @@ private static Connection getConnection(
         String url, java.util.Properties info, Class<?> caller)
 ~~~
 
-该方法的内部逻辑实际上就是循环registeredDrivers数组,通过`DriverInfo`持有的`Driver`的`connect`方法获取连接；它会返回获取到的第一个Connection
+该方法的内部逻辑实际上就是循环registeredDrivers数组,通过`DriverInfo`持有的`Driver`的`connect`方法建立一个到指定数据库的连接，并获取连接对应的Connection对象；它会返回获取到的第一个Connection
 
 ## 示例
 
@@ -102,22 +102,25 @@ Class.forName("com.mysql.cj.jdbc.Driver");
 
 # Connection
 
-与特定数据库的连接（会话）。在连接上下文中执行 SQL 语句并返回结果。
+与特定数据库的连接（会话），在连接上下文中执行 SQL 语句并返回结果。
 
-## 方法
+Connection类主要有两个功能：
 
-### 创建statement会话
+* 创建获取Statement对象以执行具体sql语句。可以创建多个Statement对象
+* 进行事务管理
 
-* Statement createStatement() 
-              创建一个 Statement 对象来将 SQL 语句发送到数据库。 
+## 创建statement会话
 
-*  Statement createStatement(int resultSetType, int resultSetConcurrency) 
+* `Statement createStatement() `
+          创建一个 Statement 对象来将 SQL 语句发送到数据库。 
+
+*  `Statement createStatement(int resultSetType, int resultSetConcurrency) `
               创建一个 Statement 对象，该对象将生成具有给定类型和并发性的 ResultSet 对象。 
 
-* PreparedStatement prepareStatement(String sql) 
+* `PreparedStatement prepareStatement(String sql) `
               创建一个 PreparedStatement 对象来将参数化的 SQL 语句发送到数据库。 
 
-### 事务管理
+## 事务管理
 
 *  void setAutoCommit(boolean autoCommit) 
               将此连接的自动提交模式设置为给定状态。 false表示开启事务
@@ -134,31 +137,31 @@ Class.forName("com.mysql.cj.jdbc.Driver");
 * Savepoint setSavepoint(String name) 
               在当前事务中创建一个具有给定名称的保存点，并返回表示它的新 Savepoint 对象。 
 
-
-
 # Statement
 
-## 描述
-
 用于执行静态 SQL 语句并返回它所生成结果的对象。 
-
-## 方法
 
 ### 单次处理
 
 * ResultSet executeQuery(String sql) 
-              执行给定的 SQL 查询语句，该语句返回单个 ResultSet 对象。 
+          执行给定的 SQL 查询语句，该语句返回单个 ResultSet 对象。 
 
 * int executeUpdate(String sql) 
-              执行给定 SQL 操作语句，返回操作数据的个数。 
+          执行给定 SQL 更新(insert,update,delte)语句，返回受影响的行数。 
 
 * boolean execute(String sql) 
-              执行给定的 SQL 语句，该语句可能返回多个结果。 如果为查询语句，返回true，如果为操作语句，返回false；执行该语句后可以通过getResultSet()和getUpdateCount()来获取执行结果
+          执行给定的 SQL 语句，该语句可能返回多个结果。 如果为查询语句，返回true，如果为操作语句，返回false；执行该语句后可以通过getResultSet()和getUpdateCount()来获取执行结果
+          
 * ResultSet getResultSet() 
-              以 ResultSet 对象的形式获取当前结果。 
-
+          
+          返回前一条查询语句的结果集。如果前一条语句为产生结果集，则返回null
+          
+          对于每一条执行过的语句，该方法只能被调用一次
+          
 * int getUpdateCount() 
-              以更新计数的形式获取当前结果；如果结果为 ResultSet 对象或没有更多结果，则返回 -1。 
+          以更新计数的形式获取当前结果；如果结果为 ResultSet 对象或没有更多结果，则返回 -1。 
+          
+          对于每一条执行过的语句，该方法只能被调用一次
 
 ### 批处理
 
@@ -173,28 +176,25 @@ Class.forName("com.mysql.cj.jdbc.Driver");
 
 # PreparedStatement
 
-## 描述
-
 表示预编译的 SQL 语句的对象。 
+
+可以执行带占位符的sql语句，在执行前需要将设置所有占位符参数的值
 
 ## 方法
 
-### 给SQL框架传值
+* `void setXxx(int parameterIndex, Xxx x) `
+  设置第 parameterIndex个参数值为x
 
- void setString(int parameterIndex, String x) 
-          将指定参数设置为给定 Java String 值 
+  (Xxx 指int、String、Date等数据类型)
 
- void setInt(int parameterIndex, int x) 
-          将指定参数设置为给定 Java int 值。 
+* `void clearParameters()`
 
-### 执行语句
+  消除预备语句中所有的当前参数
 
-* ResultSet executeQuery() 
+* `ResultSet executeQuery() `
               在此 PreparedStatement 对象中执行 SQL 查询语句，并返回该查询生成的 ResultSet 对象。 
-*  int executeUpdate() 
+*  `int executeUpdate() `
               在此 PreparedStatement 对象中执行 SQL 更新语句，
-
-
 
 # ResultSet
 
@@ -241,8 +241,10 @@ ResultSet rs = stmt.executeQuery("SELECT a, b FROM TABLE2");
     将光标移动到此 ResultSet 对象的给定行编号。 
 
 * boolean next() 
-          将光标从当前位置向前移一行。 
+      将光标从当前位置向前移一行。如果已到达最后一行的后面，则返回false
 
+       初始情况下必须调用该方法才能转到第一行。
+      
 * boolean previous() 
           将光标移动到此 ResultSet 对象的上一行。 
 
@@ -260,25 +262,32 @@ ResultSet rs = stmt.executeQuery("SELECT a, b FROM TABLE2");
 
 ### 读取数据
 
-* int getRow() 
+* `int getRow() `
               获取当前行编号。 
 
-* String getString(int columnIndex) 
-              以 Java 编程语言中 String 的形式获取此 ResultSet 对象的当前行中指定列的值。 
+* `Xxx  getXxx(int columnIndex) `
 
-* String getString(String columnLabel) 
-              以 Java 编程语言中 String 的形式获取此 ResultSet 对象的当前行中指定列的值。 
+     根据列下标，返回指定列的值
 
-* int getInt(int columnIndex) 
-              以 Java 编程语言中 int 的形式获取此 ResultSet 对象的当前行中指定列的值。 
-     int getInt(String columnLabel) 
-              以 Java 编程语言中 int 的形式获取此 ResultSet 对象的当前行中指定列的值。 
+     Xxx指Java中的数据类型，例如String，int，Date等
 
-* Date getDate(int columnIndex) 
-              以 Java 编程语言中 java.sql.Date 对象的形式获取此 ResultSet 对象的当前行中指定列的值。 
+* `Xxx getXxx(String columnLabel) `
 
-*  Date getDate(String columnLabel) 
-              以 Java 编程语言中的 java.sql.Date 对象的形式获取此 ResultSet 对象的当前行中指定列的值。 
+     根据列的列名，返回指定列的值
+
+* ` <T> T getObject(int columnIndex, Class<T> type) `
+
+     根据列下标，返回指定列的值,返回值类型由传入的type决定
+
+* `<T> T getObject(String columnLabel, Class<T> type) `
+
+     根据列的列名，返回指定列的值,返回值类型由传入的type决定
+
+* `ResultSetMetaData getMetaData() `
+
+  获取ResultSetMetaData对象，该对象可用于获取关于ResultSet对象中列的类型和属性的信息，比如可获取有多少列
+
+
 
 ### 更新数据
 
@@ -298,3 +307,17 @@ ResultSet rs = stmt.executeQuery("SELECT a, b FROM TABLE2");
 
 * void updateRow() 
               用此 ResultSet 对象的当前行的新内容更新底层数据库。 
+
+# 管理JDBC对象
+
+每个Connection都可以创建一个或者多个Statement对象。同一个Statement对象可以用于多个不相关的命令和查询。但是一个Statement对象最多只能有一个打开的结果集。
+
+使用完ResultSet、Statement或Connection对象后，应立刻调用close方法。
+
+因为这些对象都使用了规模较大的数据结构，会占用数据库连接和内存资源。
+
+
+
+如果Statement对象上有一个打开的结果集，那么调用Statement对象的close方法，将自动关闭该结果集。
+
+同样的，调用Connection类的close方法将关闭该连接上的所有语句。
