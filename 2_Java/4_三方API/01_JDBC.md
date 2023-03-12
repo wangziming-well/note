@@ -20,7 +20,7 @@ java.sql包下提供了驱动管理器类`DriverManager`它有两个主要功能
 `DriverManager`内部维护了一个驱动器信息(DriverInfo)数组:
 
 ~~~JAVA
-    private final static CopyOnWriteArrayList<DriverInfo> registeredDrivers = new CopyOnWriteArrayList<>();
+private final static CopyOnWriteArrayList<DriverInfo> registeredDrivers = new CopyOnWriteArrayList<>();
 ~~~
 
 `DriverInfo`类内部持有具体的Driver类，具体的Driver类提供具体的`Connection`对象
@@ -144,23 +144,32 @@ Connection类主要有两个功能：
 ### 单次处理
 
 * ResultSet executeQuery(String sql) 
-          执行给定的 SQL 查询语句，该语句返回单个 ResultSet 对象。 
+      执行给定的 SQL 查询语句，该语句返回单个 ResultSet 对象。 
 
 * int executeUpdate(String sql) 
-          执行给定 SQL 更新(insert,update,delte)语句，返回受影响的行数。 
+       执行给定 SQL 更新(insert,update,delte)语句，返回受影响的行数。 
 
+* ResultSet getGeneratedKeys()
+      
+      执行`executeUpdate`语句后，可以调用该方法获取影响行的主键。
+      
 * boolean execute(String sql) 
           执行给定的 SQL 语句，该语句可能返回多个结果。 如果为查询语句，返回true，如果为操作语句，返回false；执行该语句后可以通过getResultSet()和getUpdateCount()来获取执行结果
-          
+      
 * ResultSet getResultSet() 
-          
-          返回前一条查询语句的结果集。如果前一条语句为产生结果集，则返回null
-          
-          对于每一条执行过的语句，该方法只能被调用一次
-          
+  
+      返回前一条查询语句的结果集。如果前一条语句为产生结果集，则返回null
+      
+      对于每一条执行过的语句，该方法只能被调用一次
+      
+* boolean getMoreResults() 
+
+     如果有下个结果集，将移动到下个结果集，并返回true,通过再次调用getResultSet，获取下个结果集。
+
+     如果没有下个结果集，则返回false
+
 * int getUpdateCount() 
           以更新计数的形式获取当前结果；如果结果为 ResultSet 对象或没有更多结果，则返回 -1。 
-          
           对于每一条执行过的语句，该方法只能被调用一次
 
 ### 批处理
@@ -178,9 +187,13 @@ Connection类主要有两个功能：
 
 表示预编译的 SQL 语句的对象。 
 
-可以执行带占位符的sql语句，在执行前需要将设置所有占位符参数的值
+可以执行带占位符`?`的sql语句，每个`?`都代表一个变量
+
+在执行预编译的SQL语句前，需为所有的`?`赋值
 
 ## 方法
+
+为`?`参数赋值:
 
 * `void setXxx(int parameterIndex, Xxx x) `
   设置第 parameterIndex个参数值为x
@@ -191,122 +204,139 @@ Connection类主要有两个功能：
 
   消除预备语句中所有的当前参数
 
+执行sql语句:
+
 * `ResultSet executeQuery() `
-              在此 PreparedStatement 对象中执行 SQL 查询语句，并返回该查询生成的 ResultSet 对象。 
-*  `int executeUpdate() `
-              在此 PreparedStatement 对象中执行 SQL 更新语句，
+         在此 PreparedStatement 对象中执行 SQL 查询语句，并返回该查询生成的 ResultSet 对象。 
+* `int executeUpdate() `
+         在此 PreparedStatement 对象中执行 SQL 更新语句，
 
 # ResultSet
-
-## 描述
 
 表示数据库结果集的数据表，通常通过执行查询数据库的语句生成。 
 
 ## 字段
 
-* static int TYPE_FORWARD_ONLY 
-              该常量指示光标只能向前移动的 ResultSet 对象的类型。 
-* static int TYPE_SCROLL_INSENSITIVE 
-              该常量指示可滚动但通常不受 ResultSet 底层数据更改影响的 ResultSet 对象的类型。 
-* static int TYPE_SCROLL_SENSITIVE 
-              该常量指示可滚动并且通常受 ResultSet 底层数据更改影响的 ResultSet 对象的类型。 
-* static int CONCUR_READ_ONLY 
-              该常量指示不可以更新的 ResultSet 对象的并发模式。 (只读)
-* static int CONCUR_UPDATABLE 
-              该常量指示可以更新的 ResultSet 对象的并发模式。 （可修改数据）
+在创建statement是，可以传入两个参数:`Statement createStatement(int resultSetType, int resultSetConcurrency) `用于控制语句产生的结果集的类型和并发模式。
 
+resultSetType可以取ResultSet的静态常量:
 
+~~~java
+int TYPE_FORWARD_ONLY = 1003;
+//表示结果集游标只能向前移动，不可滚动(默认值)
+int TYPE_SCROLL_INSENSITIVE = 1004;
+//表示结果集是可滚动的并且Resultset中数据不随数据库中数据变化而变化响
+int TYPE_SCROLL_SENSITIVE = 1005;
+//表示结果集可滚动并且受Resultset中数据随着数据库中数据变化而变化
+~~~
 
-字段常用的三种组合方式：
+resultSetConcurrency可取ResultSet的静态常量:
 
-* ResultSet.TYPE_FORWARD_ONLY 和 ResultSet.CONCUR_READ_ONLY ：（默认）只读不支持向回滚动
-* ResultSet.TYPE_SCROLL_INSENSITIVE 和 ResultSet.CONCUR_READ_ONLY  ：只读，支持向回滚动
-* ResultSet.TYPE_SCROLL_SENSITIVE 和 ResultSet.CONCUR_UPDATABLE ：支持向回滚动，支持对数据修改 
+~~~java
+int CONCUR_READ_ONLY = 1007;
+//结果集不可用于更新数据库(默认值)
+int CONCUR_UPDATABLE = 1008;
+//结果集可以用于更新数据库:编辑结果集中的数据，将结果集上数据的变更同步到数据库中
+~~~
+
+**注意：**
+
+* 并非所有的JDBC驱动都支持可滚动和可更新的结果集
+
+  可以使用DatabaseMetaData中的`supportsResultSetType()`和`supportsResultSetConcurrency`来判断当前驱动支持的结果集类型和并发模式
+
+* 并且对于特定的查询，即使驱动支持，返回的结果集也可能是无法更新或者滚动的
+
+  比如一个复杂查询的结果集很可能无法更新。
+
+  可以调用具体的ResultSet的`getType()`和`getConcurrency()`方法确认当前结果集的类型
 
 ## 方法
 
-### 控制光标
+### 控制游标
 
-**注意：**默认的 ResultSet 对象不可更新，仅有一个向前移动的光标。因此，只能迭代它一次，并且只能按从第一行到最后一行的顺序进行。
-
-通过一下代码可以生成可滚动和/或可更新的 `ResultSet` 对象。
+可使用下面方法控制游标移动：
 
 ~~~java
-Statement stmt = con.createStatement(
- ResultSet.TYPE_SCROLL_INSENSITIVE,ResultSet.CONCUR_UPDATABLE);
-ResultSet rs = stmt.executeQuery("SELECT a, b FROM TABLE2");
+boolean absolute(int row) ;
+//将游标移动到结果集的给定行编号。
+boolean relative( int rows )
+//将游标向前或向后移动指定行，rows为正向前移动，rows为负向后移动
+boolean next() 
+//将游标从当前位置向前移一行。如果已在最后一行，则返回false
+boolean previous() 
+//将游标移动到结果集的上一行，如果已在第一行，则返回false
+boolean first()
+//将游标移动到结果集的第一行。 
+boolean last();
+//将游标移动到结果集的最后一行。 
+void beforeFirst();
+//将游标移动到结果集的开头，正好位于第一行之前。 
+void afterLast();
+//将游标移动到结果集的末尾，正好位于最后一行之后。 
 ~~~
 
-* boolean absolute(int row) 
-    将光标移动到此 ResultSet 对象的给定行编号。 
+可使用以下方法判断游标是否在特殊位置：
 
-* boolean next() 
-      将光标从当前位置向前移一行。如果已到达最后一行的后面，则返回false
+~~~java
+boolean isBeforeFirst();
+boolean isAfterLast();
+boolean isFirst();
+boolean isLast();
+~~~
 
-       初始情况下必须调用该方法才能转到第一行。
-      
-* boolean previous() 
-          将光标移动到此 ResultSet 对象的上一行。 
+**注意：**
 
-* boolean first() 
-          将光标移动到此 ResultSet 对象的第一行。 
+* 默认的 ResultSet 对象不可滚动，仅有一个向前移动的光标。如果要获取可滚动的结果集，需要在创建`statement`时，将`resultSetType`设置为`TYPE_SCROLL_INSENSITIVE`或者`TYPE_SCROLL_SENSITIVE`
+* 初始的结果集游标在第一行的前面第0行
 
-*  boolean last() 
-          将光标移动到此 ResultSet 对象的最后一行。 
+### 读取行数据
 
-*  void beforeFirst() 
-          将光标移动到此 ResultSet 对象的开头，正好位于第一行之前。 
+获取游标所在行的数据：
 
-* void afterLast() 
-     将光标移动到此 ResultSet 对象的末尾，正好位于最后一行之后。 
+~~~java
+int getRow();
+//获取当前行编号。 
+Xxx  getXxx(int columnIndex);
+//根据列下标，返回指定列的值
+//Xxx指Java中的数据类型，例如String，int，Date，Blob,Clob等类型
+Xxx getXxx(String columnLabel);
+//根据列的列名，返回指定列的值
+<T> T getObject(int columnIndex, Class<T> type);
+//根据列下标，返回指定列的值,返回值类型由传入的type决定
+<T> T getObject(String columnLabel, Class<T> type);
+//根据列的列名，返回指定列的值,返回值类型由传入的type决定
+ResultSetMetaData getMetaData();
+//获取ResultSetMetaData对象，该对象可用于获取关于ResultSet对象中列的类型和属性的信息，比如可获取有多少列
+~~~
 
-### 读取数据
+### 更新行数据
 
-* `int getRow() `
-              获取当前行编号。 
+~~~java
+void updateXxx(int columnIndex, Xxx x) ;
+//根据列下标，更新结果集中当前行的指定列
+void updateXxx(String columnLabel, Xxx x) ;
+//根据列名，更新结果集中当前行的指定类 
+void updateRow() ;
+//将当前行的数据更新，同步到数据库中
+void cancelRowUpdates();
+//取消结果集中对当前行的更新，该方法一般在调用updateXxx之后，和调用updateRow之前执行
+//如果该方法被调用时，当前行没有调用过updateXxx或者已经调用过updateRow，则该方法不会做任何事情
+~~~
 
-* `Xxx  getXxx(int columnIndex) `
+**注意**：
 
-     根据列下标，返回指定列的值
+* 默认的 ResultSet 对象不可更新；如果要获取可更新的结果集，需要在创建`statement`时，将`resultSetConcurrency`设置为`CONCUR_UPDATABLE`
+* `updateXxx`方法只更新了结果集中的行值，而非数据库中的值。必须调用`updateRow`方法将当前行中的所有更新同步到数据库
+* 如果没有调用`updateRow`方法就将游标移动到其他行上，那么对此行中的所有更新将被丢弃，并且不会被传递到数据库
 
-     Xxx指Java中的数据类型，例如String，int，Date等
+### 插入行数据
 
-* `Xxx getXxx(String columnLabel) `
+ ==TODO==
 
-     根据列的列名，返回指定列的值
+# SQL异常体系
 
-* ` <T> T getObject(int columnIndex, Class<T> type) `
-
-     根据列下标，返回指定列的值,返回值类型由传入的type决定
-
-* `<T> T getObject(String columnLabel, Class<T> type) `
-
-     根据列的列名，返回指定列的值,返回值类型由传入的type决定
-
-* `ResultSetMetaData getMetaData() `
-
-  获取ResultSetMetaData对象，该对象可用于获取关于ResultSet对象中列的类型和属性的信息，比如可获取有多少列
-
-
-
-### 更新数据
-
-**注意**：在生成resultSet时需要指定参数ResultSet.CONCUR_UPDATABLE
-
-* void updateString(int columnIndex, String x) 
-              用 String 值更新指定列。 
-* void updateString(String columnLabel, String x) 
-              用 String 值更新指定列。 
-
-* void updateInt(int columnIndex, int x) 
-              用 int 值更新指定列。 
-* void updateInt(String columnLabel, int x) 
-              用 int 值更新指定列。 
-
-上述介绍的修改方法都只是在内存中修改，并没有实际修改数据库中的方法，如果想要修改数据库中的数据，需要对应的方法实现。
-
-* void updateRow() 
-              用此 ResultSet 对象的当前行的新内容更新底层数据库。 
+ ==TODO==
 
 # 管理JDBC对象
 
@@ -321,3 +351,8 @@ ResultSet rs = stmt.executeQuery("SELECT a, b FROM TABLE2");
 如果Statement对象上有一个打开的结果集，那么调用Statement对象的close方法，将自动关闭该结果集。
 
 同样的，调用Connection类的close方法将关闭该连接上的所有语句。
+
+反过来，在Statement上调用closeOnCompletion方式时，当所有的结果集都被关闭后，该语句将被立刻自动关闭
+
+
+
