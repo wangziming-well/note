@@ -1,3 +1,11 @@
+* 书
+    * JDBC API Tutorial and Reference 和 JDBC规范
+    * 数据库系统概念（原书第7版）
+    
+* JTA 分布式事务
+    
+* JNDI 
+  
 * Java 国际化 api ResourceBundle
 * Java 自定义时间发布java.util.EventObject类和java.util.EventListener接口  
 * XMLSchema

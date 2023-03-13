@@ -100,6 +100,34 @@ Class.forName("com.mysql.cj.jdbc.Driver");
 
 实际上在 JDK 6 及以后的版本中，使用 JDBC 连接数据库时，已经不再需要显式地调用 `Class.forName()` 方法来加载和注册数据库驱动程序了，因为 JDBC 4.0 规范中定义了自动加载和注册驱动程序的机制，只要在类路径下包含了数据库驱动程序的 JAR 包，JDBC 就会自动加载和注册该驱动程序。
 
+# DataSource
+
+DataSource是JDBC 2.0标准之后引入的接口，是统一管理数据库连接的规范
+
+是替代DriverManager工具，获取Connection对象的首选方案
+
+接口定义的最重要的方法是:
+
+~~~java
+Connection getConnection();
+~~~
+
+用以获取数据库连接
+
+DataSource的具体实现由数据库厂商或者第三方框架提供，按照功能不同，可以使用将DataSource分为以下三类：
+
+* 简单的DataSource实现：
+
+  只提供作为ConnectionFactory角色的基本功能，不会用于正式的生产环境
+
+* 具有连接缓冲池的DataSource实现：
+
+  内部通过数据库连接缓冲池对数据库连接进行管理
+
+* 支持分布式事务的DataSource实现：
+
+  这一类DataSource实现类应该是XADataSource的实现类，可以实现分布式事务
+
 # Connection
 
 与特定数据库的连接（会话），在连接上下文中执行 SQL 语句并返回结果。
@@ -122,20 +150,31 @@ Connection类主要有两个功能：
 
 ## 事务管理
 
-*  void setAutoCommit(boolean autoCommit) 
-              将此连接的自动提交模式设置为给定状态。 false表示开启事务
+事务是数据库中的重要概念，JDBC可以进行事务管理：
 
-* void rollback() 
-              取消在当前事务中进行的所有更改，并释放此 Connection 对象当前持有的所有数据库锁。 建议放入到catch代码中，发生异常时实现回滚。
+~~~java
+void setAutoCommit(boolean autoCommit);
+//设置连接的自动提交模式，默认为true，即每执行一个更新语句，就会被提交，无法回滚；如果要进行事务管理，需要将该值设为false
+void rollback();
+//回滚事务，取消在当前事务中进行的所有更改，并释放此 Connection 对象当前持有的所有数据库锁。 建议放入到catch代码中，发生异常时实现回滚。
+void commit();
+//提交事务，使所有上一次提交/回滚后进行的更改成为持久更改，并释放此 Connection 对象当前持有的所有数据库锁。 
 
-*  void commit() 
-              使所有上一次提交/回滚后进行的更改成为持久更改，并释放此 Connection 对象当前持有的所有数据库锁。 
+~~~
 
-* Savepoint setSavepoint() 
-              在当前事务中创建一个未命名的保存点 (savepoint)，并返回表示它的新 Savepoint 对象。 
+可以使用savepoint进行更细致的回滚操作
 
-* Savepoint setSavepoint(String name) 
-              在当前事务中创建一个具有给定名称的保存点，并返回表示它的新 Savepoint 对象。 
+创建一个保存点意味着稍后回滚时可以回滚到指定的保存点，而不是事务开头
+
+~~~java
+Savepoint setSavepoint();
+Savepoint setSavepoint(String name);
+//在当前事务中创建一个保存点 (savepoint)，并返回表示它的新 Savepoint 对象。
+void rollback(Savepoint savepoint);
+//回滚到指定的保存点
+void releaseSavepoint(Savepoint savepoint);
+//释放指定的保存点
+~~~
 
 # Statement
 
@@ -144,24 +183,22 @@ Connection类主要有两个功能：
 ### 单次处理
 
 * ResultSet executeQuery(String sql) 
-      执行给定的 SQL 查询语句，该语句返回单个 ResultSet 对象。 
+  执行给定的 SQL 查询语句，该语句返回单个 ResultSet 对象。 
 
 * int executeUpdate(String sql) 
-       执行给定 SQL 更新(insert,update,delte)语句，返回受影响的行数。 
+   执行给定 SQL 更新(insert,update,delte)语句，返回受影响的行数。 
 
 * ResultSet getGeneratedKeys()
-      
-      执行`executeUpdate`语句后，可以调用该方法获取影响行的主键。
-      
+  执行`executeUpdate`语句后，可以调用该方法获取影响行的主键。
+  
 * boolean execute(String sql) 
           执行给定的 SQL 语句，该语句可能返回多个结果。 如果为查询语句，返回true，如果为操作语句，返回false；执行该语句后可以通过getResultSet()和getUpdateCount()来获取执行结果
       
 * ResultSet getResultSet() 
   
-      返回前一条查询语句的结果集。如果前一条语句为产生结果集，则返回null
-      
-      对于每一条执行过的语句，该方法只能被调用一次
-      
+  返回前一条查询语句的结果集。如果前一条语句为产生结果集，则返回null
+  对于每一条执行过的语句，该方法只能被调用一次
+  
 * boolean getMoreResults() 
 
      如果有下个结果集，将移动到下个结果集，并返回true,通过再次调用getResultSet，获取下个结果集。
@@ -175,15 +212,17 @@ Connection类主要有两个功能：
 ### 批处理
 
 * void addBatch(String sql) 
-              将给定的 SQL 命令添加到此 Statement 对象的当前命令列表中。 
+          将给定的 SQL 命令添加到此 Statement 对象的当前命令列表中。 
 
 * int[] executeBatch() 
-              将一批命令提交给数据库来执行，如果全部命令执行成功，则返回更新计数组成的数组。 
+          将一批命令提交给数据库来执行，如果全部命令执行成功，则返回更新计数组成的数组。 
 
 *  void clearBatch() 
-              清空此 Statement 对象的当前 SQL 命令列表。 
+          清空此 Statement 对象的当前 SQL 命令列表。 
 
 # PreparedStatement
+
+PreparedStatement 继承了Statement，有Statement的所有功能。
 
 表示预编译的 SQL 语句的对象。 
 
@@ -214,6 +253,10 @@ Connection类主要有两个功能：
 # ResultSet
 
 表示数据库结果集的数据表，通常通过执行查询数据库的语句生成。 
+
+在使用ResultSet结果集时，必须保持和数据库的连接。
+
+在关闭了statement或者connection后，使用ResultSet对象，将报错。
 
 ## 字段
 
@@ -332,11 +375,129 @@ void cancelRowUpdates();
 
 ### 插入行数据
 
- ==TODO==
+ ~~~java
+ void moveToInsertRow();
+ //将游标移动到插入行，插入行是与可更新结果集关联的特殊行，用于执行插入操作
+ //游标移动到插入行前，会记住当前的位置，执行完插入操作后，需要调用moveToCurrentRow()方法从插入行回到当前行
+ //当游标自动到插入行后，只能执行updateXxx() 方法 和 insertRow()方法
+ void insertRow();
+ //将插入行的内容插入到该ResultSet对象和数据库中。调用此方法时，游标必须位于插入行上。
+ void moveToCurrentRow();
+ //将游标移动到记住的游标位置，通常是当前行。如果游标不在插入行上，则此方法无效。
+ ~~~
 
-# SQL异常体系
+通过ResultSet进行数据库插入操作示例：
 
- ==TODO==
+~~~java
+resultSet.moveToInsertRow();
+resultSet.updateString("user_name","王梓铭");
+resultSet.updateString("password","123456");
+resultSet.updateTimestamp("register_time",new Timestamp(new java.util.Date().getTime()));
+resultSet.insertRow();
+resultSet.moveToCurrentRow();
+~~~
+
+### 删除数据
+
+~~~java
+void deleteRow();
+//从结果集和底层数据库中删除当前行。当游标位于插入行上时，无法调用此方法。
+~~~
+
+# RowSet
+
+可滚动的结果集在使用过程中需要始终保持与数据库的连接。
+
+而RowSet无需始终保持与数据库的连接。
+
+RowSet继承自ResultSet，拓展了它的功能
+
+RowSet下还有子接口，细分了它的功能用途：
+
+* CachedRowSet：允许在断开连接的状态下执行相关操作。
+* WebRowSet：代表一个被缓存的行集，该行集可以保存为XML文件。该文件可以移动到Web应用的其他层中，用另外一个WebRowSet对象重新打开该文件即可
+* FilteredRowSet&JoinRowSet：执行对行集的轻量级操作，对行集进行过滤和合并，相当于SQL语句中的select和join操作
+* JdbcRowSet：是ResultSet接口的一个瘦包装器
+
+## 获取行集
+
+可以通过行集工厂对象获取行集，以CachedRowSet为例：
+
+~~~java
+RowSetFactory factory = RowSetProvider.newFactory();
+CachedRowSet cachedRowSet = factory.createCachedRowSet();
+~~~
+
+## CachedRowSet
+
+许在断开连接的状态下执行相关操作。也可以主动连接数据库
+
+## 获取行数据
+
+* 通过ResultSet获取数据：
+
+~~~java
+public void populate(ResultSet data);
+//将data中的数据填充到CachedRowSet
+~~~
+
+* 通过连接数据库获取数据：
+
+~~~java
+void setUrl(String url);
+//设置行集用DriverManager创建Connection所需要的url
+void setUsername(String name);
+//设置行集用DriverManager创建Connection所需要的username
+void setPassword(String password);
+//设置行集用DriverManager创建Connection所需要的password
+void setCommand(String cmd);
+//设置查询Sql语句
+void setXxx(int parameterIndex, Xxx x);
+//设置command命令中给定的参数，即带?占位符的sql参数
+//parameterIndex从1开始
+public void execute(Connection conn);
+//会创建数据库连接、执行查询操作、填充行集、最后断开连接
+//因为传入的Connect对象，调用前只需要设置command参数
+void execute();
+//需要行集先设置必要的参数:url username password command等;
+~~~
+
+* 分页查询
+
+~~~java
+public void setPageSize(int size);
+//设置行集的分页大小，当行集执行execute()或者populate()时，会将数据填充到额外的分页上，获取数据将从分页获取
+public boolean nextPage();
+//让行集加载分页的下一页，如果加载的页存在，则返回true
+public boolean previousPage();
+//让行集加载分页的上一页，如果加载的页存在，则返回true
+~~~
+
+* 同步修改
+
+~~~java
+public void acceptChanges(Connection con);
+//调用该方法将行集数据的修改同步到数据库
+public void acceptChanges();
+//使用该方法前，必须设置要连接数据库的参数:url、username、password
+public void setTableName(String tabName);
+//如果行集的数据是通过结果集填充的，那么行集就不知道需要同步的表的名称，必须先调用该方法设置表名
+~~~
+
+示例:
+
+~~~java
+RowSetFactory factory = RowSetProvider.newFactory();
+CachedRowSet rowSet = factory.createCachedRowSet();
+rowSet.setUrl("jdbc:mysql://localhost:3306/test");
+rowSet.setUsername("root");
+rowSet.setPassword("123456");
+rowSet.setCommand("select * from user where user_id = ?");
+rowSet.setInt(1,6);
+rowSet.execute();
+rowSet.next();
+System.out.println(rowSet.getString("user_name"));
+~~~
 
 # 管理JDBC对象
 
@@ -345,8 +506,6 @@ void cancelRowUpdates();
 使用完ResultSet、Statement或Connection对象后，应立刻调用close方法。
 
 因为这些对象都使用了规模较大的数据结构，会占用数据库连接和内存资源。
-
-
 
 如果Statement对象上有一个打开的结果集，那么调用Statement对象的close方法，将自动关闭该结果集。
 
