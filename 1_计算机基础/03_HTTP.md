@@ -32,6 +32,7 @@ TCP/IP 协议族里重要的一点就是分层。 TCP/IP 协议族按层次分�
     在传输层有两个性质不同的协议：
 
     * TCP(Ttransmission Control Protocal)传输控制协议
+    * UDP（User Data Protocol）用户数据报协议
 
 * 网络层(网络互连层)：网络层用来处理在网络上流动的数据包。 数据包是网络传输的最小数据单位。 该层规定了通过怎样的路径（所谓的传输路线） 到达对方计算机， 并把数据包传送给对方。  
 
@@ -42,15 +43,11 @@ TCP/IP 协议族里重要的一点就是分层。 TCP/IP 协议族按层次分�
 
 利用 TCP/IP 协议族进行网络通信时， 会通过分层顺序与对方进行通信。 发送端从应用层往下走， 接收端则往应用层往上走。  
 
-![image-20220812165119856](..\img\TCP IP通信传输_分层.png)
+![TCP IP通信传输_分层](https://gitee.com/wangziming707/note-pic/raw/master/img/IP%E9%80%9A%E4%BF%A1%E4%BC%A0%E8%BE%93_%E5%88%86%E5%B1%82.png)
 
 发送端在层与层之间传输数据时， 每经过一层时必定会被打上一个该层所属的首部信息。 反之， 接收端在层与层传输数据时， 每经过一层时会把对应的首部消去。这种把数据信息包装起来的做法称为封装（encapsulate） 。  
 
-![image-20220812165325840](..\img\TCP IP传输封装.png)
-
-
-
-
+![TCP IP传输封装](https://gitee.com/wangziming707/note-pic/raw/master/img/TCP%20IP%E4%BC%A0%E8%BE%93%E5%B0%81%E8%A3%85.png)
 
 ## HTTP与 IP、TCP、DNS
 
@@ -147,9 +144,7 @@ HTTP 报文大致可分为报文首部和报文主体两块。 两者由最初�
 
 请求报文和响应报文的结构：
 
-![image-20220812211608647](..\img\报文结构.png)
-
-
+![HTTP报文结构](https://gitee.com/wangziming707/note-pic/raw/master/img/HTTP%E6%8A%A5%E6%96%87%E7%BB%93%E6%9E%84.png)
 
 * 请求行：包含用于请求的方法， 请求 URI 和 HTTP 版本。  
 
@@ -161,13 +156,11 @@ HTTP 报文大致可分为报文首部和报文主体两块。 两者由最初�
 
 * 其他：可能包含 HTTP 的 RFC 里未定义的首部（Cookie 等）
 
-
-
 ## 请求报文
 
 请求报文是由请求方法、 请求 URI、 协议版本、 可选的请求首部字段和内容实体构成的。  
 
-![image-20220812203418622](..\img\HTTP请求报文.png)
+![HTTP请求报文](https://gitee.com/wangziming707/note-pic/raw/master/img/HTTP%E8%AF%B7%E6%B1%82%E6%8A%A5%E6%96%87.png)
 
 * method方法：表示请求访问服务器的类型
 * URI：请求URI知名请求访问的资源对象
@@ -202,7 +195,7 @@ HTTP 报文大致可分为报文首部和报文主体两块。 两者由最初�
 
 响应报文基本上由协议版本、 状态码（表示请求成功或失败的数字代码） 、 用以解释状态码的原因短语、 可选的响应首部字段以及实体主体构成。   
 
-![image-20220812203740825](..\img\HTTP响应报文.png)
+![HTTP响应报文](https://gitee.com/wangziming707/note-pic/raw/master/img/HTTP%E5%93%8D%E5%BA%94%E6%8A%A5%E6%96%87.png)
 
 * 协议版本：表示服务器对应的 HTTP 版本  
 
