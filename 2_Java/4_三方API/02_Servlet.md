@@ -1,100 +1,122 @@
-# Servlet接口
+# Servlet简述
 
-Servlet是Javaweb三大组件之一
+Servlet是运行在Web服务器或则和应用服务器上的小型Java程序，它是一个中间层，负责连接来自客户端的请求和HTTP服务器上的数据库或应用程序。
+
+servlet也是Java语言实现的一个接口，可以通过引入相应的jar包获取相应的服务:javax.servlet
+
+servlet包定义了以下接口，规范了servlet框架：
+
+* `Servlet`:Servlet容器的核心组件，规范了获取、处理、响应请求的行为和servlet的声明周期
+* `Filter`:过滤器
+* `Listener` 监听器
+
+# Servlet
 
 是所有Servlet的顶级接口
 
-servlet是多线程单例对象，；懒汉式，唯一对象在被第一次访问时由服务器创建对象，之后再对该servlet访问不会创建新对象
+它的继承体系如下:
 
-## 方法
+![Servlet](https://gitee.com/wangziming707/note-pic/raw/master/img/Servlet.png)
 
-* `public void init(ServletConfig config)`
+在Servlet容器中，servlet是多线程单例对象，懒汉式，唯一对象在被第一次访问时由服务器创建对象，它的定义如下：
 
-    servlet被创建时调用该对象进行初始化
+~~~java
+public interface Servlet {
+    
+    public void init(ServletConfig config) throws ServletException;
+    //由Servlet容器调用，Servlet容器在实例化servlet对象后，会首先调用init方法进行初始化，传入ServletConfig初始化和启动参数，在该方法成功执行前，service方法不会被调用
+    public ServletConfig getServletConfig();
+    //获取ServletConfig，返回的ServletConfig就是传递给init方法的对象。
+    public void service(ServletRequest req, ServletResponse res) throws ServletException, IOException;
+    //由servlet容器调用，以允许servlet响应请求。此方法仅在servlet的init()方法成功完成后调用。
+    //该方法会在多线程环境下被调用
+    public String getServletInfo();
+    //返回关于servlet的信息，如作者、版本和版权。
+    public void destroy();
+    //由Servlet容器调用，Servlet容器在销毁servlet对象前，会先调用destroy方法
+    //该方法只能在所有的service方法线程执行成功后被调用
+}
+~~~
 
-    ServletConfig对象由Servlet引擎负责创建，该域对象存储了web.xml文件中`<init-param>`配置的多个键值对，并提供了一个获取ServletContext对象的方法
+## GenericServlet
 
-* `public void service(ServletRequest req,ServletResponse resp)`
+通用的Servlet抽象实现类，如果想要实现一个Servlet，一般只需要间接继承该类，而不是直接继承Servlet接口，但是如果想要实现一个HTTP协议的Servlet，请继承HttpServlet
 
-    客户端每对该servlet发送一次请求，就调用一次该方法
+GenericServlet主要对Servlet接口的 init() 和 destroy() 方法提供了实现
 
-    ServletRequest对象和ServletResponse对象由Servlet创建，并传入
+并实现了ServletConfig接口，内部维护了`ServletConfig config;`变量，并实现了`getServletConfig()`方法
 
-* `public void destroy()`
+## HttpServlet
 
-    服务器停止时，会释放Servlet，调用该方法
+支持http请求的servlet
 
-    一般不需要人为调用
+根据http请求的特点重写了service方法:
 
-* `public ServletConfig getServletConfig()`
+~~~java
+@Override
+public void service(ServletRequest req, ServletResponse res) throws ServletException, IOException{
+    HttpServletRequest  request;
+    HttpServletResponse response;
+    if (!(req instanceof HttpServletRequest &&
+            res instanceof HttpServletResponse)) {
+        throw new ServletException("non-HTTP request or response");
+    }
+    request = (HttpServletRequest) req;
+    response = (HttpServletResponse) res;
+    service(request, response);
+}
+~~~
 
-    获取初始化参数
+重写的方法检查了req，res参数的类型，如果类型不是HttpServletRequest和HttpServletResponse，将抛出错误，如果通过了类型检查，将调用方法：
 
-* `public String getServletInfo()`
+~~~java
+protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException{
+    //获取http请求的请求方法
+    String method = req.getMethod();
+    if (method.equals(METHOD_GET)) {
+        //获取请求的最后修改时间
+        long lastModified = getLastModified(req);
+        //如果lastModified 为 -1，将直接调用doGet方法，返回最新的响应
+        if (lastModified == -1) {
+            doGet(req, resp);
+        } else {
+            long ifModifiedSince = req.getDateHeader(HEADER_IFMODSINCE);
+            //且大于If-Modified-Since字段 或者If-Modified-Since字段不存在：service会调用doGet方法生成响应信息返回给客户端
+            if (ifModifiedSince < lastModified) {
+                maybeSetLastModified(resp, lastModified);
+                doGet(req, resp);
+            //小于If-Modified-Since字段：service会返回304状态给客户端，让客户端继续使用以前缓存的网页，不会再调用doGet方法
+            } else {
+                resp.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+            }
+        }
+    } else if (method.equals(METHOD_HEAD)) {
+        long lastModified = getLastModified(req);
+        maybeSetLastModified(resp, lastModified);
+        doHead(req, resp);
+    } else if (method.equals(METHOD_POST)) {
+        doPost(req, resp);
+    } else if (method.equals(METHOD_PUT)) {
+        doPut(req, resp);
+    } else if (method.equals(METHOD_DELETE)) {
+        doDelete(req, resp);
+    } else if (method.equals(METHOD_OPTIONS)) {
+        doOptions(req,resp);
+    } else if (method.equals(METHOD_TRACE)) {
+        doTrace(req,resp);
+    } else {
+        String errMsg = lStrings.getString("http.method_not_implemented");
+        Object[] errArgs = new Object[1];
+        errArgs[0] = method;
+        errMsg = MessageFormat.format(errMsg, errArgs);
+        resp.sendError(HttpServletResponse.SC_NOT_IMPLEMENTED, errMsg);
+    }
+}
+~~~
 
-    获取servlet信息
+从该方法可以看出，它根据Http的请求类型，将调用不同的doXxx方法；get类型的http请求将调用doGet()方法，依此类推
 
-# GenericServlet 抽象类
-
-对Servlet接口中的部分方法(init和destroy)添加了实现
-
-# HttpServlet 抽象类
-
-GenericServlet的子类，实现了http请求的处理，
-
-http请求方式有delete，get,options,psot,put,tract等;该类提供了分别处理这些请求的方法
-
-主要通过实现该类来创建servlet处理http请求
-
-## 常用方法
-
-* `protected void service(HttpServletRequest req,HttpServletResponse resp)`
-
-    该方法默认判断请求类型，然后调用对应的执行方法
-
-    所以如果重写方法，那么所有类型的请求都只能在该方法中处理
-
-* `protected void doGet(HttpServletRequest req,HttpServletResponse resp)`
-
-    当对该servlet发起get请求时，service默认调用该方法进行处理
-
-* `protected void doPost(HttpServletRequest req,HttpServletResponse resp)`
-
-    当对该servlet发起post请求时，service默认调用该方法进行处理
-
-* `protected void doDelete(HttpServletRequest req,HttpServletResponse resp)`
-
-    当对该servlet发起delete请求时，service默认调用该方法进行处理
-
-* `protected void doHead(HttpServletRequest req,HttpServletResponse resp)`
-
-    当对该servlet发起head请求时，service默认调用该方法进行处理
-
-    该方法一般不需要被子类重写
-
-* `protected void doOptions(HttpServletRequest req,HttpServletResponse resp)`
-
-    当对该servlet发起options请求时，service默认调用该方法进行处理
-
-    该方法一般不需要被子类重写
-
-* `protected void doPut(HttpServletRequest req,HttpServletResponse resp)`
-
-    当对该servlet发起put请求时，service默认调用该方法进行处理
-
-* `protected void doTrace(HttpServletRequest req,HttpServletResponse resp)`
-
-    当对该servlet发起trace请求时，service默认调用该方法进行处理
-
-* `protected long getLastModified(HttpServletRequest req)`
-
-    返回请求的最后修改时间，默认返回-1，
-
-    HttpServlet接收到GET请求后，默认的service方法会先调用该方法，根据该方法的返回值：
-
-    1. 负数：service会调用doGet方法生成响应信息返回给客户端
-    2. 正数，且大于If-Modified-Since字段 或者If-Modified-Since字段不存在：service会调用doGet方法生成响应信息返回给客户端
-    3. 正数，但小于If-Modified-Since字段：service会返回304状态给客户端，让客户端继续使用以前缓存的网页，不会再调用doGet方法
+对于doXxx方法，如果没有覆写，默认将返回 不支持的http类型，所以，如果想要servlet对象支持某类型的http请求，只需要重写对应的doXxx方法即可
 
 # HttpServletRequest
 
@@ -360,37 +382,6 @@ http请求方式有delete，get,options,psot,put,tract等;该类提供了分别�
 ## 获取其他域对象
 
 * `ServletContext getServletContext()`
-
-# ServletContext
-
-上下文对象，或者叫全局作用域对象
-
-web服务启动时创建，关闭时销毁
-
-为所有web应用提供公共区域
-
-## 获取方式
-
-* GenericServlet
-* ServletConfig
-* HttpSession
-* HttpServletReqeust
-
-
-
-## 方法
-
-
-
-
-
-
-
-
-
-
-
-
 
 # Listener
 
@@ -889,67 +880,3 @@ public class FileDownloadServlet extends HttpServlet {
     }
 }
 ~~~
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-~~~java
-class Solution {
-    public ListNode addTwoNumbers(ListNode l1, ListNode l2) {
-        ListNode l3 = new ListNode();
-        ListNode result =  l3;
-        int offset = 0;
-        int v1 = 0;
-        int v2 = 0;
-        int sum = v1+v2+offset;
-        while(l1 != null || l2 != null || offset != 0 ){
-            l3.next = new ListNode();
-            l3 = l3.next;
-            v1 = l1 == null ? 0 : l1.val;
-            v2 = l2 == null ? 0 : l2.val;
-            sum = v1+v2+offset;
-            l3.val = sum%10;
-            
-            offset = sum/10;
-
-            l1 = l1 == null? null : l1.next;
-            l2 = l2 == null? null : l2.next;
-
-            
-            
-        }
-
-        return result.next;
-    }
-}
-~~~
-
-
-
-
-
-
-
-
-
-
-
