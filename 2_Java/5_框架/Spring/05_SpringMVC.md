@@ -1,8 +1,24 @@
+# MVC
+
+ MVC是一种设计模式，常用于开发web应用程序的框架中。MVC的意思是Model-View-Controller（模型-视图-控制器）。它将web应用程序分为三个主要组件：模型、视图和控制器。每个组件都负责不同的功能，但又相互关联，以便应用程序可以正确地工作。
+
+* Model（模型） 模型是应用程序中的数据和逻辑组件，它处理应用程序数据和业务逻辑。模型是独立于用户界面和控制器的，因此可以在不影响应用程序其他部分的情况下修改数据和逻辑。
+* View（视图） 视图是应用程序中的用户界面组件，它负责呈现模型中的数据。视图通常是HTML模板，它显示给用户的是模型中的数据。视图不处理数据或逻辑，它只负责呈现它们。
+* Controller（控制器） 控制器是应用程序中的中介组件，负责接收用户请求，根据请求通知模型更新数据，并选择合适的视图响应给用户
+
+![mvc设计模式](https://gitee.com/wangziming707/note-pic/raw/master/img/mvc%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F.png)
+
+MVC设计模式是Web开发中的一种重要的设计模式，它能够提供良好的结构化方式，使得Web应用程序的不同部分更易于维护和扩展，提高了应用程序的质量和可靠性。
+
 # SpringMVC简介
 
+SpringMVC是请求驱动的MVC模式的Web框架，使用单一控制器处理web请求，它有以下主要组件：
 
+* DispatcherServlet负责接收并处理所有的Web请求，争对具体的处理逻辑，它会委派给下一级控制器实现，即Controller
 
-
+* HandlerMapping 负责管理Web请求到具体的处理类之间的映射关系。当请求到达DispatcherServlet后，DispatcherServlet将会寻求具体的HandlerMapping 实例，获取对应当前请求发具体处理类，即Controller
+* Controller：Web请求的具体请求者，是DispatcherServlet的次级控制器
+* ModelAndView：当Controller的处理方法完成后，
 
 
 
