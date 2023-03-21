@@ -18,7 +18,204 @@ SpringMVC是请求驱动的MVC模式的Web框架，使用单一控制器处理we
 
 * HandlerMapping 负责管理Web请求到具体的处理类之间的映射关系。当请求到达DispatcherServlet后，DispatcherServlet将会寻求具体的HandlerMapping 实例，获取对应当前请求发具体处理类，即Controller
 * Controller：Web请求的具体请求者，是DispatcherServlet的次级控制器
-* ModelAndView：当Controller的处理方法完成后，
+* ModelAndView：当Controller的处理方法完成后，将返回它的实例，它包含如下两部分信息：
+  * 视图的逻辑名称(或者具体的视图实例)。DispatcherServlet将根据该视图的逻辑名称来决定为用户显示哪个视图。
+  * 模型数据。视图渲染过程中需要将这些模型数据并入视图的显示中
+
+#  搭建SpringMVC应用程序
+
+SpringMVC也是基于servlet的架构，所以SpringMVC的项目结构和servlet一样，只是多出了springioc的配置文件
+
+## 依赖
+
+首先需要引入SpringMVC项目所需的依赖：
+
+~~~xml
+<dependency>
+  <groupId>org.springframework</groupId>
+  <artifactId>spring-context</artifactId>
+  <version>5.2.5.RELEASE</version>
+</dependency>
+<dependency>
+  <groupId>org.springframework</groupId>
+  <artifactId>spring-webmvc</artifactId>
+  <version>5.2.5.RELEASE</version>
+</dependency>
+<dependency>
+  <groupId>javax.servlet</groupId>
+  <artifactId>javax.servlet-api</artifactId>
+  <version>4.0.1</version>
+</dependency>
+~~~
+
+## 配置web.xml
+
+需要配置web.xml文件，将springMVC的需要的组件在servlet容器初始化时，加载到ServletContext中以供使用
+
+### 注册WebApplicationContext
+
+WebApplicationContext继承ApplicationContext，在Spring IoC的基础上扩展提供了web应用的支持:
+
+* 提供web相关的bean的scope: session和request
+* 提供获取当前应用程序的ServletContext的方法
+
+我们可以使用ContextLoaderListener在程序启动时，将WebApplicationContext加载到ServletContext中
+
+ContextLoaderListener继承了ContextLoaderListener，并重写了contextInitialized()方法:
+
+~~~java
+public void contextInitialized(ServletContextEvent event) {
+    initWebApplicationContext(event.getServletContext());
+}
+~~~
+
+在servlet容器启动时，将调用`initWebApplicationContext()`，初始化`WebApplicationContext`，该方法主要做了以下事情:
+
+* 创建`WebApplicationContext`实例
+* 将当前`ServletContext`绑定到`WebApplicationContext`实例中
+* 从`ServletContext`获取初始化参数 :`contextConfigLocation `的值并调用`setConfigLocation()`方法将其设置到`WebApplicationContext`中
+  * 后续将调用`getConfigLocation()`方法获取`configLocation`，获取配置文件位置，将配置文件的定义加载成`Bean Definition`
+  * 如果`configLocations`为空，将使用默认的`configLocation:/WEB-INF/applicationContext.xml`
+* 调用`ServletContext`的`setAttribute()`方法，将`WebApplicationContext`绑定到`ServletContext`中，键为：`WebApplicationContext.class.getName() + ".ROOT"`
+
+从上面过程可以看出，如果我们的springweb容器的ioc配置文件不在默认位置`/WEB-INF/applicationContext.xml`,则需要通过`web.xml`的标签`<context-param>`将contextConfigLocation加载到servletContext中，值应该为springweb容器配置文件的实际位置
+
+综上，要在程序启动时加载`WebApplicationContext`,需要在web.xml文件中配置:
+
+~~~xml
+<context-param>
+	<param-name>contextConfigLocation</param-name>
+    <!--可以配置多个文件，可用以下分隔符分开：",; \t\n"-->
+	<param-value>classpath:springmvc.xml</param-value>
+</context-param>
+<listener>
+	<listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+</listener>
+~~~
+
+可以通过`WebApplicationContextUtils`类中的方法获取当前`ServletContext`中绑定的`WebApplicationContext`,
+
+就不需要知道`WebApplicationContext`在`ServletContext`中的key了:
+
+~~~java
+public static WebApplicationContext getWebApplicationContext(ServletContext sc)
+~~~
+
+### 注册DispatcherServlet
+
+DispatcherServlet时SpringMVC框架Web应用程序的前端控制器，负责几乎所有对应当前Web应用程序的Web请求的处理。
+
+DispatcherServlet使用了外部化的配置文件，用来配置Spring MVC框架在处理Web请求过程中所涉及的各个组件，包括:HandlerMapping的定义、Controller定义、ViewResolver定义等。该配置文件和普通的SpringIoc配置文件一样。
+
+DispatcherServlet在启动后将加载该配置文件，并构建相应的WebApplicationContext，该WebApplicationContext将之前通过ContextLoaderListener加载的顶层WebApplicationContext(ROOT WebApplicationContext)作为父容器。
+
+默认情况下，该配置文件的路径为`/WEB-INF/<servlet-name>-servlet.xml`
+
+其中`<servlet-name>`为DispatcherServlet在servlet容器中的servlet名称，即web.xml中定义DispatcherServlet的`<servlet-name>`的值
+
+当然，我们也可以通过在初始化DispatcherServlet时传入参数`contenxtConfigLocation`来自定义DispatcherServlet对应的配置文件的路径
+
+~~~xml
+<servlet>
+	<servlet-name>dispatcherServlet</servlet-name>
+	<servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+	<init-param>
+  		<param-name>contextConfigLocation</param-name>
+  		<param-value>classpath:dispatcher-servlet.xml</param-value>
+	</init-param>
+    <!--保证前端控制器第一时间启动 -->
+    <load-on-startup>1</load-on-startup>
+</servlet>
+<servlet-mapping>
+	<servlet-name>dispatcherServlet</servlet-name>
+    <!--过滤请求uri
+      第一种：/  代表过滤所有
+      第二种:*.action   *.do   *.jsp    配置具体的后缀
+    -->
+	<url-pattern>/</url-pattern>
+</servlet-mapping>
+~~~
+
+## 配置WebApplicationContext配置文件
+
+需要在DispatcherServlet的对应的WebApplicationContext的配置文件中，配置好SpringMVC框架需要的组件，如HandlerMapping、Controller、ViewResolver等。
+
+### 注册HandlerMapping
+
+DispatcherServlet在接收到Web请求后，将寻找相应的HandlerMapping进行Web请求到具体的Controller实现的匹配。
+
+所以需要为DispatcherServlet提供一个具体的HandlerMapping的实现。
+
+SpringMVC框架默认提供了多个HandlerMapping的实现。我们现在先注册一个BeanNameUrlHandlerMapping到WebApplicationContext中
+
+~~~xml
+<bean id="handlerMapping" class="org.springframework.web.servlet.handler.BeanNameUrlHandlerMapping"/>
+~~~
+
+实际上，如果没有配置任何HandlerMapping，SpringMVC也会默认使用BeanNameUrlHandlerMapping。
+
+BeanNameUrlHandlerMapping会将url的路径映射到对应的beanName 为请求路径的Controller上。
+
+### 注册Controller
+
+在注册Controller之前，我们需要先简单实现一个Controller类:
+
+~~~java
+public class DemoController extends AbstractController {
+    @Override
+    protected ModelAndView handleRequestInternal(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        System.out.println("收到请求");
+        return null;
+    }
+}
+~~~
+
+继承AbstractController并覆盖其handleRequestInternal方法。
+
+然后注册到对应的ioc容器中:
+
+~~~java
+<bean name="/demo" class="com.wzm.spring.controller.DemoController"/>
+~~~
+
+假设该web的前缀为:`http://localhost:8080/spring/`
+
+那么这个controller对应的路径就为`http://localhost:8080/spring/demo`
+
+### 注册ViewResover
+
+DispatcherServlet需要ViewResover通过ModelAndView中的逻辑视图名查找相应的视图实现。
+
+虽然现在不需要用到，但至少要注册一个，否则DispatcherServlet会报错
+
+~~~xml
+<bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+    <property name="prefix" value="/WEB-INF/jsp/"/>
+    <property name="suffix" value=".jsp"/>
+</bean>
+~~~
+
+定义了视图的前后缀；
+
+这样假设视图的逻辑名称为`demo`，那么视图解析器将查找路径`/WEB-INF/jsp/demo.jsp`对应的视图
+
+# SpringMVC组件
+
+SpringMVC提供了许多组件以支持SpringMVC的Web应用程序运行和避免重复开发。
+
+## HandlerMapping
+
+HandlerMapping帮助DispatcherServlet进行Web请求的URL到具体处理类之间的匹配。
+
+其定义如下：
+
+~~~java
+public interface HandlerMapping {
+	@Nullable
+	HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception;
+
+}
+~~~
 
 
 
@@ -26,89 +223,15 @@ SpringMVC是请求驱动的MVC模式的Web框架，使用单一控制器处理we
 
 
 
-# SpringMVC介绍
-
-* 是一个控制层框架，封装了servlet
-* 时Spring框架的一部分
-
-## SpringMVC执行流程
-
-1. 用户发送请求到前端控制器（DispatcherServlet）。
-
-2. 前端控制器请求处理器映射器（HandlerMapping）去查找处理器（Handler）。
-
-3. 找到以后处理器映射器（HandlerMappering）向前端控制器返回执行链（HandlerExecutionChain）。
-
-4. 前端控制器（DispatcherServlet）调用处理器适配器（HandlerAdapter）去执行处理器（Handler）。
-
-5. 处理器适配器去执行Handler。
-
-6. 处理器执行完给处理器适配器返回ModelAndView。
-
-7. 处理器适配器向前端控制器返回ModelAndView。
-
-8. 前端控制器请求视图解析器（ViewResolver）去进行视图解析。
-
-9. 视图解析器向前端控制器返回View。
-
-10. 前端控制器对视图进行渲染。
-
-11. 前端控制器向用户响应结果。
-
-![SpringMVC执行流程](https://gitee.com/wangziming707/note-pic/raw/master/img/SpringMVC%E6%89%A7%E8%A1%8C%E6%B5%81%E7%A8%8B.png)
 
 
 
-## 环境搭建
 
-* maven依赖
 
-    ~~~xml
-    <dependency>
-        <groupId>org.springframework</groupId>
-        <artifactId>spring-webmvc</artifactId>
-        <version>5.2.3.RELEASE</version>
-    </dependency>
-    ~~~
 
-* web.xml文件头约束的版本高于2.5
 
-    ~~~xml
-    <web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-             xmlns="http://xmlns.jcp.org/xml/ns/javaee"
-             xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
-             id="WebApp_ID" version="4.0">
-    
-    </web-app>
-    ~~~
 
-* 在web.xml文件配置中央控制器servlet
 
-    ~~~xml
-    <!--配置DispatcherServlet -->
-    <servlet>
-        <servlet-name>dispatcherServlet</servlet-name>
-        <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
-        <!--将springmvc核心配置文件作为初始化参数传入dispatcherServlet
-     		前端控制器会读取配置文件并根据文件创建三大对象：
-    		处理器映射器，处理器适配器，视图解析器
-    	-->
-        <init-param>
-            <param-name>contextConfigLocation</param-name>
-            <param-value>classpath:springmvc.xml</param-value>
-        </init-param>
-        <!--保证前端控制器第一时间启动 -->
-        <load-on-startup>1</load-on-startup>
-    </servlet>
-    <servlet-mapping>
-        <servlet-name>dispatcherServlet</servlet-name>
-        <!--前端控制器的请求
-          第一种：/  代表过滤所有
-          第二种:*.action   *.do   *.jsp    配置具体的后缀
-        -->
-        <url-pattern>/</url-pattern>
-    </servlet-mapping>
-    ~~~
 
 # 核心配置文件
 

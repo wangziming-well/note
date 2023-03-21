@@ -492,7 +492,21 @@ Javaweb三大组件中的过滤器
 
     过滤器销毁方法
 
-# web.xml文件的配置
+# ServletContext
+
+上下文对象，或者叫全局作用域对象
+
+web服务启动时创建，关闭时销毁
+
+为所有web应用提供公共区域
+
+==todo==
+
+
+
+
+
+# web.xml核心配置文件
 
 web.xml文件是服务器的核心配置文件，主要配置javaweb的三大组件
 
@@ -515,16 +529,16 @@ web.xml文件是服务器的核心配置文件，主要配置javaweb的三大组
 告诉服务器外界应该通过什么url路径访问Servlet组件
 
 ~~~xml
-    <!--配置servlet资源路径并起别名 -->
-	<servlet>
-        <servlet-name>first</servlet-name>
-        <servlet-class>com.bjpn.servlet.FirstServlet</servlet-class>
-    </servlet>
-    <!--配置servlet的请求映射   -->
-    <servlet-mapping>
-        <servlet-name>first</servlet-name>
-        <url-pattern>/aaa</url-pattern>
-    </servlet-mapping>
+<!--配置servlet资源路径并起别名 -->
+<servlet>
+    <servlet-name>first</servlet-name>
+    <servlet-class>com.bjpn.servlet.FirstServlet</servlet-class>
+</servlet>
+<!--配置servlet的请求映射   -->
+<servlet-mapping>
+    <servlet-name>first</servlet-name>
+    <url-pattern>/aaa</url-pattern>
+</servlet-mapping>
 ~~~
 
 **注意：**url-pattern代表客户端访问路径，在这里必须写带`/`的相对路径
