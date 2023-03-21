@@ -217,6 +217,99 @@ public interface HandlerMapping {
 }
 ~~~
 
+定义非常简单，`getHandler()`方法根据HttpServletRequest 获取 HandlerExecutionChain 以获取处理器
+
+SpringMVC提供了许多HandlerMapping的实现:
+
+*  BeanNameUrlHandlerMapping
+
+* SimpleUrlHandlerMapping
+* ControllerClassNameHandlerMapping
+* DefaultAnnotationHandlerMapping
+
+### BeanNameUrlHandlerMapping
+
+映射关系：Web的请求路径对应的是Controller在容器中的beanName
+
+它会直接将`http://localhost:8080/spring/demo`映射到`DemoController`上
+
+### SimpleUrlHandlerMapping
+
+通过map管理请求url和handler之间的定义，在创建时，传入Map或者Properties
+
+示例:
+
+~~~xml
+<bean id="handlerMapping" class="...SimpleUrlHandlerMapping">
+    <property name="mappings">
+        <!--prop的key为路径，value为controller的beanId-->
+        <props>
+            <prop key="demo">demoController</prop>
+        </props>
+    </property>
+</bean>
+<bean id="demoController" class="..DemoController"/>
+~~~
+
+或者：
+
+~~~xml
+<bean id="handlerMapping" class="...SimpleUrlHandlerMapping">
+    <property name="urlMap">
+        <map>
+            <entry key="demo" value-ref="demoController"/>
+        </map>
+    </property>
+</bean>
+<bean id="demoController" class="...DemoController"/>
+~~~
+
+两种配置都将`http://localhost:8080/spring/demo`映射到`DemoController`上
+
+我们也可以通过表达式，将一组或者多组相似特征的Web请求处理映射给相同Handler处理:
+
+~~~xml
+<bean id="handlerMapping" class="...SimpleUrlHandlerMapping">
+    <property name="mappings">
+        <!--prop的key为路径，value为controller的beanId-->
+        <props>
+            <!--**匹配多重路径，*匹配任意字符-->
+            <prop key="/**/*Demo">demoController</prop>
+        </props>
+    </property>
+</bean>
+<bean id="demoController" class="..DemoController"/>
+~~~
+
+### HandlerMapping执行序列
+
+在基于SpringMVC的Web应用程序中，我们可以为DispatcherServlet提供多个HandlerMapping供其使用。
+
+收到Web请求时，DispatcherServlet会根据可用的HandlerMapping实例的优先级进行遍历。先调用优先级高的HandlerMapping，直到某个HandlerMapping返回当前的Handler为止。
+
+HandlerMapping的优先级由Spring框架内Ordered接口定义。在定义HandlerMapping实例时，我们可以通过设置其order属性来指定其优先级
+
+order值越低优先级越高。
+
+## Controller
+
+Controller是SpringMVC框架支持的用于处理具体Web情趣的handler类型之一。
+
+在使用SpringMVC进行Web开发时，它时我们接触使用最多的组件，用于实现具体的请求处理逻辑。
+
+它的定义如下：
+
+~~~java
+public interface Controller {
+	@Nullable
+	ModelAndView handleRequest(HttpServletRequest request, HttpServletResponse response) throws Exception;
+}
+~~~
+
+我们可以直接实现Controller接口来处理请求，但这需要我们自己完成更多的细节，比如请求参数的抽取、请求编码的设定、国际化信息的处理等等，实际上这些关注点有很多时所有Controller都需要的
+
+SpringMVC提供了一套Controller实现体系，以复用这些通用的逻辑:
+
 
 
 
@@ -268,7 +361,6 @@ public interface HandlerMapping {
 <bean class="org.springframework.web.servlet.mvc.SimpleControllerHandlerAdapter"/>
 <!--视图解析器-->
 <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver"/>
-
 <!--处理器-->
 <bean id="/firstController" class="com.bjpn.FirstController"/>
 ~~~
@@ -285,6 +377,10 @@ public class FirstController implements Controller {
     }
 }
 ~~~
+
+
+
+
 
 ## 注解版
 
