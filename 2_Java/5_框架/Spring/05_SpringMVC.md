@@ -199,7 +199,7 @@ DispatcherServlet需要ViewResover通过ModelAndView中的逻辑视图名查找�
 
 这样假设视图的逻辑名称为`demo`，那么视图解析器将查找路径`/WEB-INF/jsp/demo.jsp`对应的视图
 
-# SpringMVC组件
+# SpringMVC核心组件
 
 SpringMVC提供了许多组件以支持SpringMVC的Web应用程序运行和避免重复开发。
 
@@ -306,19 +306,355 @@ public interface Controller {
 }
 ~~~
 
+handleRequest()方法和servlet的service功能相同，都是进行请求的具体处理,该方法将被DispatcherServlet调用
+
 我们可以直接实现Controller接口来处理请求，但这需要我们自己完成更多的细节，比如请求参数的抽取、请求编码的设定、国际化信息的处理等等，实际上这些关注点有很多时所有Controller都需要的
 
 SpringMVC提供了一套Controller实现体系，以复用这些通用的逻辑:
 
+![Controller](https://gitee.com/wangziming707/note-pic/raw/master/img/Controller.png)
 
+### AbstractController
 
+AbstractController是简单的Controller的实现抽象类，使用了模板方法的设计模式，继承它时需要重写指定的方法，它的HandlerRequest()方法如下:
 
+~~~java
+@Override
+@Nullable
+public ModelAndView handleRequest(HttpServletRequest request, HttpServletResponse response)
+        throws Exception {
+	//如果请求方式时OPTIONS，则通过getAllowHeader()响应当前controller支持的请求方法
+    //默认只支持GET、HEAD、POST方法
+    if (HttpMethod.OPTIONS.matches(request.getMethod())) {
+        response.setHeader("Allow", getAllowHeader());
+        return null;
+    }
+    //检查请求，委派给WebContentGenerator来做，默认检查请求方式是否是支持的，和如果session是必须的，则检查session是否存在
+    checkRequest(request);
+    //准备响应，委派给WebContentGenerator来做，默认将缓存相关的首部字段添加到Response首部
+    prepareResponse(response);
 
+    // 如果需要，同步执行handleRequestInternal方法
+    if (this.synchronizeOnSession) {
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            Object mutex = WebUtils.getSessionMutex(session);
+            synchronized (mutex) {
+                return handleRequestInternal(request, response);
+            }
+        }
+    }
+	// 否则直接执行handleRequestInternal方法
+    return handleRequestInternal(request, response);
+}
+~~~
 
+我们必须重写handleRequestInternal()方法，以处理具体的响应逻辑
 
+通过AbstractController.handleRequest()方法，我们可以了解如何自定义一些配置:
 
+* 自定义controller支持的方法:重写getAllowHeader()
+* 自定义请求检查：重写checkRequest()
+* 自定义准备响应：重写prepareResponse()
+* 自定义是否同步session:响应前调用setSynchronizeOnSession()方法
 
+### ServletWrappingController
 
+一个servlet的包装控制器，将当前应用中的某个已存在的Servlet直接包装为一个Controller
+
+所有到ServletWrappingController的请求实际上是由它内部所包装的这个Servlet 实例来处理的，也就是说内部封装的Servlet实例并不对外开放。
+
+这个Servlet实例不是由servlet容器创建，而是ServletWrappingController自己在内部创建
+
+实际上对该controller的请求由内部封装的Servlet实例进行处理。它通常用于对已存的Servlet的逻辑重用上。
+
+示例：
+
+~~~xml
+<bean id="strutsWrappingController" class="org.springframework.web.servlet.mvc.ServletWrappingController">
+	<property name="servletClass">
+  		<value>org.apache.struts.action.ActionServlet</value>
+	</property>
+	<property name="servletName">
+  		<value>action</value>
+	</property>
+	<property name="initParameters">
+ 		<props>
+    		<prop key="config">/WEB-INF/struts-config.xml</prop>
+  		</props>
+	</property>
+</bean>
+~~~
+
+初始化时需要指定servlet的class和name
+
+### ServletForwardingController
+
+一个servlet的转发控制器，将请求转发给指定的servlet
+
+与ServletWrappingController不同的是，该控制器不会创建相应的实例，如果servlet容器中没有相应的servlet实例，会通知servlet容器让其创建。
+
+web.xml中定义:
+
+~~~xml
+<servlet>
+	<servlet-name>myServlet</servlet-name>
+	<servlet-class>mypackage.TestServlet</servlet-class>
+</servlet>
+~~~
+
+ioc配置文件中定义:
+
+~~~xml
+<bean id="myServletForwardingController" class="org.springframework.web.servlet.mvc.ServletForwardingController">
+	<property name="servletName"><value>myServlet</value></property>
+</bean>
+~~~
+
+### ParameterizableViewController
+
+返回预配置视图并可选地设置响应状态代码的controller。视图和状态可以使用提供的配置属性进行配置。
+
+它的handleRequestInternal方法如下：
+
+~~~java
+@Override
+protected ModelAndView handleRequestInternal(HttpServletRequest request, HttpServletResponse response)
+        throws Exception {
+
+    String viewName = getViewName();
+	//如果statusCode不为空，则设置相应状态码
+    if (getStatusCode() != null) {
+        if (getStatusCode().is3xxRedirection()) {
+            request.setAttribute(View.RESPONSE_STATUS_ATTRIBUTE, getStatusCode());
+        }
+        else {
+            response.setStatus(getStatusCode().value());
+            if (getStatusCode().equals(HttpStatus.NO_CONTENT) && viewName == null) {
+                return null;
+            }
+        }
+    }
+	//如果是只响应状态的，直接返回，不返回视图
+    if (isStatusOnly()) {
+        return null;
+    }
+	//根据viewName或者View()返回modelAndView
+    ModelAndView modelAndView = new ModelAndView();
+    modelAndView.addAllObjects(RequestContextUtils.getInputFlashMap(request));
+    if (viewName != null) {
+        modelAndView.setViewName(viewName);
+    }
+    else {
+        modelAndView.setView(getView());
+    }
+    return modelAndView;
+}
+~~~
+
+配置示例：
+
+~~~xml
+<bean id="demo" class="org.springframework.web.servlet.mvc.ParameterizableViewController">
+    <property name="statusCode" value="OK"/>
+    <property name="statusOnly" value="false"/>
+    <property name="viewName" value="index"/>
+</bean>
+~~~
+
+### UrlFilenameViewController
+
+简单控制器实现，将URL的虚拟路径转换为视图名并返回该视图。
+
+转换示例如下:
+
+* "/index" -> "index"
+* "/index.html" -> "index"
+* "/index.html" + prefix "pre_" and suffix "_suf" -> "pre_index_suf"
+* "/products/view.html" -> "products/view"
+
+在设置时，可以配置前后缀:
+
+~~~xml
+<bean name="/d" class="org.springframework.web.servlet.mvc.UrlFilenameViewController">
+    <property name="prefix" value="in"/>
+    <property name="suffix" value="ex"/>
+</bean>
+~~~
+
+该配置将返回viewName :index
+
+## ModelAndView
+
+Controller在将Web请求处理完成后，会返回一个ModelAndView实例。ModelAndView包含两部分内容：
+
+* 视图内容:可能是视图的逻辑名称，也可以是具体的视图实例
+* 模型数据:一个map，视图渲染过程中将会把这些模型数据合并入最终的视图输出。
+
+它内部维护下面字段:
+
+~~~java
+private Object view;
+private ModelMap model;
+private HttpStatus status;
+~~~
+
+我们可以在实例化ModelAndView时通过构造函数传入 视图和模型数据
+
+也可以在实例化完成后，通过set方法设置：
+
+~~~java
+public ModelAndView(String viewName);
+public ModelAndView(View view);
+public ModelAndView(String viewName,Map<String, ?> model);
+public ModelAndView(View view, Map<String, ?> model) ;
+public ModelAndView(String viewName, HttpStatus status);
+public ModelAndView(String viewName,Map<String, ?> model,  HttpStatus status);
+public ModelAndView(String viewName, String modelName, Object modelObject);
+public ModelAndView(View view, String modelName, Object modelObject);
+
+public void setViewName(String viewName);
+public void setView(View view);
+public void setStatus(HttpStatus status);
+public ModelAndView addAllObjects(Map<String, ?> modelMap);
+~~~
+
+DispatcherServlet获取到ModelAndView后:
+
+* 先获取View实例:先从ModelAndView中获取viewName
+
+  * 若viewName为空，则从ModelAndView直接获取View实例
+  * 若viewName不为空，则委托ViewResolver通过viewName获取具体的View实例
+
+* 再将Model渲染到View中:
+
+  调用view的render方法，将模型数据渲染到view，不同的view实现渲染模型数据的方法不同
+
+## ViewResolver
+
+从上一部分对ModelAndView的介绍，我们已经可以知道ViewResolver的职责:
+
+根据Controller返回的ModelAndView中的逻辑视图名viewName，为DispatcherServlet返回一个可用的View实例
+
+它的定义如下:
+
+~~~java
+public interface ViewResolver {
+	View resolveViewName(String viewName, Locale locale) throws Exception;
+}
+~~~
+
+接口的实现类只需要根据viewName 和传入的Locale值来返回相应的视图
+
+传入Locale的目的是在需要的情况下，根据Locale的不同返回不同的视图实例以支持国际化
+
+其继承体系如下:
+
+![ViewResolver](https://gitee.com/wangziming707/note-pic/raw/master/img/ViewResolver.png)
+
+大部分的`ViewResolver`实现，都会直接或者间接实现`AbstractCachingViewResolver`抽象类
+
+因为正对每次请求都重新实例化View将可能为Web应用程序带来性能上的损失，所以`AbstractCachingViewResolver`实现了View实例的缓存功能，而且默认情况下时启用该功能的。在生产环境下，这是个合理的默认值，不过如果在测试或者开发环境下，我们想要立刻反映修改的结果，可以通过`setCache(false)`暂时关闭它的缓存功能
+
+### 面向单一视图类型
+
+面向单一视图类型的ViewResolver类都会直接或间接的继承UrlBasedViewResolver
+
+使用该类型的ViewResolver，不需要配置具体的逻辑视图名到具体View的映射关系。通常只要指定以下视图模板所在的位置，这些ViewResolver会按照逻辑视图名，找到相应的模板文件、构造相应的View实例并返回。
+
+之所以面向叫单一视图类型是因为该类别中，每个具体的ViewResolver实现都只负责一种View类型的映射。它的主要实现类如下:
+
+* `InternalResourceViewResolver`对应`InternalResourceView`的映射，也就是处理JSP模板类型的视图映射DispatcherServlet在初始化时，如果没有其他的ViewResolver，将默认使用该类
+* `FreeMarkerViewResolver`：对应`FreeMarkerView`的映射
+* `XsltViewResolver`：对应`XsltView`的映射
+
+等等
+
+启用以上的ViewResolver，和使用`InternalResourceViewResolver`一样样，使用`prefix`和`suffix`属性指定前后缀即可
+
+### 面向多视图类型
+
+面向多视图类型的ViewResolver，我们需要通过某种配置方式指定逻辑视图名和具体视图之间的映射关系。这样就可以实现多种视图类型的映射管理。
+
+它有如下的实现:
+
+* ResourceBundleViewResolver
+
+* XmlViewResolver
+* BeanNameViewResolver
+
+### ViewResolver优先级
+
+和HandlerMapping一样；我们可以为DispatcherServlet提供多个ViewResolver，ViewResolver的实现都实现了Ordered接口
+
+解析视图名称时，DispatcherServlet会根据可用的ViewResolver实例的优先级进行遍历。先调用优先级高的ViewResolver，直到某个ViewResolver返回当前的View为止。
+
+## View
+
+View是封装了视图渲染逻辑的组件，通过引入该策略抽象接口，我们可以极具灵活性地支持各种视图渲染技术
+
+它的定义如下:
+~~~java
+public interface View {
+	default String getContentType() {
+		return null;
+	}
+	void render(Map<String, ?> model, HttpServletRequest request, HttpServletResponse response)
+			throws Exception;
+}
+~~~
+
+各种View实现类主要职责就是在redner()方法中实现最终的视图渲染工作
+
+* 使用JSP技术的View实现:
+  * InternalResourceView
+  * JstlView
+  * TilesView
+  * TilesJstlView
+* 使用通用模板技术的View实现:
+  * FreeMarkerView
+  * VelocityView
+* 面向二进制文档格式的View实现:
+  * Excel形式的视图:
+    * AbstractExcelView
+    * AbstractJExcelView
+  * PDF形式的视图：
+    * AbstractPDFlView
+
+等等
+
+# SpringMVC其他组件
+
+除了之前介绍的核心组件外，SpringMVC还提供了更多的组件以支持Web开发
+
+* `MultipartResolver`负责文件上传
+* `HandlerInterceptor`处理器拦截器
+* `HandlerAdaptor`使用不同类型的Handler
+* `HandlerExceptionResolver`：提供请求时异常的标准处理方式
+
+* `LocaleResolver`：提供更方便的显示国际化视图
+* `ThemeResolver`:让用户选择不同的主题
+
+## MultipartResolver
+
+HTTP协议的实体类型Context-Type有值`multipart/form-data`格式，支持表单的文件上传；在前端页面HTML页面或者js脚本中，设置表单的属性enctype为`multipart/form-data`以对请求实体内容进行编码
+
+针对这种编码类型的请求进行解析上传的文件，是通用的逻辑，有通用的类库,如:Oreilly、Commons FileUpload类库等。
+
+在实现基于表单的文件上传功能时，SpringMVC框架底层实际上也是使用了以上的几种类库，只是通过MultipartResolver策略接口的抽象，将具体选用哪一种类库的权利给了用户。
+
+MultipartResolver提供了两个可用的实现:
+
+* CommonsMultipartResolver：基于 Apache Commons FileUpload类库实现，使用它需要引入相应依赖
+* StandardServletMultipartResolver:基于Servlet 3.0 Part API的标准MultipartResolver实现
+
+### DispatcherServlet使用MultipartResolver
+
+`DispatcherServlet`作为一个servlet在启动时会被servlet容器调用init()方法进行初始化，此时会调用DispatcherServlet的initMultipartResolver()方法进行MultipartResolver的初始化:
+
+从自己的WebApplicationContext中获取beanName固定为:`multipartResolver`的MultipartResolver实例
+
+然后在收到Web请求时，
 
 
 
@@ -327,60 +663,6 @@ SpringMVC提供了一套Controller实现体系，以复用这些通用的逻辑:
 
 
 # 核心配置文件
-
-文件头约束
-
-~~~xml
-<?xml version="1.0" encoding="UTF-8"?>
-<beans xmlns="http://www.springframework.org/schema/beans"
-       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-       xmlns:p="http://www.springframework.org/schema/p"
-       xmlns:context="http://www.springframework.org/schema/context"
-       xmlns:mvc="http://www.springframework.org/schema/mvc"
-       xsi:schemaLocation="http://www.springframework.org/schema/beans
-  http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
-  http://www.springframework.org/schema/context
-  http://www.springframework.org/schema/context/spring-context-3.1.xsd
-  http://www.springframework.org/schema/mvc
-  http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd">
-    
-</beans>
-~~~
-
-
-
-## 非注解版(了解)
-
-* springmvc.xml
-
-~~~xml
-<!--手动配置三大适配器-->
-<!--处理器映射器-->
-<bean class="org.springframework.web.servlet.handler.BeanNameUrlHandlerMapping"/>
-<!--处理器适配器-->
-<bean class="org.springframework.web.servlet.mvc.SimpleControllerHandlerAdapter"/>
-<!--视图解析器-->
-<bean class="org.springframework.web.servlet.view.InternalResourceViewResolver"/>
-<!--处理器-->
-<bean id="/firstController" class="com.bjpn.FirstController"/>
-~~~
-
-* controller
-
-~~~java
-public class FirstController implements Controller {
-    @Override
-    public ModelAndView handleRequest(HttpServletRequest request, HttpServletResponse response) throws Exception {
-        ModelAndView mav = new ModelAndView();
-        System.out.println("这是我的第一个处理器");
-        return null;
-    }
-}
-~~~
-
-
-
-
 
 ## 注解版
 

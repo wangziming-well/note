@@ -690,7 +690,7 @@ ETag 中有强 ETag 值和弱 ETag 值之分。
 
  字段值以字节为单位， 表示当前发送部分及整个实体大小  
 
-#### Content-Type  
+#### Content-Type
 
 首部字段 Content-Type 说明了实体主体内对象的媒体类型。  
 
