@@ -648,13 +648,57 @@ MultipartResolver提供了两个可用的实现:
 * CommonsMultipartResolver：基于 Apache Commons FileUpload类库实现，使用它需要引入相应依赖
 * StandardServletMultipartResolver:基于Servlet 3.0 Part API的标准MultipartResolver实现
 
+MultipartResolver接口的定义如下:
+
+~~~java
+public interface MultipartResolver {
+
+	boolean isMultipart(HttpServletRequest request);
+
+	MultipartHttpServletRequest resolveMultipart(HttpServletRequest request) throws MultipartException;
+
+	void cleanupMultipart(MultipartHttpServletRequest request);
+
+}
+
+~~~
+
+核心方法是`resolveMultipart()`,它将传入的HttpServletRequest实例转换为MultipartHttpServletRequest实例
+
+MultipartHttpServletRequest继承MultipartRequest
+
+提供了获取请求上传的文件相关的方法:
+
+~~~java
+public interface MultipartRequest {
+	Iterator<String> getFileNames();
+	MultipartFile getFile(String name);
+	List<MultipartFile> getFiles(String name);
+	Map<String, MultipartFile> getFileMap();
+	MultiValueMap<String, MultipartFile> getMultiFileMap();
+	String getMultipartContentType(String paramOrFileName);
+}
+~~~
+
 ### DispatcherServlet使用MultipartResolver
 
-`DispatcherServlet`作为一个servlet在启动时会被servlet容器调用init()方法进行初始化，此时会调用DispatcherServlet的initMultipartResolver()方法进行MultipartResolver的初始化:
+`DispatcherServlet`作为一个servlet在启动时会被servlet容器调用`init()`方法进行初始化，此时会调用`DispatcherServlet`的`initMultipartResolver()`方法进行`MultipartResolver`的初始化:
 
-从自己的WebApplicationContext中获取beanName固定为:`multipartResolver`的MultipartResolver实例
+从自己的`WebApplicationContext`中获取beanName固定为:`multipartResolver`的`MultipartResolver`实例
 
-然后在收到Web请求时，
+然后在收到Web请求时，首先调用`checkMultipart()`方法进行Multipart校验:
+
+如果`DispatcherServlet`持有的`multipartResolver`不为空且请求的Content-Type是以  `multipart/ `开头的:
+
+则调用`multipartResolver`的`resolveMultipart`，将请求的`HttpServletRequest`实例转化为
+
+`MultipartHttpServletRequest`
+
+由此可以看出:
+
+在`WebApplicationContext`注册`MultipartResolver`供`DispatcherServlet`使用时，beanName必须是`multipartResolver`
+
+### 文件上传实例
 
 
 
