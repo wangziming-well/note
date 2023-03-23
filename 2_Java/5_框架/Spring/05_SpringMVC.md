@@ -1014,11 +1014,67 @@ Servlet组件中的Filter和HandlerInterceptor功能类似，都提供请求拦�
 
 DispatcherServlet也是一个Servlet
 
-Filter对请求的拦截是在请求进入DispatcherServlet之前和DispatcherServlet处理完请求之后的
+Filter对请求的拦截是在请求进入DispatcherServlet之前和DispatcherServlet处理完请求之后的，在SpringMVC的框架下，Filter是针对DispatcherServlet的执行进行拦截
 
-而HandlerInterceptor对请求的拦截都是在DispatcherServlet处理流程内部的，对Handler的执行进行拦截
+而HandlerInterceptor对请求的拦截都是在DispatcherServlet处理流程内部的，针对Handler的执行进行拦截
 
 ## HandlerExceptionResolver
+
+在我们Controller的定义中:
+
+~~~java
+public interface Controller {
+	ModelAndView handleRequest(HttpServletRequest request, HttpServletResponse response) throws Exception;
+}
+~~~
+
+我们发现处理请求的方法`handleRequest`直接将所有异常抛出,这实际上违反了我们处理异常的方法:
+
+对于可能抛出多个异常的方法，我们需要分别抛出，而不是直接用所有可能抛出的异常的父类作为抛出异常。
+
+但实际上这中异常设计是不得已而为之的:
+
+处理Web请求时，可能的用到的逻辑和抛出的异常无法预测也无法限定，所以SpringMVC框架直接将其全部抛出
+
+然后设计了HandlerExceptionResolver组件，对抛出的异常进行统一处理。其定义如下：
+
+~~~java
+public interface HandlerExceptionResolver {
+	ModelAndView resolveException(HttpServletRequest request, HttpServletResponse response, @Nullable Object handler, Exception ex);
+}
+~~~
+
+处理异常，并返回相应的视图
+
+### DispatcherServlet使用HandlerExceptionResolver
+
+#### 初始化HandlerExceptionResolver
+
+在DispatcherServlet初始化调用`init()`方法时，会调用`initHandlerExceptionResolvers()`初始化HandlerExceptionResolver：
+
+默认检测获取DispatcherServlet的WebApplicationContext中的所有的HandlerExceptionResolver实例
+
+如果容器中没有HandlerExceptionResolver实例，则读取DispatcherServlet.properties配置文件:
+
+~~~properties
+org.springframework.web.servlet.HandlerExceptionResolver=org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver,\
+org.springframework.web.servlet.mvc.annotation.ResponseStatusExceptionResolver,\
+org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver
+~~~
+
+加载配置文件中指定的HandlerExceptionResolver实例到DispatcherServlet
+
+#### 使用HandlerExceptionResolver
+
+实际上HandlerExceptionResolver处理的异常不止是Handler处理Web请求抛出的，它负责处理的异常范围更大:
+
+从MultipartResolver处理multipart请求开始到处理请求到调用HandlerInterceptor的后处理为止，抛出的异常都由它处理:
+
+如果有抛出异常，将调用processHandlerException()方法进行异常处理:
+
+遍历持有的HandlerExceptionResolver，调用其resolveException()方法，如果有返回ModelAndView实例，则退出遍历
+
+### 可用的HandlerExceptionResolver实现
 
 
 
