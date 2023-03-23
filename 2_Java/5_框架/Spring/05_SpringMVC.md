@@ -1,4 +1,6 @@
-# MVC
+# SpringMVC概述
+
+## MVC
 
  MVC是一种设计模式，常用于开发web应用程序的框架中。MVC的意思是Model-View-Controller（模型-视图-控制器）。它将web应用程序分为三个主要组件：模型、视图和控制器。每个组件都负责不同的功能，但又相互关联，以便应用程序可以正确地工作。
 
@@ -10,7 +12,7 @@
 
 MVC设计模式是Web开发中的一种重要的设计模式，它能够提供良好的结构化方式，使得Web应用程序的不同部分更易于维护和扩展，提高了应用程序的质量和可靠性。
 
-# SpringMVC简介
+## SpringMVC组件
 
 SpringMVC是请求驱动的MVC模式的Web框架，使用单一控制器处理web请求，它有以下主要组件：
 
@@ -628,10 +630,9 @@ public interface View {
 除了之前介绍的核心组件外，SpringMVC还提供了更多的组件以支持Web开发
 
 * `MultipartResolver`负责文件上传
-* `HandlerInterceptor`处理器拦截器
 * `HandlerAdaptor`使用不同类型的Handler
+* `HandlerInterceptor`处理器拦截器
 * `HandlerExceptionResolver`：提供请求时异常的标准处理方式
-
 * `LocaleResolver`：提供更方便的显示国际化视图
 * `ThemeResolver`:让用户选择不同的主题
 
@@ -682,9 +683,13 @@ public interface MultipartRequest {
 
 ### DispatcherServlet使用MultipartResolver
 
+#### 初始化MultipartResolver
+
 `DispatcherServlet`作为一个servlet在启动时会被servlet容器调用`init()`方法进行初始化，此时会调用`DispatcherServlet`的`initMultipartResolver()`方法进行`MultipartResolver`的初始化:
 
 从自己的`WebApplicationContext`中获取beanName固定为:`multipartResolver`的`MultipartResolver`实例
+
+#### 使用MultipartResolver
 
 然后在收到Web请求时，首先调用`checkMultipart()`方法进行Multipart校验:
 
@@ -700,15 +705,332 @@ public interface MultipartRequest {
 
 ### 文件上传实例
 
+现在我们来实现一个完整的文件上传流程:
+
+#### 相关依赖
+
+使用CommonsMultipartResolver需要引入Apache Commons FileUpload类库
+
+~~~xml
+<dependency>
+    <groupId>commons-fileupload</groupId>
+    <artifactId>commons-fileupload</artifactId>
+    <version>1.4</version>
+</dependency>
+~~~
+
+#### 前端页面
+
+post表单需要设置`enctype`值为`multipart/form-data`
+
+~~~html
+<form method="post" enctype="multipart/form-data" action="${pageContext.request.contextPath}/fileUpload">
+    选择上传的文件:<input name="picture" type="file"/><br/>
+    <input name="submit" type="submit" value="提交">
+</form>
+~~~
+
+#### Controller
+
+接受文件上传的请求，将HttpServletRequest转化为 MultipartHttpServletRequest，再接受文件
+
+~~~java
+public class FileUploadController extends AbstractController {
+    @Override
+    protected ModelAndView handleRequestInternal(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        System.out.println("接受到文件上传请求");
+        MultipartHttpServletRequest msr = (MultipartHttpServletRequest) request;
+        File file = new File("D:\\Data\\Temporary\\picture.png");
+        msr.getFile("picture").transferTo(file);
+        System.out.println("上传文件成功");
+        return null;
+    }
+}
+~~~
+
+#### 注册组件
+
+~~~xml
+<!--注册文件上传Controller-->
+<bean name="/fileUpload" class="com.wzm.spring.controller.FileUploadController"/>
+<!--注册MultipartResolver实例-->
+<bean id="multipartResolver" class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+    <property name="maxUploadSize" value="#{1024*1024*80}"/>
+    <property name="defaultEncoding" value="utf-8"/>
+</bean>
+~~~
+
+## HandlerAdapter
+
+之前我们说DispatcherServlet调用HandlerMapping后会返回一个Controller
+
+但实现上我们看到HandlerMapping返回的是HandlerExecutionChain对象
+
+是因为SpringMVC充当处理Web请求的Handler处理器对象不止是Controller一种类型。HandlerExecutionChain返回的是Object类型的Handler对象
+
+直接在DispatcherServlet中使用if-else进行Handler对象类型的判断，然后调用不同Handler对象的处理逻辑方法显然是不合适的，大量的if-else既难以维护也不利于拓展
+
+SpringMVC采用了适配器的设计模式，设计提供HandlerAdapter接口
+
+DispatcherServlet将直接调用Handler获取ModelAndView的任务委托给了HandlerAdaptor，由相应的HandlerAdaptor实现来调用不同类型的Handler
+
+这样DispatcherServlet就屏蔽了Handler对象的不同所带来的调用差异。
+
+HandlerAdapter的定义如下:
+
+~~~java
+public interface HandlerAdapter {
+    //判断当前适配器是否支持传入的handler
+	boolean supports(Object handler);
+    //执行handler的处理请求的方法，并返回ModelAndView
+	ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception;
+    //获取响应首部Last-Modified
+	long getLastModified(HttpServletRequest request, Object handler);
+}
+~~~
+
+它的核心方法就是`supports()`和`handle()`
+
+### DispatcherServlet使用HandlerAdapter
+
+#### 初始化HandlerAdapter
+
+`DispatcherServlet`在初始化时，在Servlet的`init()`方法中会调用`initHandlerAdapters()`,默认检测加载所有可用的HandlerAdapter:
+
+获取WebApplicationContext中注册的所有HandlerAdapter实现类实例
+
+如果没有获取到容器中的HandlerAdapter实例，则会读取文件
+
+`DispatcherServlet.properties`中配置的默认HandlerAdapter:
+
+~~~properties
+org.springframework.web.servlet.HandlerAdapter=org.springframework.web.servlet.mvc.HttpRequestHandlerAdapter,\
+org.springframework.web.servlet.mvc.SimpleControllerHandlerAdapter,\
+org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter,\
+org.springframework.web.servlet.function.support.HandlerFunctionAdapter
+~~~
+
+实例化并加载到DispatcherServlet中。
+
+#### 使用HandlerAdapter
+
+DispatcherServlet调用合适的`HandlerMapping`获取到`HandlerExecutionChain`
+
+调用`HandlerExecutionChain`的`getHandler()`获取具体的处理器
+
+循环调用持有的所有HandlerAdapter实例的supports方法，如果HandlerAdapter实例支持当前handler类型，就使用该HandlerAdapter使用来调用handler来处理Web请求，返回ViewAndModel
+
+### HandlerAdapter实现
+
+SpringMVC提供了几个HandlerAdapter实现以适配不同的Handler处理器:
+
+* SimpleControllerHandlerAdapter：适配Controller类型的Handler
+* SimpleServletHandlerAdapter：适配Servlet类型的Handler
+* HttpRequestHandlerAdapter：适配HttpRequestHandler类型的Handler
+* HandlerFunctionAdapter：适配HandlerFunction类型的Handler
+* RequestMappingHandlerAdapter：适配被@RequestMapping标注的HandlerMethods.以支持SpringMVC解析注解使用@Controller的Handler
+
+## 自定义Handler
+
+通过对上面SpringMVC组件:HandlerMapping和HandlerAdapter的学习，我们可以实现自定的Handler了。
+
+自定义的Handler可以是任何样子，不需要继承任何接口，但你需要实现对应的HandlerMapping和HandlerAdapter以让DispatcherServlet可以使用自定义的Handler
+
+### 定义Handler
+
+首先需要自定义一个Handler接口，当然也可以使用注解的方式标注自定义的Handler，但这需要多一层转换的工作
+
+~~~java
+public interface MyHandler {
+    void handleRequest(HttpServletRequest request,HttpServletResponse response);
+}
+~~~
+
+再定义一个简单的实现类:
+
+~~~java
+public class SimpleMyHandler implements MyHandler{
+    @Override
+    public void handleRequest(HttpServletRequest request, HttpServletResponse response) {
+        System.out.println("收到请求");
+    }
+}
+~~~
+
+### 定义HandlerAdapter
+
+直接实现`HandlerAdapter`并重写`supports()`和`handle()`方法，以支持适配MyHandler类型的处理器
+
+~~~java
+public class MyHandlerAdapter implements HandlerAdapter {
+    @Override
+    public boolean supports(Object handler) {
+        return handler instanceof MyHandler;
+    }
+
+    @Override
+    public ModelAndView handle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+         ((MyHandler)handler).handleRequest(request,response);
+         return null;
+    }
+
+    @Override
+    public long getLastModified(HttpServletRequest request, Object handler) {
+        return 0;
+    }
+}
+~~~
+
+### 注册组件
+
+需要注册相关的组件以通知`DispatcherServlet`可以使用`MyHandler`类型的处理器:
+
+~~~xml
+<bean id="myHandler" class="com.wzm.spring.SimpleMyHandler"/>
+<bean class="com.wzm.spring.MyHandlerAdapter"/>
+<bean class="org.springframework.web.servlet.handler.SimpleUrlHandlerMapping">
+    <property name="urlMap">
+        <map>
+            <entry key="testMyHandler" value-ref="myHandler"/>
+        </map>
+    </property>
+</bean>
+~~~
+
+## HandlerInterceptor
+
+前面已经提到，`HandlerMapping`返回的是`HandlerExecutionChain`实例，`DispatcherServlet`从`HandlerExecutionChain`中获取具体的`Handler`对象实例，实际上`HandlerExecutionChain`在除了保存`Handler`对象实例还保存了一组`HandlerInterceptor`
+
+这组`HandlerInterceptor`可以在`Handler`的执行前后对处理流程进行拦截操作
+
+`HandlerInterceptor`的定义如下
+
+~~~java
+public interface HandlerInterceptor {
+	//在handler处理Web请求之前执行，如果返回false则终止流程
+	default boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
+			throws Exception {
+
+		return true;
+	}
+	//在handler处理web请求之后，在视图的解析渲染之前执行
+	default void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler,
+			@Nullable ModelAndView modelAndView) throws Exception {
+	}
+	//整个处理流程结束之后，不管是正常结束还是异常终止，都将执行afterCompletion的方法
+	default void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler,
+			@Nullable Exception ex) throws Exception {
+	}
+
+}
+~~~
+
+### DispatcherServlet使用HandlerInterceptor
+
+#### 注册HandlerInterceptor
+
+`HandlerExecutionChain`中的`HandlerInterceptor`实例是来自`HandlerMapping`的，而所有的`HandlerMapping`实现都会继承`AbstractHandlerMapping`，它提供了以下方法:
+
+~~~java
+public void setInterceptors(Object... interceptors);
+~~~
+
+以供我们设置拦截器，所以我们可以在定义HandlerMapping是传入interceptors参数:
+
+~~~xml
+<bean class="...SimpleUrlHandlerMapping">
+    <property name="interceptors">
+        <list>
+            <bean class="...WebContentInterceptor"/>
+            ......
+        </list>
+    </property>
+	......
+</bean>
+~~~
+
+#### 使用HandlerInterceptor
+
+`DispatcherServlet`并没有直接调用`HandlerInterceptor`的`preHandle()`等拦截方法
+
+而是交委托HandlerExecutionChain来做,HandlerExecutionChain提供下面方法:
+
+~~~java
+boolean applyPreHandle(HttpServletRequest request, HttpServletResponse response);
+//遍历调用持有的所有HandlerInterceptor的preHandle方法
+void applyPostHandle(HttpServletRequest request, HttpServletResponse response, ModelAndView mv);
+//遍历调用持有的所有HandlerInterceptor的postHandle方法
+void triggerAfterCompletion(HttpServletRequest request, HttpServletResponse response, Exception ex);
+//遍历调用持有的所有HandlerInterceptor的afterCompletion方法
+~~~
+
+`DispatcherServlet`通过调用`HandlerExecutionChain`的上面方法来间接调用`HandlerInterceptor`的拦截方法，`DispatcherServlet`：
+
+* 在调用`HandlerAdapter.handle()`方法处理请求之前，会调用`applyPreHandle()`方法
+* 在调用`HandlerAdapter.handle()`方法处理请求之后，在执行`processDispatchResult()`方法解析视图并渲染视图之前，会调用`applyPostHandle()`方法
+* 在`doDispatch()`方法流程的最后的finally代码块中，会调用`triggerAfterCompletion()`方法
+
+### 可用的HandlerInterceptor实现
+
+SpringMVC提供了一些可用的HandlerInterceptor实现
+
+* UserRoleAuthorizationInterceptor
+* WebContentInterceptor
+* LocaleChangeInterceptor
+* ThemeChangeInterceptor
+
+等等，我们先只介绍其中两个
+
+#### UserRoleAuthorizationInterceptor
+
+`UserRoleAuthorizationInterceptor`允许我们通过`HttpServletRequest`的``isUserInRole()``方法，使用一组指定的UserRoles对当前请求进行验证:
+
+如果验证不通过，将默认返回HTTP的403状态码forbidden，可以通过覆写 `handleNotAuthorized()`方法改写这种默认行为
+
+只需要在注册UserRoleAuthorizationInterceptor的时候指定authorizedRoles属性来指定允许的UserRoles
+
+#### WebContentInterceptor
+
+WebContentInterceptor主要做以下几件事情:
+
+* 检查请求方法类型是否在支持方法之列
+* 检查必要的Session实例
+* 检查缓存时间并通过设置响应HTTP首部控制缓存行为
+
+我们可以通过设置WebContentInterceptor的以下字段来控制上面的检查行为:
+
+~~~java
+private Set<String> supportedMethods;
+//设置请求支持的Method
+private boolean requireSession = false;
+//设置请求是否必须有session，默认false
+private int cacheSeconds = -1;
+//设置缓存时间，默认不缓存
+~~~
+
+### HandlerInterceptor和Filter
+
+Servlet组件中的Filter和HandlerInterceptor功能类似，都提供请求拦截功能，但它们之间也存在差别
+
+DispatcherServlet也是一个Servlet
+
+Filter对请求的拦截是在请求进入DispatcherServlet之前和DispatcherServlet处理完请求之后的
+
+而HandlerInterceptor对请求的拦截都是在DispatcherServlet处理流程内部的，对Handler的执行进行拦截
+
+## HandlerExceptionResolver
 
 
 
 
 
 
-# 核心配置文件
 
-## 注解版
+# 其他
+
+## 核心配置文件
+
+### 注解版
 
 * springmvc.xml
 
@@ -734,7 +1056,7 @@ public class SecondController {
 
 
 
-# SpringMVC常用注解
+## SpringMVC常用注解
 
 * `@Controller`标识当前类是处理器类
 
@@ -752,7 +1074,7 @@ public class SecondController {
 * `@ResponseBody`     异步ajax的json格式
 * `@RequestBody`      接收前端异步请求参数
 
-# SpringMVC处理器
+## SpringMVC处理器
 
 表示处理器的方法有三种，分别是返回值为：
 
@@ -785,7 +1107,7 @@ public class SecondController {
 
 
 
-## 转发与重定向
+### 转发与重定向
 
 SpringMVC处理器，不管返回值是ModelAndView还是String，默认调用转发
 
@@ -814,7 +1136,7 @@ public class ThirdController {
 
 
 
-# SpringMVC处理器适配器
+## SpringMVC处理器适配器
 
 处理器适配器封装了从前端接受参数的过程，以及创建对象的过程
 
@@ -823,7 +1145,7 @@ public class ThirdController {
 * 当前工程中的对象
 * 前端传递的参数
 
-## 提供对象
+### 提供对象
 
 适配器能为处理器提供当前工程中所有的有无参构造的类对象，
 
@@ -842,11 +1164,11 @@ public ModelAndView objectSupport(ModelAndView modelAndView , User user){
 
 
 
-## 提供参数
+### 提供参数
 
 适配器可以给处理器提供前端传递的参数，处理器可以用多种方式接收参数
 
-### 通过同名参数接收
+#### 通过同名参数接收
 
 适配器会将前端的参数传递给与处理器形参名相同的位置，并自动进行类型转换
 
@@ -867,7 +1189,7 @@ public void getParamDemo1(String name ,int age){
 }
 ~~~
 
-### 通过对象接收
+#### 通过对象接收
 
 适配器会扫描处理器形参上的对象属性，如果前端参数与属性名相同，也会自动将参数值赋值给对象
 
@@ -886,7 +1208,7 @@ public void getParamDemo2(User user){
 }
 ~~~
 
-### 通过不同名对象接收
+#### 通过不同名对象接收
 
 可以通过`@RequestParam`注解，指定处理器形参要接收的参数名
 
@@ -905,7 +1227,7 @@ public void getParamDemo3(@RequestParam("name") String uname){
 }
 ~~~
 
-### restful风格接收
+#### restful风格接收
 
 可以直接将请求写在参数中，接收请求参数需要在请求路径中用`{}`且需要在要接收该参数的形参位置加上注解`@PathVariable()`
 
@@ -928,7 +1250,7 @@ public void getParamDemo4(@PathVariable("name") String name){
 
 
 
-# SpringMVC提供的域对象
+## SpringMVC提供的域对象
 
 在servlet中我们使用request，session，servletContext(application)域对象来向前端传递参数
 
@@ -940,7 +1262,7 @@ public void getParamDemo4(@PathVariable("name") String name){
 
 除此之外SpringMVC还自己封装了域对象，以供传值：
 
-## ModelAndView
+### ModelAndView
 
 ModelAndView除了提供视图外，还能够起到域对象的作用
 
@@ -965,7 +1287,7 @@ public ModelAndView returnParamDemo4(ModelAndView modelAndView){
 }
 ~~~
 
-## Model
+### Model
 
 与ModelAndView类似，为了在String返回值类型的处理器中传值
 
@@ -986,7 +1308,7 @@ public String returnParamDemo6(Model model){
 }
 ~~~
 
-# SpringMVC解决中文乱码问题
+## SpringMVC解决中文乱码问题
 
 SpringMVC提供了编码过滤器，直接在web.xml中配置即可：
 
@@ -1020,7 +1342,7 @@ SpringMVC提供了编码过滤器，直接在web.xml中配置即可：
 
 
 
-# SpringMVC读取静态资源
+## SpringMVC读取静态资源
 
 在配置SpringMVC的中央控制器DispatcherServlet时，我们设置的url-pattern是`/`,这意味着浏览器的所有请求都会被中央控制器拦截处理，包括动态资源和静态资源的请求
 
@@ -1034,7 +1356,7 @@ SpringMVC提供了编码过滤器，直接在web.xml中配置即可：
 
 
 
-## 使用Defalut Servlet
+### 使用Defalut Servlet
 
 直接在web.xml文件中配置默认servlet路径:
 
@@ -1055,7 +1377,7 @@ tomcat会优先处理更具体精确的路径，所以tomcat收到请求后，�
 
 
 
-## 在SpringM配置静态资源路径
+### 在SpringM配置静态资源路径
 
 在SpringMVC的核心配置文件中：
 
@@ -1068,7 +1390,7 @@ tomcat会优先处理更具体精确的路径，所以tomcat收到请求后，�
 
 
 
-## SpringMVC交还给default Servlet处理
+### SpringMVC交还给default Servlet处理
 
 在SpringMVC核心配置文件中：
 
@@ -1079,7 +1401,7 @@ tomcat会优先处理更具体精确的路径，所以tomcat收到请求后，�
 
 
 
-# Jackson处理异步数据
+## Jackson处理异步数据
 
 springMVC提供了jackson以处理json数据
 
@@ -1133,7 +1455,7 @@ springMVC提供了jackson以处理json数据
 
 **注意2：** 返回值对象是枚举时，对应的枚举类对象必须实现`@JsonFormat(shape = JsonFormat.Shape.OBJECT)`注解
 
-# 配置前置后置路径
+## 配置前置后置路径
 
 ​		如果直接将`.jsp`文件放在webapp文件夹下，用户就可以直接通过浏览器地址栏访问到它，这会造成安全风险；同时这样直接访问，请求不会走处理器映射器和处理器适配器，这意味着SpringMVC的拦截器不会对该资源生效。
 
@@ -1159,9 +1481,9 @@ public String toIndex(){
 //该处理器返回的实际视图路径为 /WEB-INF/index.jsp
 ~~~
 
-# 文件传输
+## 文件传输
 
-## 文件上传
+### 文件上传
 
 在`servlet-api`中，我们学习了文件上传的三要素：
 
@@ -1250,7 +1572,7 @@ public Message fileUpload(HttpServletRequest request, String username, Multipart
 
 或者配置虚拟路径
 
-## 文件下载
+### 文件下载
 
 ~~~java
 @Controller
@@ -1269,7 +1591,7 @@ public class DownController {
 
 
 
-# 拦截器
+## 拦截器
 
 SpringMVC提供了类似Servlet的过滤器的拦截器，拦截器的作用时间在处理器适配器执行处理器之前
 
