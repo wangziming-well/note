@@ -1076,6 +1076,62 @@ org.springframework.web.servlet.mvc.support.DefaultHandlerExceptionResolver
 
 ### 可用的HandlerExceptionResolver实现
 
+HandlerExceptionResolver的继承体系如下：
+
+![HandlerExceptionResolver](https://gitee.com/wangziming707/note-pic/raw/master/img/HandlerExceptionResolver.png)
+
+其中的一些我们不做探究:
+
+* `ResponseStatusExceptionResolver`：用` @ResponseStatus`标注的方法表示的异常映射来处理异常
+
+* `ExceptionHandlerExceptionResolver`：它通过`@ExceptionHandler`标注方法来处理异常。
+
+* `HandlerExceptionResolverComposite`:复合HandlerExceptionResolver的实现，将异常处理委托给它持有的一组HandlerExceptionResolver
+
+接下来详细介绍以下实现：
+
+#### AbstractHandlerExceptionResolver
+
+几乎所有的实现都会直接或间接继承`AbstractHandlerExceptionResolver`,它为`HandlerExceptionResolver`的其他实现提供了基础设施
+
+`AbstractHandlerExceptionResolver`也实现了Spring框架下的Ordered接口，`DispatcherServlet`在使用`HandlerExceptionResolver`时，也会按照优先级进行遍历。
+
+* `mappedHandlers&mappedHandlerClasses`：可以通过设置这两个值来让`HandlerExceptionResolver`的实现只捕获指定Handler抛出的异常，如果未指定该类，默认将处理所有的异常
+* `preventResponseCaching`：指定是否阻止此异常解析器解析的任何视图的HTTP响应缓存。默认为false。为了自动生成抑制响应缓存的HTTP响应标头，可以将其切换为true。
+
+#### DefaultHandlerExceptionResolver
+
+`HandlerExceptionResolver`的默认实现，将SpringMVC异常转换为响应码,如：
+
+* NoHandlerFoundException   -->  404 (SC_NOT_FOUND)
+* ServletRequestBindingException --> 400 (SC_BAD_REQUEST)
+
+等等.....
+
+#### SimpleMappingExceptionResolver
+
+将Exception名称映射到viewName,在注册该异常处理器时，可以设置以下属性，以控制它的映射行为：
+
+* `exceptionMappings`:Properties类型的值，设置异常类和viewName之间的映射关系；SimpleMappingExceptionResolver会将当前的抛出的异常类型与exceptionMappings中相应映射进行匹配。采用的不是类型匹配，而是根据类名字符串进行局部匹配
+
+  使用的是`String`的`indexOf()`进行匹配,这样匹配显然是不合理的。这会导致最终匹配的不是我们想要的映射。为了避免这种匹配方式的不准确性，我们在指定mappings的异常时，最好使用类的全限定名
+
+* `defalutErrorView`：用于指定一个默认的错误信息页面对应的逻辑视图名。当抛出的异常无法在exceptionMappings中查到可用的视图名时，defalutErrorView指定的视图名将被返回
+
+* `defalutStatusCode`:指定异常情况下默认返回给客户端的HTTP状态码
+
+* `exceptionAttribute`:如果想要在错误页面对抛出的异常进行访问，可以设置exceptionAttribute的值，该值将作为前端获取异常的键
+
+  该属性的默认值为exception，如果不想让前端访问到异常，可以将该值设置为null
+
+## LocalResolver
+
+
+
+
+
+
+
 
 
 
