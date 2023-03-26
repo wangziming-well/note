@@ -227,7 +227,7 @@ SpringMVC提供了许多HandlerMapping的实现:
 
 * SimpleUrlHandlerMapping
 * ControllerClassNameHandlerMapping
-* DefaultAnnotationHandlerMapping
+* RequestMappingHandlerMapping
 
 ### BeanNameUrlHandlerMapping
 
@@ -634,7 +634,6 @@ public interface View {
 * `HandlerInterceptor`处理器拦截器
 * `HandlerExceptionResolver`：提供请求时异常的标准处理方式
 * `LocaleResolver`：提供更方便的显示国际化视图
-* `ThemeResolver`:让用户选择不同的主题
 
 ## MultipartResolver
 
@@ -1124,7 +1123,274 @@ HandlerExceptionResolver的继承体系如下：
 
   该属性的默认值为exception，如果不想让前端访问到异常，可以将该值设置为null
 
-## LocalResolver
+## LocaleResolver
+
+在`ViewResolver`根据逻辑视图名解析视图的时候，`ViewResolver`的`resolveViewName(viewName,locale)`方法除了接受要解析的逻辑视图名作为参数外，还同时接收一个Locale类型对象；这样ViewResolver就可以根据Locale的不同返回针对不同Locale的视图实例。`ResourceBundleViewResolver`实现就是如此。
+
+但是有一个问题需要解决:Locale实例从何而来，怎样获取用户对应的Locale实例，这就是LocaleResolver的工作:
+
+SpringMVC使用LocaleResolver接口对可能的Locale值的获取解析方式进行统一的策略抽象，定义如下:
+
+~~~java
+public interface LocaleResolver {
+	Locale resolveLocale(HttpServletRequest request);
+    //根据当前Locale解析策略获取当前请求对应的Locale值        
+	void setLocale(HttpServletRequest request, HttpServletResponse response, Locale locale);
+    //如果当前策略支持Locale的更改，可以通过该方法对当前策略默认取得的Locale值进行更改
+}
+~~~
+
+### DispatcherServlet使用LocaleResolver
+
+#### 初始化LocaleResolver
+
+DispatcherServlet作为一个Servlet，在Servlet对其初始化，调用其`init()`方法时，会调用
+
+`initLocaleResolver()`方法初始化加载LocaleResolver实例：
+
+* 先从DispatcherServlet持有的WebApplicationContext容器中获取beanName为`localeResolver`的LocaleResolver
+
+* 如果没有获取到对应实例，将加载默认实例：读取`DispatcherServlet.properties`文件配置:
+
+  ~~~properties
+  org.springframework.web.servlet.LocaleResolver=org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver
+  ~~~
+
+  加载配置文件中设置的默认LocaleResolver
+
+加载完成LocaleResolver实例实例后，如果接收到Web请求，在处理请求之前，会先将持有的LocaleResolver实例设置到该请求的request域对象中，方便后续组件获取到LocaleResolver实例并使用(如LocaleChangeInterceptor)
+
+**注意:**从上面初始化过程可以看出，如果要指定LocaleResolver，需要注册beanName为localeResolver的LocaleResolver，不能用其他的beanName
+
+#### 使用LocaleResolver
+
+在handler工作完成返回ModelAndView，ViewResolver解析viewName渲染View之前
+
+Dispatcher会调用LocaleResolver的`resolveLocale()`方法获取请求对应的Locale
+
+然后ViewResolver会接收viewName和Locale返回合适的View实例
+
+### 可用的LocaleResolver实现
+
+根据Locale获取策略，SpringMVC为LocaleResolver提供了相应的可用实现类:
+
+LocaleResolver的继承体系如下:
+
+![LocaleResolver](https://gitee.com/wangziming707/note-pic/raw/master/img/LocaleResolver.png)
+
+* `AbstractLocaleResolver`:`LocaleResolver`的抽象类，为`LocaleResolver`实现提供一个设置defaultLocale的功能
+
+* `LocaleContextResolver`:`LocaleResolver`的拓展接口，提供了一个`LocaleContext`(富Locale上下文，可能包含了Locale和时区信息)支持
+
+  通常该`LocaleContext`会绑定的当前线程供其他组件使用，比如`LocaleChangeInterceptor`
+
+* `AceptHeaderLocaleResolver`：根据HTTP的`Accept-Language`请求首部来分析并返回当前请求对应的Locale值，如果没有获取到Locale值，或者获取的值不在`supportedLocales`中(如果supportedLocales不为空)，则使用默认的defaultLocale
+
+* `FixedLocaleResolver`:对于所有的请求，总是返回固定的Locale，该Locale是当前JVM默认的locale
+* `SessionLocaleResolver`:根据指定键值从Session中获取相应的Locale，这需要提前在Session中设置该值
+* `CookieLocaleResolver`:根据指定键值从Cookie中获取相应的Locale，这需要提前在Cookies中设置该值
+
+### LocaleChangeInterceptor
+
+在一些场景下，有提供给用户自己选择语言的需求，这需要使用LocaleResolver解析request的Locale前可以改变request的标志Locale的键；
+
+显然要实现这种改变，只能使用`CookieLocaleResolver`和`SessionLocaleResolver`才能实现，因为JVM默认的Locale和HTTP的`Accept-Language`都是固定的无法改变的。只有cookie，session中存储的locale键值才能随意改变。
+
+这就需要在请求处理前能够提前处理，locale的键值。这就是在介绍HandlerInterceptor时，提到的它的实现LocaleChangeInterceptor，它就是用来这样干的:
+
+* 首先解析requset请求域，根据给定的参数名称获取域中的locale(默认为locale)
+* 获取DispatcherServlet再收到请求时添加到request域中的LocaleResolver实例
+* 调用LocaleResolver的setLocale方法将之前解析出的locale设置到session或cookie中(更具LocaleResolver的不同)覆盖原本的locale
+
+这样当处理完请求调用LocaleResolver来获取locale时，将获取到LocaleChangeInterceptor设置的locale而不是原本的
+
+示例:
+
+~~~xml
+<bean class="org.springframework.web.servlet.handler.SimpleUrlHandlerMapping">
+    <property name="urlMap">
+        <map>
+            <entry key="testMyHandler" value-ref="myHandler"/>
+        </map>
+    </property>
+    <property name="interceptors">
+        <list>
+            <bean class="org.springframework.web.servlet.i18n.LocaleChangeInterceptor">
+                <property name="paramName" value="lang"/>
+            </bean>
+        </list>
+    </property>
+</bean>
+~~~
+
+这样设置后，可以在请求的时候加入类似参数`lang=zh_CN`来指定国际化语言
+
+# 基于注解的SpringMVC
+
+SpringMVC提供完整的注解开发支持
+
+## 基于注解的Controller
+
+在之前对SpringMVC组件的讨论中，Handler处理器可以是任何形式的，只要为自定义的Handler配置对应的HandlerMapping和HandlerAdapter，就能够将其集成到SpringMVC的工作流程中。
+
+SpringMVC提供的基于注解的Controller也是这样，提供了相应的基于注解的HandlerMapping和HandlerAdapter实现，就能为用户提供相应的注解开发支持,在之前的讨论中，我们已经提到过这样的实现:
+
+* RequestMappingHandlerMapping
+* RequestMappingHandlerAdapter
+
+基于以上组件，SpringMVC提供了注解`@Controller`、`@RequestMapping`来标注基于注解的Controller,告知SpringMVC框架该类是标注的Handler:
+
+~~~java
+@Controller
+public class AnnotatedController {
+    @RequestMapping( "/accept")
+    public String accept(){
+        System.out.println("收到请求");
+        return "index";
+    }
+}
+~~~
+
+并配置以下内容:
+
+~~~xml
+<mvc:annotation-driven/>
+<context:component-scan base-package="com.wzm.spring"/>
+~~~
+
+启动mvc的注解驱动，并将刚刚标注的类交给ioc容器管理即可
+
+这样，一个`@Controller`方法标注的类中的每个`@RequestMapping`标注的方法都对应一个handler，叫做方法处理器(MethodHandler)
+
+### `@Controller`
+
+想要让一个普通的pojo类成为SpringMVC框架下的handler处理器，必须使用`@Controller`注解标注该类
+
+`@Controller`的定义如下:
+
+~~~java
+@Target({ElementType.TYPE})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Component
+public @interface Controller {
+
+	@AliasFor(annotation = Component.class)
+	String value() default "";
+
+}
+
+~~~
+
+可以看到它被`@Component`注解标注，所有被标注了`@Controller`注解的类，同样可以被扫描管理到Spring的ioc容器中，而不需要额外使用其他注解
+
+除此之外，`RequestMappingHandlerMapping`在收到Web请求时，匹配的就是所有容器中被`@Controller`标注的对象
+
+### `@RequsetMapping`
+
+只拥有一个`@Controller`注解，不能让`RequestMappingHandlerMapping`知道应该将Web请求映射到哪个Controller上，需要`@RequsetMapping`提供必要的映射信息。
+
+`@RequsetMapping`可以应用到方法级别和类级别上，定义如下:
+
+~~~java
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Mapping
+public @interface RequestMapping {
+	String name() default "";
+	@AliasFor("path")
+	String[] value() default {};
+	@AliasFor("value")
+	String[] path() default {};
+	RequestMethod[] method() default {};
+	String[] params() default {};
+	String[] headers() default {};
+	String[] consumes() default {};
+	String[] produces() default {};
+}
+~~~
+
+* `value/path`：指定匹配映射的url路径:
+
+  * 即支持完全匹配，也支持ant风格的路径匹配(`*`、`**`、`?`通配符)
+
+  * 类级别的`@RequsetMapping`是类中所有方法级别的`@RequestMapping`的主映射，方法级别的映射路径前会加上类级别的映射路径，例如:
+
+    ~~~java
+    @Controller
+    @RequestMapping("/annotation")
+    public class AnnotatedController {
+        @RequestMapping( "/accept")
+        public String accept(){
+            System.out.println("收到请求");
+            return "index";
+        }
+    }
+    ~~~
+
+    accept()方法对应的映射为`/annotation/accept`
+
+  * 在方法级别时，`path`支持使用相对路径，在刚才的路径中，`accept`和`/accept`效果一样
+
+* `method`:指定匹配映射的HTTP请求方法：
+  * 值为`RequestMethod`枚举:`GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE, TRACE.`
+  * 当在类级别设置`method`时，该类方法级别的`method`值将继承类级别上的`method`值，在方法级别上设置`method`值将覆盖继承的值
+* `params`：指定匹配映射的HTTP请求参数:
+  * 值为形式为`myParam=myValue`表达式的字符串表示匹配指定的键值
+  * 表达式可以用`!=`表示不匹配指定的键值对
+  * 表达式可以是`myParam`或者`!myParam`表示匹配或者不匹配指定的键
+  * 当在类级别上设置`params`属性时，该类所有的方法级别的`params`将自动继承它，可以通过在方法上指定`params`值来覆盖继承的值
+
+* `headers`:指定匹配映射的HTTP请求首部:
+  * 值为形式为`My-Header=myValue`表达式的字符串表示匹配指定请求首部的键值
+  * 和`params`一样，可以用`!=` 和`My-Header`表示不匹配指定的键值，或者匹配指定的键
+  * 支持通配符`*`
+
+* `consumes`:指定匹配映射的HTTP请求`Content-Type`值
+  * 值可以为MediaType中指定的值
+  * 支持使用`!`表示不匹配指定的`Content-Type`值
+* `produces`：指定匹配映射HTTP请求的`Accept`值
+  * 值可以为MediaType中指定的值
+  * 支持使用`!`表示不匹配指定的`Accept`值
+
+另外SpringMVC提供了子注解:
+
+- `@GetMapping`
+- `@PostMapping`
+- `@PutMapping`
+- `@DeleteMapping`
+- `@PatchMapping`
+
+他们与`@RequsetMapping`不同之处只在`method`值已经预先固定
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1595,94 +1861,7 @@ public String toIndex(){
 
 ## 文件传输
 
-### 文件上传
 
-在`servlet-api`中，我们学习了文件上传的三要素：
-
-* 依赖包：`commons-fileupload.jar`,`commons-io.jar`
-* 前端请求格式：`method="post"`,`enctype="multipart/form-data"`
-* servlet配置：需要添加注解`@MultipartConfig`以开启识别Multipart数据结构的配置
-
-现在可以通过maven依赖导入依赖包：
-
-~~~xml
-<dependency>
-      <groupId>commons-fileupload</groupId>
-      <artifactId>commons-fileupload</artifactId>
-      <version>1.3.1</version>
-    </dependency>
-~~~
-
-在SpringMVC框架下，前两个要素不变，servlet 的文件传输配置由SpringMVC框架封装，只需要在核心配置文件中配置文件上传解析器：
-
-**！！注意：**id必须是multipartResolver
-
-~~~xml
-<!--配置文件上传解析器-->
-<!--id必须是multipartResolver-->
-<bean id="multipartResolver" class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
-    <property name="maxUploadSize" value="#{1024*1024*80}"/>
-    <property name="defaultEncoding" value="utf-8"/>
-</bean>
-~~~
-
-SpringMVC还封装的servlet 的part对象，提供了MultipartFile文件对象
-
-处理器可以直接通过处理器适配器获取该对象，可以通过该对象更方便地写出上传的文件
-
-前端表单：
-
-~~~html
-<form id="file-upload">
-    姓名：<input type="text" name="username"><br/>
-    <input type="file" name="fileUpload"><br/>
-    <input type="button" value="提交" id="submit">
-</form>
-~~~
-
-js：
-
-~~~js
-$("#submit").click(function () {
-    var data = new FormData();
-    data.append("username",$("input[name='username']").val());
-    data.append("fileUpload",$("input[name='fileUpload']")[0].files[0]);
-    $.ajax({
-        type:"post",
-        url:"${pageContext.request.contextPath}/fileUpload.action",
-        contentType:false,
-        processData:false,
-        enctype:"multipart/form-data",
-        data:data,
-        dataType:"json",
-        success:function (message) {
-            alert(message.messageStr)
-        }
-    })
-})
-~~~
-
-处理器：
-
-~~~java
-// 文件上传处理器
-@RequestMapping("/fileUpload.action")
-@ResponseBody
-public Message fileUpload(HttpServletRequest request, String username, MultipartFile fileUpload, Message message) throws IOException {
-    System.out.println(username);
-    String oldFileName = fileUpload.getOriginalFilename();
-    String fileType = oldFileName.substring(oldFileName.lastIndexOf("."));
-    String fileName = UUID.randomUUID().toString().replace("-","") +fileType;
-    String path = request.getServletContext().getRealPath("/file");
-    fileUpload.transferTo(new File(path + "/" + fileName));
-    message.setMessageStr("上传成功");
-    return message;
-}
-~~~
-
-**注意：**用上下文获取真实路径时，需要更改项目的output directory到webapp下；
-
-或者配置虚拟路径
 
 ### 文件下载
 
@@ -1697,51 +1876,6 @@ public class DownController {
         headers.setContentDispositionFormData("attachment",new String("测试下载.png".getBytes("GBK"),"ISO-8859-1"));
         byte[] bytes = FileUtils.readFileToByteArray(file);
         return new ResponseEntity<byte[]>(bytes, headers, HttpStatus.OK);
-    }
-}
-~~~
-
-
-
-## 拦截器
-
-SpringMVC提供了类似Servlet的过滤器的拦截器，拦截器的作用时间在处理器适配器执行处理器之前
-
-配置拦截器：
-
-~~~xml
-<!-- 拦截器配置 -->
-<mvc:interceptors>
-    <!-- 多个拦截器将顺序执行 -->
-    <mvc:interceptor>
-        <mvc:mapping path="/**"/> <!-- 拦截路径  **代表着多层路径 -->
-        <!--<mvc:exclude-mapping path="/login"/>--><!-- 不拦截路径 -->
-        <bean class="com.bjpn.inter.LoginInter"></bean>
-    </mvc:interceptor>
-</mvc:interceptors>
-~~~
-
-拦截器：
-
-~~~java
-public class LoginInter implements HandlerInterceptor {
-    //访问前连接拦截  请求到达拦截器  判断请求是否合理  放行 true   不放行是false
-    @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        System.out.println("这是访问前 ");
-        StringBuffer path = request.getRequestURL();
-        System.out.println("path:"+path);
-        return false;
-    }
-    //访问后拦截
-    @Override
-    public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) throws Exception {
-        //处理器处理完毕  要返回值到前端控制器    可以进行拦截  还可以查看携带的值
-    }
-   //消亡
-    @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
-
     }
 }
 ~~~
