@@ -1433,7 +1433,99 @@ public String accept(Model model){
 }
 ~~~
 
+#### HttpEntity
+
+与`@RequestBody`作用类似，解析请求域中键值对，将其序列化为指定的实体类:
+
+~~~java
+@PostMapping("demo7")
+public void handle(HttpEntity<User> httpEntity){
+    System.out.println(httpEntity.getBody());
+}
+~~~
+
 ### 注解绑定参数
+
+
+
+#### `@RequestParam`
+
+用该注解标注以绑定Servlet的request域中的参数(请求参数或者form表单中的参数)
+
+对于post请求，适用于请求体格式为`application/x-www-form-urlencoded`或者`multipart/form-data`的
+
+~~~java
+@RequestMapping("/accept")
+@ResponseBody
+public String accept(@RequestParam("time") String date){
+    // ...
+}
+~~~
+
+* 如果启用了`MultipartResolver`，它会将格式为`multipart/form-data`的请求体解析为普通的请求参数
+
+  这样`@RequestParam`就可以标注`MultipartFile`类型的参数以接收上传的文件:
+
+  ~~~java
+  @PostMapping("/form")
+  public String handleFormUpload(@RequestParam("file") MultipartFile file) {
+  	// ...
+  }
+  ~~~
+
+  也可以将参数声明为`List<MultipartFile>`以接受同一参数名的多个文件
+
+* 如果该注解指定的参数为` Map<String, String> `或者` MultiValueMap<String, String> `,并且注解没有指定参数名，那么参数将接受所有的request域中的键值对:
+
+  ~~~java
+  @PostMapping("/demo")
+  public void handle(@RequestParam Map<String,String> requestParams){
+      for (Map.Entry<String,String> entry:requestParams.entrySet()){
+          System.out.println(entry.getKey()+"---"+entry.getValue());
+      }
+  }
+  ~~~
+
+* 如果标注的参数类型不是String，而是其他普通类型，SpringMVC将自动尝试使用类型转换
+
+**注意：**使用`@RequestParam`注解是可选的，对于MethodHandler对应方法的参数，如果没有其他参数注解标注，并且不会别其他参数解析器解析，那么默认将采用`@RequestParam`声明的绑定方式，从ServletRequest域中尝试绑定对应参数名的键
+
+#### `@RequestBody`
+
+使用`HttpMessageConverter`将Request域序列化为标注的参数类型:
+
+适用于请求体格式为 application/json的请求
+
+~~~java
+@PostMapping("demo")
+public void handle(@RequestBody User user){
+    System.out.println(user);
+}
+~~~
+
+其中User类定义如下:
+
+~~~java
+@Data
+public class User {
+    private String username;
+    private String password;
+}
+~~~
+
+**注意:**作为`@RequestBody`标注的方法类型对象，必须有无参构造，而且对象内想要被映射的参数必须实现对应的set方法，否则无法映射
+
+#### `@RequestPart`
+
+和`@RequsetBody`作用类似，但适用范围更大:
+
+适用于请求体格式为`form-data`的复杂格式的请求，可以同时接收对象和二进制文件:
+
+~~~java
+
+~~~
+
+
 
 #### `@PathVariable`
 
@@ -1446,53 +1538,14 @@ public Pet findPet(@PathVariable Long ownerId, @PathVariable Long petId) {
 }
 ~~~
 
-#### `@RequestParam`
-
-用该注解标注以绑定Servlet的request域中的参数(请求参数或者form表单中的参数)
+如果标注的参数类型是` Map<String, String> `，则将填充所有的路径变量到该Map中
 
 ~~~java
-@RequestMapping("/accept")
-@ResponseBody
-public String accept(@RequestParam("time") String date){
+@GetMapping("/demo/{version}/{id}")
+public void handle(@PathVariable Map<String,String> maps){
     // ...
 }
 ~~~
-
-如果启用了`MultipartResolver`，它会将格式为`multipart/form-data`的请求体解析为普通的请求参数
-
-这样`@RequestParam`就可以标注`MultipartFile`类型的参数以接收上传的文件:
-
-~~~java
-@PostMapping("/form")
-public String handleFormUpload(@RequestParam("file") MultipartFile file) {
-	// ...
-}
-~~~
-
-也可以将参数声明为`List<MultipartFile>`以接受同一参数名的多个文件
-
-
-
-如果该注解指定的参数为` Map<String, String> `或者` MultiValueMap<String, String> `,并且注解没有指定参数名，那么参数将接受所有的request域中的键值对:
-
-~~~java
-@PostMapping("/demo")
-public void handle(@RequestParam Map<String,String> requestParams){
-    for (Map.Entry<String,String> entry:requestParams.entrySet()){
-        System.out.println(entry.getKey()+"---"+entry.getValue());
-    }
-}
-~~~
-
-==todo==
-
-
-
-
-
-
-
-
 
 #### `@RequestHeader`
 
@@ -1539,10 +1592,6 @@ public void handle(@CookieValue("JSESSIONID") Cookie cookie) {
     //...
 }
 ~~~
-
-
-
-#### ``
 
 
 
