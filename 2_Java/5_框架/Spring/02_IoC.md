@@ -1588,6 +1588,10 @@ ApplicationContext container = new FileSystemXmlApplicationContext("conf/**/*.sp
 
 # 基于注解的IOC
 
+==TODO==
+
+
+
 ## 注解扫描
 
 `<context:component-scan>`标签可以配置注解扫描，spring会扫描该标签指定的包下的所有类，并将被注解标记为bean 的对象交给spring容器管理
@@ -1603,7 +1607,7 @@ ApplicationContext container = new FileSystemXmlApplicationContext("conf/**/*.sp
 <context:component-scan base-package="com.bjpn"/>
 ~~~
 
-## 注解
+## 注解类
 
 实体类注解：
 
@@ -1622,6 +1626,10 @@ ApplicationContext container = new FileSystemXmlApplicationContext("conf/**/*.sp
 除了spring提供的`@Autowired`注解，javax包还提供了`@Resource`同样可以实现依赖注入
 
 但不同的是：@Resource默认按照ByName自动注入  
+
+### 注解配置
+
+==TODO==
 
 # 其他
 

@@ -1225,11 +1225,9 @@ LocaleResolver的继承体系如下:
 
 这样设置后，可以在请求的时候加入类似参数`lang=zh_CN`来指定国际化语言
 
-# 基于注解的SpringMVC
 
-SpringMVC提供完整的注解开发支持
 
-## 基于注解的Controller
+# 基于注解的Controller:MethodHandler
 
 在之前对SpringMVC组件的讨论中，Handler处理器可以是任何形式的，只要为自定义的Handler配置对应的HandlerMapping和HandlerAdapter，就能够将其集成到SpringMVC的工作流程中。
 
@@ -1262,7 +1260,7 @@ public class AnnotatedController {
 
 这样，一个`@Controller`方法标注的类中的每个`@RequestMapping`标注的方法都对应一个handler，叫做方法处理器(MethodHandler)
 
-### `@Controller`
+## `@Controller`
 
 想要让一个普通的pojo类成为SpringMVC框架下的handler处理器，必须使用`@Controller`注解标注该类
 
@@ -1286,7 +1284,7 @@ public @interface Controller {
 
 除此之外，`RequestMappingHandlerMapping`在收到Web请求时，匹配的就是所有容器中被`@Controller`标注的对象
 
-### `@RequsetMapping`
+## `@RequsetMapping`
 
 只拥有一个`@Controller`注解，不能让`RequestMappingHandlerMapping`知道应该将Web请求映射到哪个Controller上，需要`@RequsetMapping`提供必要的映射信息。
 
@@ -1351,6 +1349,7 @@ public @interface RequestMapping {
   * 值可以为MediaType中指定的值
   * 支持使用`!`表示不匹配指定的`Content-Type`值
 * `produces`：指定匹配映射HTTP请求的`Accept`值
+  
   * 值可以为MediaType中指定的值
   * 支持使用`!`表示不匹配指定的`Accept`值
 
@@ -1364,11 +1363,200 @@ public @interface RequestMapping {
 
 他们与`@RequsetMapping`不同之处只在`method`值已经预先固定
 
+## MethedHandler入参
+
+在定义MethodHandler方法时，我们可以定义入参，以在方法内部访问请求的各种信息，入参可以分为两种:
+
+* 有些固定的类型可以直接定义到入参，RequestMappingHandlerAdapter检测到这些类型会自动为这些入参赋值，如ServletRequest或者HttpSession等
+
+* 有些需要需要使用SpringMVC提供的注解标注，告诉RequestMappingHandlerAdapter这些入参需要赋什么值
+
+  如用`@RequestParam`标注表示该参数是request域中的属性
+
+### 直接定义参数类型
+
+我们可以在MethodHandler方法中直接定义下面:
+
+#### WebRequest
+
+`WebRequest`、`NativeWebRequest`:SpringMVC提供的对request参数、request、session属性的通用访问，是对ServletAPI的封装
+
+示例：
+
+~~~java
+@RequestMapping("accept")
+public void accept(WebRequest request){
+	......
+}
+~~~
+
+#### ServletRequest&ServletResponse
+
+`ServletRequest`、`ServletResponse`:ServletAPI，也可以使用具体的实现如:`HttpServletRequest `, `MultipartRequest`, `MultipartHttpServletRequest`等
+
+示例：
+
+~~~java
+@RequestMapping("accept")
+public void accept(HttpServletRequest request, HttpServletResponse response){
+    // ...
+}
+~~~
+
+#### ServletRequestAPI获取的对象
+
+可以直接指定下面类型的对象，RequestMappingHandlerAdapter会从requestAPI获取对应的对象:
+
+`HttpSession`、`PushBuilder`、`Principal`、`HttpMethod`、`Locale`、`TimeZone`等
+
+~~~java
+@RequestMapping("accept")
+public void accept(HttpSession session,HttpMethod method){
+	// ...
+}
+~~~
+
+**注意:**对于`HttpSession`，该对象不是线程安全的，如果有多个MethodHandler使用同一个`HttpSession`对象的情况，需要将`RequestMappingHandlerAdapter`实例的`synchronizeOnSession`设置为true
+
+#### Model
+
+可以指定下面对象:
+
+* java.util.Map
+* org.springframework.ui.Model
+* org.springframework.ui.ModelMap
+
+~~~java
+@RequestMapping("/accept")
+public String accept(Model model){
+	// ...
+}
+~~~
+
+### 注解绑定参数
+
+#### `@PathVariable`
+
+用以访问URI的模板变量
+
+~~~java
+@GetMapping("/owners/{ownerId}/pets/{petId}")
+public Pet findPet(@PathVariable Long ownerId, @PathVariable Long petId) {
+    // ...
+}
+~~~
+
+#### `@RequestParam`
+
+用该注解标注以绑定Servlet的request域中的参数(请求参数或者form表单中的参数)
+
+~~~java
+@RequestMapping("/accept")
+@ResponseBody
+public String accept(@RequestParam("time") String date){
+    // ...
+}
+~~~
+
+如果启用了`MultipartResolver`，它会将格式为`multipart/form-data`的请求体解析为普通的请求参数
+
+这样`@RequestParam`就可以标注`MultipartFile`类型的参数以接收上传的文件:
+
+~~~java
+@PostMapping("/form")
+public String handleFormUpload(@RequestParam("file") MultipartFile file) {
+	// ...
+}
+~~~
+
+也可以将参数声明为`List<MultipartFile>`以接受同一参数名的多个文件
+
+
+
+如果该注解指定的参数为` Map<String, String> `或者` MultiValueMap<String, String> `,并且注解没有指定参数名，那么参数将接受所有的request域中的键值对:
+
+~~~java
+@PostMapping("/demo")
+public void handle(@RequestParam Map<String,String> requestParams){
+    for (Map.Entry<String,String> entry:requestParams.entrySet()){
+        System.out.println(entry.getKey()+"---"+entry.getValue());
+    }
+}
+~~~
+
+==todo==
 
 
 
 
 
+
+
+
+
+#### `@RequestHeader`
+
+用以访问HTTP请求的请求首部
+
+~~~java
+@GetMapping("/demo")
+public void handle(
+        @RequestHeader("Accept-Encoding") String encoding, 
+        @RequestHeader("Keep-Alive") long keepAlive) { 
+    //...
+}
+~~~
+
+除了直接指定请求首部的值，还可以绑定如下类型参数以访问所有的请求首部参数:
+
+ `Map<String, String>`、`MultiValueMap<String, String>`、 `HttpHeaders`,如:
+
+~~~java
+@GetMapping("/demo")
+public void handle(@RequestHeader HttpHeaders headers){
+    for (Map.Entry<String, List<String>> entry :headers.entrySet()){
+        System.out.println(entry.getKey()+"---"+entry.getValue());
+    }
+}
+~~~
+
+#### `@CookieValue`
+
+用以访问HTTP请求的Cookie
+
+~~~java
+@GetMapping("/demo")
+public void handle(@CookieValue("JSESSIONID") String cookie) { 
+    //...
+}
+~~~
+
+也可以直接绑定`Cookie`类型的参数:
+
+~~~java
+@GetMapping("/demo")
+public void handle(@CookieValue("JSESSIONID") Cookie cookie) { 
+    //...
+}
+~~~
+
+
+
+#### ``
+
+
+
+
+
+
+
+
+
+
+
+
+
+## MethedHandler返回值
 
 
 
