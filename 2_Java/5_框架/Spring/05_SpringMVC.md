@@ -1227,7 +1227,7 @@ LocaleResolver的继承体系如下:
 
 
 
-# 基于注解的Controller:MethodHandler
+# 基于注解的Controller
 
 在之前对SpringMVC组件的讨论中，Handler处理器可以是任何形式的，只要为自定义的Handler配置对应的HandlerMapping和HandlerAdapter，就能够将其集成到SpringMVC的工作流程中。
 
@@ -1260,7 +1260,11 @@ public class AnnotatedController {
 
 这样，一个`@Controller`方法标注的类中的每个`@RequestMapping`标注的方法都对应一个handler，叫做方法处理器(MethodHandler)
 
-## `@Controller`
+## 基本MethodHandler
+
+我们可以使用`@Controller`和`@RequestMapping`注解标注一个基本的方法处理器
+
+### `@Controller`
 
 想要让一个普通的pojo类成为SpringMVC框架下的handler处理器，必须使用`@Controller`注解标注该类
 
@@ -1284,7 +1288,7 @@ public @interface Controller {
 
 除此之外，`RequestMappingHandlerMapping`在收到Web请求时，匹配的就是所有容器中被`@Controller`标注的对象
 
-## `@RequsetMapping`
+### `@RequsetMapping`
 
 只拥有一个`@Controller`注解，不能让`RequestMappingHandlerMapping`知道应该将Web请求映射到哪个Controller上，需要`@RequsetMapping`提供必要的映射信息。
 
@@ -1363,142 +1367,138 @@ public @interface RequestMapping {
 
 他们与`@RequsetMapping`不同之处只在`method`值已经预先固定
 
-## MethedHandler入参
+## MethodHandler方法参数
 
-在定义MethodHandler方法时，我们可以定义入参，以在方法内部访问请求的各种信息，入参可以分为两种:
+@RequestMapping标注的方法参数可以有很多选择，
 
-* 有些固定的类型可以直接定义到入参，RequestMappingHandlerAdapter检测到这些类型会自动为这些入参赋值，如ServletRequest或者HttpSession等
+* 可以使用特定类型的参数，RequestMappingHandlerAdapter会对特定的参数类型进行赋值或者其他操作，
+* 可以使用注解标注参数，指示通知RequestMappingHandlerAdapter对该参数进行特定操作
 
-* 有些需要需要使用SpringMVC提供的注解标注，告诉RequestMappingHandlerAdapter这些入参需要赋什么值
+以供MethodHandler方法内部使
 
-  如用`@RequestParam`标注表示该参数是request域中的属性
-
-### 直接定义参数类型
-
-我们可以在MethodHandler方法中直接定义下面:
-
-#### WebRequest
-
-`WebRequest`、`NativeWebRequest`:SpringMVC提供的对request参数、request、session属性的通用访问，是对ServletAPI的封装
-
-示例：
-
-~~~java
-@RequestMapping("accept")
-public void accept(WebRequest request){
-	......
-}
-~~~
-
-#### ServletRequest&ServletResponse
-
-`ServletRequest`、`ServletResponse`:ServletAPI，也可以使用具体的实现如:`HttpServletRequest `, `MultipartRequest`, `MultipartHttpServletRequest`等
-
-示例：
-
-~~~java
-@RequestMapping("accept")
-public void accept(HttpServletRequest request, HttpServletResponse response){
-    // ...
-}
-~~~
-
-#### ServletRequestAPI获取的对象
-
-可以直接指定下面类型的对象，RequestMappingHandlerAdapter会从requestAPI获取对应的对象:
-
-`HttpSession`、`PushBuilder`、`Principal`、`HttpMethod`、`Locale`、`TimeZone`等
-
-~~~java
-@RequestMapping("accept")
-public void accept(HttpSession session,HttpMethod method){
-	// ...
-}
-~~~
-
-**注意:**对于`HttpSession`，该对象不是线程安全的，如果有多个MethodHandler使用同一个`HttpSession`对象的情况，需要将`RequestMappingHandlerAdapter`实例的`synchronizeOnSession`设置为true
-
-#### Model
-
-可以指定下面对象:
-
-* java.util.Map
-* org.springframework.ui.Model
-* org.springframework.ui.ModelMap
-
-~~~java
-@RequestMapping("/accept")
-public String accept(Model model){
-	// ...
-}
-~~~
-
-#### HttpEntity
-
-与`@RequestBody`作用类似，解析请求域中键值对，将其序列化为指定的实体类:
-
-~~~java
-@PostMapping("demo7")
-public void handle(HttpEntity<User> httpEntity){
-    System.out.println(httpEntity.getBody());
-}
-~~~
-
-### 注解绑定参数
+可以作为MethodHandler参数的类型和可以标注MethodHandler方法参数的注解如下表:
 
 
 
-#### `@RequestParam`
+| 注解或实体类                                                 | 说明                                                         |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `WebRequest`, `NativeWebRequest`                             | SpringMVC提供的对request参数、request、session属性的通用访问，是对ServletAPI的封装 |
+| `ServletRequest`, <br />`ServletResponse`                    | ServletAPI，也可以使用具体的实现如:`HttpServletRequest `, `MultipartRequest`, `MultipartHttpServletRequest`等 |
+| `HttpSession`、`PushBuilder`、`Principal`、`HttpMethod`、`Locale`、`TimeZone`、`ZoneId`、`InputStream`、`Reader`、`OutputStream`、`Writer` | RequestMappingHandlerAdapter会从requestAPI获取对应的对象     |
+| `@PathVariable`                                              | 用以访问URI的模板变量                                        |
+| `@RequestParam`                                              | 用该注解标注以绑定Servlet的request域中的参数(请求参数或者form表单中的参数) |
+| `@RequestHeader`                                             | 用以访问请求的请求首部信息                                   |
+| `@CookieValue`                                               | 用以访问请求的Cookie信息                                     |
+| `@RequestBody`                                               | 用以访问请求的请求体信息使用 `HttpMessageConverter` 实现     |
+| `HttpEntity<B>`                                              | 用以访问请求头和请求体                                       |
+| `@RequestPart`                                               | 用以访问格式为 `multipart/form-data`的请求的请求体的Part, 通过`HttpMessageConverter`来实现转化。 |
+| `Map`, `Model`, `ModelMap`                                   | 用以访问视图信息                                             |
+| `RedirectAttributes`                                         | Specify attributes to use in case of a redirect (that is, to be appended to the query string) and flash attributes to be stored temporarily until the request after redirect. See [Redirect Attributes](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-redirecting-passing-data) and [Flash Attributes](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-flash-attributes). |
+| `@ModelAttribute`                                            | 用以访问Model中存在的属性，如果不存在，则实例化并进行数据绑定 |
+| `Errors`, `BindingResult`                                    | For access to errors from validation and data binding for a command object (that is, a `@ModelAttribute` argument) or errors from the validation of a `@RequestBody` or `@RequestPart` arguments. You must declare an `Errors`, or `BindingResult` argument immediately after the validated method argument. |
+| `SessionStatus` + class-level `@SessionAttributes`           | For marking form processing complete, which triggers cleanup of session attributes declared through a class-level `@SessionAttributes` annotation. See [`@SessionAttributes`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-sessionattributes) for more details. |
+| `@SessionAttribute`                                          | For access to any session attribute, in contrast to model attributes stored in the session as a result of a class-level `@SessionAttributes` declaration. See [`@SessionAttribute`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-sessionattribute) for more details. |
+| `@RequestAttribute`                                          | For access to request attributes. See [`@RequestAttribute`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-requestattrib) for more details. |
+| 其他参数                                                     | If a method argument is not matched to any of the earlier values in this table and it is a simple type (as determined by [BeanUtils#isSimpleProperty](https://docs.spring.io/spring-framework/docs/6.0.7/javadoc-api/org/springframework/beans/BeanUtils.html#isSimpleProperty-java.lang.Class-)), it is resolved as a `@RequestParam`. Otherwise, it is resolved as a `@ModelAttribute`. |
+
+
+
+## MethodHandler方法返回值
+
+
+
+
+
+
+
+
+
+##  MethodHandler可用注解
+
+
+
+### `@RequestParam`
 
 用该注解标注以绑定Servlet的request域中的参数(请求参数或者form表单中的参数)
 
-对于post请求，适用于请求体格式为`application/x-www-form-urlencoded`或者`multipart/form-data`的
+如果取的是post请求的请求体参数，要求请求体的格式为`application/x-www-form-urlencoded`或者`multipart/form-data`
 
 ~~~java
-@RequestMapping("/accept")
-@ResponseBody
-public String accept(@RequestParam("time") String date){
+@RequestMapping("/requestParam/demo?param=test")
+public void requestParam(@RequestParam("param") String param){
     // ...
 }
 ~~~
+
+* 可以标注在类型为Array或者List的参数上，以解析同一参数名称的多个参数值。
+
+  ~~~java
+  // url: /requestParam/demo1?list=1,2,3,4,5
+  @RequestMapping("/requestParam/demo1")
+  public void requestParam(@RequestParam("list") List<String> strings){
+      System.out.println(strings.size());
+  }
+  ~~~
+  
+* 如果标注的参数类型不是String，而是其他简单类型(由BeanUtils#isSimpleProperty定义)，SpringMVC将自动尝试使用类型转换
+
+  * 简单类型包括：基本数据类型及其包装类、Enum、CharSequence、Number、Date、Temporal、URI、URL、Locale、Class
+
+  ~~~java
+  @RequestMapping("/demo")
+  public void handle(@RequestParam("date") @DateTimeFormat(pattern="yyyy-MM-dd") Date date){
+      System.out.println(date);
+  }
+  ~~~
 
 * 如果启用了`MultipartResolver`，它会将格式为`multipart/form-data`的请求体解析为普通的请求参数
 
   这样`@RequestParam`就可以标注`MultipartFile`类型的参数以接收上传的文件:
 
   ~~~java
-  @PostMapping("/form")
-  public String handleFormUpload(@RequestParam("file") MultipartFile file) {
-  	// ...
+  @PostMapping("/requestParam/demo2")
+  public void requestParam(@RequestParam("file")MultipartFile file,
+                           @RequestParam("username") String username){
+      System.out.println(file.getSize());
+      System.out.println(username);
   }
   ~~~
 
-  也可以将参数声明为`List<MultipartFile>`以接受同一参数名的多个文件
+  也可以将参数声明为`List<MultipartFile>`以接受同一参数名的多个文件值
+
+  ~~~java
+  @PostMapping("/requestParam/demo3")
+  public void requestParams(@RequestParam("file") List<MultipartFile> files){
+      for (MultipartFile file :files){
+          System.out.println(file.getSize());
+      }
+  }
+  ~~~
 
 * 如果该注解指定的参数为` Map<String, String> `或者` MultiValueMap<String, String> `,并且注解没有指定参数名，那么参数将接受所有的request域中的键值对:
 
   ~~~java
-  @PostMapping("/demo")
-  public void handle(@RequestParam Map<String,String> requestParams){
-      for (Map.Entry<String,String> entry:requestParams.entrySet()){
+  @PostMapping("/requestParam/demo4")
+  public void requestParams(@RequestParam Map<String,String> maps){
+      for (Map.Entry<String,String> entry:maps.entrySet()){
           System.out.println(entry.getKey()+"---"+entry.getValue());
       }
   }
   ~~~
 
-* 如果标注的参数类型不是String，而是其他普通类型，SpringMVC将自动尝试使用类型转换
+**注意：**使用`@RequestParam`注解是可选的，对于任何简单类型的参数，如果没有任何相关的注解，那么默认将采用`@RequestParam`声明的绑定方式，从ServletRequest域中尝试绑定对应参数名的键
 
-**注意：**使用`@RequestParam`注解是可选的，对于MethodHandler对应方法的参数，如果没有其他参数注解标注，并且不会别其他参数解析器解析，那么默认将采用`@RequestParam`声明的绑定方式，从ServletRequest域中尝试绑定对应参数名的键
+### `@RequestBody`
 
-#### `@RequestBody`
+使用`HttpMessageConverter`将请求参数序列化为标注的参数类型:
 
-使用`HttpMessageConverter`将Request域序列化为标注的参数类型:
+将参数类型进行实例化，并用set方法进行参数绑定
 
-适用于请求体格式为 application/json的请求
+仅仅适用于请求体格式为 application/json的请求
 
 ~~~java
-@PostMapping("demo")
-public void handle(@RequestBody User user){
+@PostMapping( "/requestBody/demo0")
+public void requestBody(@RequestBody User user){
     System.out.println(user);
 }
 ~~~
@@ -1515,19 +1515,26 @@ public class User {
 
 **注意:**作为`@RequestBody`标注的方法类型对象，必须有无参构造，而且对象内想要被映射的参数必须实现对应的set方法，否则无法映射
 
-#### `@RequestPart`
+### `@RequestPart`
 
-和`@RequsetBody`作用类似，但适用范围更大:
-
-适用于请求体格式为`form-data`的复杂格式的请求，可以同时接收对象和二进制文件:
+适用于请求体格式为`multipart/form-data`的复杂请求，可以同时解析对象和二进制文件:
 
 ~~~java
-
+@PostMapping("/requestPart/demo0")
+public void requestPart(@RequestPart("user") User user,
+                        @RequestPart("file") MultipartFile file){
+    System.out.println(user);
+    System.out.println(file.getSize());
+}
 ~~~
 
+**注意:**`@RequestParam`也同样支持`multipart/form-data`的请求，它们之间的区别是:
 
+`@RequestParam`使用Converter进行类型转换，只能转换简单类型
 
-#### `@PathVariable`
+@RequestPart使用HttpMessageConverters 进行类型转换，支持转换复杂的参数类型
+
+### `@PathVariable`
 
 用以访问URI的模板变量
 
@@ -1547,7 +1554,7 @@ public void handle(@PathVariable Map<String,String> maps){
 }
 ~~~
 
-#### `@RequestHeader`
+### `@RequestHeader`
 
 用以访问HTTP请求的请求首部
 
@@ -1573,7 +1580,7 @@ public void handle(@RequestHeader HttpHeaders headers){
 }
 ~~~
 
-#### `@CookieValue`
+### `@CookieValue`
 
 用以访问HTTP请求的Cookie
 
@@ -1593,6 +1600,115 @@ public void handle(@CookieValue("JSESSIONID") Cookie cookie) {
 }
 ~~~
 
+### `@ModelAttribute`
+
+`@ModelAttribute`可以注释在方法参数和方法体上
+
+#### 注释在方法参数上
+
+可以直接指示
+
+
+
+
+
+`ModelAttribute`标注在方法入参时
+
+* 先从Model中获取指定的参数类型
+
+* 如果获取不到，将先实例化参数类型，然后 从ServletRequest域中获取对应的字段，绑定到参数实例中
+
+  这被称为参数绑定
+
+* 最后将绑定后的参数实例也添加到Model中暴露给视图
+
+~~~java
+@PostMapping("/modelAttribute/demo")
+public void modelAttribute(@ModelAttribute("user") User user, Model model){
+    System.out.println(user);
+    User u =(User) model.getAttribute("user");
+    System.out.println(u);
+}
+~~~
+
+#### 注释在方法体上
+
+
+
+
+
+
+
+## MethodHandler可用实体类
+
+我们可以在MethodHandler方法中直接定义下面:
+
+### WebRequest
+
+`WebRequest`、`NativeWebRequest`:SpringMVC提供的对request参数、request、session属性的通用访问，是对ServletAPI的封装
+
+示例：
+
+~~~java
+@RequestMapping("accept")
+public void accept(WebRequest request){
+	......
+}
+~~~
+
+### ServletRequest&ServletResponse
+
+`ServletRequest`、`ServletResponse`:ServletAPI，也可以使用具体的实现如:`HttpServletRequest `, `MultipartRequest`, `MultipartHttpServletRequest`等
+
+示例：
+
+~~~java
+@RequestMapping("accept")
+public void accept(HttpServletRequest request, HttpServletResponse response){
+    // ...
+}
+~~~
+
+### ServletRequestAPI获取的对象
+
+可以直接指定下面类型的对象，RequestMappingHandlerAdapter会从requestAPI获取对应的对象:
+
+`HttpSession`、`PushBuilder`、`Principal`、`HttpMethod`、`Locale`、`TimeZone`等
+
+~~~java
+@RequestMapping("accept")
+public void accept(HttpSession session,HttpMethod method){
+	// ...
+}
+~~~
+
+**注意:**对于`HttpSession`，该对象不是线程安全的，如果有多个MethodHandler使用同一个`HttpSession`对象的情况，需要将`RequestMappingHandlerAdapter`实例的`synchronizeOnSession`设置为true
+
+### Model
+
+可以指定下面对象:
+
+* java.util.Map
+* org.springframework.ui.Model
+* org.springframework.ui.ModelMap
+
+~~~java
+@RequestMapping("/accept")
+public String accept(Model model){
+	// ...
+}
+~~~
+
+### HttpEntity
+
+与`@RequestBody`作用类似，解析请求域中键值对，将其序列化为指定的实体类:
+
+~~~java
+@PostMapping("demo7")
+public void handle(HttpEntity<User> httpEntity){
+    System.out.println(httpEntity.getBody());
+}
+~~~
 
 
 
@@ -1603,9 +1719,6 @@ public void handle(@CookieValue("JSESSIONID") Cookie cookie) {
 
 
 
-
-
-## MethedHandler返回值
 
 
 
