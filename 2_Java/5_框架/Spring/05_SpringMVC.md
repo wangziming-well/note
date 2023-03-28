@@ -1606,34 +1606,69 @@ public void handle(@CookieValue("JSESSIONID") Cookie cookie) {
 
 #### 注释在方法参数上
 
-可以直接指示
+`ModelAttribute`标注在方法入参时:
 
+可以解析`form-data`或者`x-www-form-urlencoded`格式的请求体中参数
 
+可以从model中访问或者创建一个对象，然后通过`WebDataBinder`将该对象和请求参数进行绑定
 
+* 先从Model中获取指定的参数类型，由注解的value/name值指定绑定的model属性名，默认由参数类型获取:
+  * 如User类默认绑定的属性名是user
 
+  * 如`List<User>`类默认绑定的属性名是userList
 
-`ModelAttribute`标注在方法入参时
+* 如果获取不到，则实例化参数类型
 
-* 先从Model中获取指定的参数类型
+* 从ServletRequest域中获取对应的字段，绑定到参数实例中。这被称为参数绑定。
 
-* 如果获取不到，将先实例化参数类型，然后 从ServletRequest域中获取对应的字段，绑定到参数实例中
-
-  这被称为参数绑定
-
-* 最后将绑定后的参数实例也添加到Model中暴露给视图
+* 最后将参数绑定后的参数实例也添加到Model中暴露给视图
 
 ~~~java
 @PostMapping("/modelAttribute/demo")
-public void modelAttribute(@ModelAttribute("user") User user, Model model){
+public void modelAttribute(@ModelAttribute User user, Model model){
     System.out.println(user);
     User u =(User) model.getAttribute("user");
     System.out.println(u);
 }
 ~~~
 
+在实例化参数类型后，会应用参数绑定，将ServletRequest参数名匹配到目标参数类型的字段名
+
+参数绑定可能会出现异常，为了在方法内部处理异常，可以同时定义`BindingResult`类型的参数，在方法内部访问绑定结果:
+
+~~~java
+@PostMapping("/modelAttribute/demo1")
+public void modelAttribute(@ModelAttribute User user, BindingResult bindingResult){
+    System.out.println(user);
+    System.out.println(bindingResult.hasErrors());
+}
+~~~
+
+如果只想要访问Model中的属性，而不想进行参数绑定，可以指定`@ModelAttribute`注解的属性`binding=false`。
+
+~~~java
+@PostMapping("/modelAttribute/demo2")
+public void modelAttribute(@ModelAttribute(binding = false) User user){
+    System.out.println(user);
+}
+@ModelAttribute
+public User setModel(){
+    User user = new User();
+    user.setUsername("test");
+    user.setPassword("test");
+    return user;
+}
+
+~~~
+
+**注意:**使用`@ModelAttribute`是可选的，默认请求下，任何不是简单类型( 由BeanUtils#isSimpleProperty定义)的参数，并且该参数没有被其他参数处理器处理过，那么该参数就会被视为被`@ModelAttribute`注解标注了。
+
 #### 注释在方法体上
 
+作为方法级别的`@RequestMapping`分两种情形：
 
+* 单独标注`@Controller`类中的方法，为该类中其他所有`@RequestMapping`方法初始化model
+* 与`@RequestMapping`组合，标记该方法的返回值是一个model属性
 
 
 
