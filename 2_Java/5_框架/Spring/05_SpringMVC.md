@@ -1380,7 +1380,7 @@ public @interface RequestMapping {
 
 
 
-| 注解或实体类                                                 | 说明                                                         |
+| 方法参数                                                     | 说明                                                         |
 | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | `WebRequest`, `NativeWebRequest`                             | SpringMVC提供的对request参数、request、session属性的通用访问，是对ServletAPI的封装 |
 | `ServletRequest`, <br />`ServletResponse`                    | ServletAPI，也可以使用具体的实现如:`HttpServletRequest `, `MultipartRequest`, `MultipartHttpServletRequest`等 |
@@ -1395,19 +1395,43 @@ public @interface RequestMapping {
 | `Map`, `Model`, `ModelMap`                                   | 用以访问视图信息                                             |
 | `RedirectAttributes`                                         | Specify attributes to use in case of a redirect (that is, to be appended to the query string) and flash attributes to be stored temporarily until the request after redirect. See [Redirect Attributes](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-redirecting-passing-data) and [Flash Attributes](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-flash-attributes). |
 | `@ModelAttribute`                                            | 用以访问Model中存在的属性，如果不存在，则实例化并进行数据绑定 |
-| `Errors`, `BindingResult`                                    | For access to errors from validation and data binding for a command object (that is, a `@ModelAttribute` argument) or errors from the validation of a `@RequestBody` or `@RequestPart` arguments. You must declare an `Errors`, or `BindingResult` argument immediately after the validated method argument. |
-| `SessionStatus` + class-level `@SessionAttributes`           | For marking form processing complete, which triggers cleanup of session attributes declared through a class-level `@SessionAttributes` annotation. See [`@SessionAttributes`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-sessionattributes) for more details. |
-| `@SessionAttribute`                                          | For access to any session attribute, in contrast to model attributes stored in the session as a result of a class-level `@SessionAttributes` declaration. See [`@SessionAttribute`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-sessionattribute) for more details. |
-| `@RequestAttribute`                                          | For access to request attributes. See [`@RequestAttribute`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-requestattrib) for more details. |
-| 其他参数                                                     | If a method argument is not matched to any of the earlier values in this table and it is a simple type (as determined by [BeanUtils#isSimpleProperty](https://docs.spring.io/spring-framework/docs/6.0.7/javadoc-api/org/springframework/beans/BeanUtils.html#isSimpleProperty-java.lang.Class-)), it is resolved as a `@RequestParam`. Otherwise, it is resolved as a `@ModelAttribute`. |
+| `Errors`, `BindingResult`                                    | 访问`@ModelAtrribute`的数据绑定和校验的错误信息；或者`@RequestBody`和`@RequestPart`参数的检验的错误信息，在使用`@Valide`校验参数后必须声明`Errors`、`BindingResult` |
+| `SessionStatus` + class-level `@SessionAttributes`           | 在`@Controller`类上标记了`@SessionAttributes`后，可以在方法级别的参数上声明`SessionStatus`用以清空`@SessionAttributes`声明的attributes |
+| `@SessionAttribute`                                          | 绑定session属性到方法参数上                                  |
+| `@RequestAttribute`                                          | 绑定request属性到方法参数上                                  |
+| 其他参数                                                     | 如果一个方法参数于表中以上参数都不匹配，并且它是一个简单类型(由BeanUtils#isSimpleProperty定义)，那么这个参数将被视为一个`@RequestParam`参数，否则他将被是为一个`@ModelAttribute`参数 |
 
 
 
 ## MethodHandler方法返回值
 
+@RequestMapping标注的方法返回值同样有以下两种：
 
+* 可以使用特定类型的参数
+* 可以使用注解标注参数，指示通知RequestMappingHandlerAdapter对该参数进行特定操作
 
+以帮助`RequestMappingHandlerAdapter`完成最终的ModelAndView
 
+| 方法返回值                                                   | 说明                                                         |
+| :----------------------------------------------------------- | :----------------------------------------------------------- |
+| `@ResponseBody`                                              | The return value is converted through `HttpMessageConverter` implementations and written to the response. See [`@ResponseBody`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-responsebody). |
+| `HttpEntity<B>`, `ResponseEntity<B>`                         | The return value that specifies the full response (including HTTP headers and body) is to be converted through `HttpMessageConverter` implementations and written to the response. See [ResponseEntity](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-responseentity). |
+| `HttpHeaders`                                                | For returning a response with headers and no body.           |
+| `ErrorResponse`                                              | To render an RFC 7807 error response with details in the body, see [Error Responses](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-rest-exceptions) |
+| `ProblemDetail`                                              | To render an RFC 7807 error response with details in the body, see [Error Responses](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-rest-exceptions) |
+| `String`                                                     | A view name to be resolved with `ViewResolver` implementations and used together with the implicit model — determined through command objects and `@ModelAttribute` methods. The handler method can also programmatically enrich the model by declaring a `Model` argument (see [Explicit Registrations](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-requestmapping-registration)). |
+| `View`                                                       | A `View` instance to use for rendering together with the implicit model — determined through command objects and `@ModelAttribute` methods. The handler method can also programmatically enrich the model by declaring a `Model` argument (see [Explicit Registrations](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-requestmapping-registration)). |
+| `Map`, `Model`                                               | Attributes to be added to the implicit model, with the view name implicitly determined through a `RequestToViewNameTranslator`. |
+| `@ModelAttribute`                                            | 表示返回值将被添加到model中，因为没有指定view或者view的逻辑视图名，将使用`RequestToViewNameTranslator` 来隐式返回视图名 |
+| `ModelAndView`                                               | The view and model attributes to use and, optionally, a response status. |
+| `void`                                                       | A method with a `void` return type (or `null` return value) is considered to have fully handled the response if it also has a `ServletResponse`, an `OutputStream` argument, or an `@ResponseStatus` annotation. The same is also true if the controller has made a positive `ETag` or `lastModified` timestamp check (see [Controllers](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-caching-etag-lastmodified) for details).If none of the above is true, a `void` return type can also indicate “no response body” for REST controllers or a default view name selection for HTML controllers. |
+| `DeferredResult<V>`                                          | Produce any of the preceding return values asynchronously from any thread — for example, as a result of some event or callback. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [`DeferredResult`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-deferredresult). |
+| `Callable<V>`                                                | Produce any of the above return values asynchronously in a Spring MVC-managed thread. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [`Callable`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-callable). |
+| `ListenableFuture<V>`, `java.util.concurrent.CompletionStage<V>`, `java.util.concurrent.CompletableFuture<V>` | Alternative to `DeferredResult`, as a convenience (for example, when an underlying service returns one of those). |
+| `ResponseBodyEmitter`, `SseEmitter`                          | Emit a stream of objects asynchronously to be written to the response with `HttpMessageConverter` implementations. Also supported as the body of a `ResponseEntity`. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [HTTP Streaming](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-http-streaming). |
+| `StreamingResponseBody`                                      | Write to the response `OutputStream` asynchronously. Also supported as the body of a `ResponseEntity`. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [HTTP Streaming](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-http-streaming). |
+| Reactor and other reactive types registered via `ReactiveAdapterRegistry` | A single value type, e.g. `Mono`, is comparable to returning `DeferredResult`. A multi-value type, e.g. `Flux`, may be treated as a stream depending on the requested media type, e.g. "text/event-stream", "application/json+stream", or otherwise is collected to a List and rendered as a single value. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [Reactive Types](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-reactive-types). |
+| Other return values                                          | If a return value remains unresolved in any other way, it is treated as a model attribute, unless it is a simple type as determined by [BeanUtils#isSimpleProperty](https://docs.spring.io/spring-framework/docs/6.0.7/javadoc-api/org/springframework/beans/BeanUtils.html#isSimpleProperty-java.lang.Class-), in which case it remains unresolved. |
 
 
 
@@ -1606,13 +1630,13 @@ public void handle(@CookieValue("JSESSIONID") Cookie cookie) {
 
 #### 注释在方法参数上
 
-`ModelAttribute`标注在方法入参时:
+`@ModelAttribute`标注在方法入参时:
 
 可以解析`form-data`或者`x-www-form-urlencoded`格式的请求体中参数
 
 可以从model中访问或者创建一个对象，然后通过`WebDataBinder`将该对象和请求参数进行绑定
 
-* 先从Model中获取指定的参数类型，由注解的value/name值指定绑定的model属性名，默认由参数类型获取:
+* 先从Model中获取指定的参数类型，由`@ModelAttribute`注解的value/name值指定绑定的model属性名，如果不指定，默认由参数类型获取:
   * 如User类默认绑定的属性名是user
 
   * 如`List<User>`类默认绑定的属性名是userList
@@ -1647,28 +1671,107 @@ public void modelAttribute(@ModelAttribute User user, BindingResult bindingResul
 如果只想要访问Model中的属性，而不想进行参数绑定，可以指定`@ModelAttribute`注解的属性`binding=false`。
 
 ~~~java
+@ModelAttribute
+public User setModel(){
+    return new User("test","test");
+}
+
 @PostMapping("/modelAttribute/demo2")
 public void modelAttribute(@ModelAttribute(binding = false) User user){
     System.out.println(user);
 }
-@ModelAttribute
-public User setModel(){
-    User user = new User();
-    user.setUsername("test");
-    user.setPassword("test");
-    return user;
-}
-
 ~~~
 
 **注意:**使用`@ModelAttribute`是可选的，默认请求下，任何不是简单类型( 由BeanUtils#isSimpleProperty定义)的参数，并且该参数没有被其他参数处理器处理过，那么该参数就会被视为被`@ModelAttribute`注解标注了。
 
 #### 注释在方法体上
 
-作为方法级别的`@RequestMapping`分两种情形：
+单独标注`@Controller`类中的方法，为该类中其他所有`@RequestMapping`方法初始化model
 
-* 单独标注`@Controller`类中的方法，为该类中其他所有`@RequestMapping`方法初始化model
-* 与`@RequestMapping`组合，标记该方法的返回值是一个model属性
+一个`@Controller`控制器中可以有任意数量的`@ModelAttribute`方法。接收到Web请求后，所有的这些`@ModelAttribute`方法将先于`@RequestMapping`方法被调用，为其初始化model
+
+`@ModelAttribute`方法可以有多种结构:
+
+* 有返回值，会将返回值添加为model属性:
+
+  ~~~java
+  @ModelAttribute
+  public User setModel(){
+      return new User("test","test");
+  }
+  ~~~
+
+* 无返回值，在方法体内添加任意model属性:
+
+  ~~~java
+  @ModelAttribute
+  public void setModel(Model model) {
+      model.addAttribute(new User("test","test"));
+      ......
+  }
+  ~~~
+
+当然，`@ModelAttribute`方法和`@RequestMapping`方法一样，可以定义特定类型的方法参数或者为方法参数标注特定注解，以访问请求的信息
+
+除了单独标注`@Controller`类中的方法，`@ModelAttribute`还可以于`@RequestMapping`注解组合使用，以标注方法的返回值是`model`中的属性。通常情况下这种使用方式是不必要的，因为这是controller的默认行为，除非你的返回值是String，而不想让该String被解释为是view 的逻辑名:
+
+~~~java
+@PostMapping("/modelAttribute/demo3")
+@ModelAttribute("key")
+public String modelAttribute(){
+    return "value";
+}
+~~~
+
+### `@SessionAttributes`
+
+`@SessionAttributes`用于在请求之间的HTTP Servlet Session中存储model属性：
+
+~~~java
+@Controller
+@SessionAttributes("user")
+@RequestMapping("/user")
+public class SessionAttributesController {
+    @PostMapping("/add")
+    public void addUser(User user){
+        System.out.println(user);
+        System.out.println("已添加");
+    }
+    @GetMapping("/get")
+    @ResponseBody
+    public User getUser(Model model){
+        return (User) model.getAttribute("user");
+    }
+    @GetMapping("/delete")
+    public void deleteUser( SessionStatus status){
+        status.setComplete();
+    }
+}
+~~~
+
+### @SessionAttribute
+
+从Servlet的session域中获取已经存在的属性(之前的请求创建的，或者Filter和HandlerIntercepter创建的)
+
+~~~java
+@GetMapping("/sessionAttribute/demo")
+public void sessionAttribute(@SessionAttribute("user") User user){
+    System.out.println(user);
+}
+~~~
+
+### @RequestAttribute
+
+从Servlet的request域中获取提前创建的已经存在的属性(Filter和HandlerIntercepter创建的)
+
+~~~java
+@GetMapping("/requestAttribute/demo")
+public void requestAttribute(@RequestAttribute("user") User user){
+    System.out.println(user);
+}
+~~~
+
+
 
 
 
@@ -1775,102 +1878,9 @@ public void handle(HttpEntity<User> httpEntity){
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # 其他
 
-## 核心配置文件
-
-### 注解版
-
-* springmvc.xml
-
-~~~xml
-<!--使用注解  简化配置  和SpringMVC的使用-->
-<!--自动扫描   三大件   处理器映射器  处理器适配器  视图解析器-->
-<mvc:annotation-driven/>
-<!--处理器  注解扫描   自动扫描 @Controller-->
-<context:component-scan base-package="com.bjpn.controllers"/>
-~~~
-
-* controller
-
-~~~java
-@Controller
-public class SecondController {
-    @RequestMapping("/secondController.action")
-    public String controller(){
-        return "/index.jsp";
-    }
-}
-~~~
-
-
-
-## SpringMVC常用注解
-
-* `@Controller`标识当前类是处理器类
-
-* `@RequestMapping`映射url路径，可以出现在类和方法上
-
-    在类上表示当前处理方法的父路径，在方法上表示当前处理方法的路径
-
-    参数：
-
-    * value:表示请求路径，值为路径字符串数组
-    * method:表示请求方式，只能在方法上时用，如GET，POST
-
-* `@PathVariable`接收动态参数  参数值写在请求中
-* `@requestParam`         配置不同名参数
-* `@ResponseBody`     异步ajax的json格式
-* `@RequestBody`      接收前端异步请求参数
-
-## SpringMVC处理器
-
-表示处理器的方法有三种，分别是返回值为：
-
-* `ModelAndView`返回视图，渲染后响应跳转页面资源显示给用户
-* `String`返回要跳转的页面路径字符串，工作中常用
-* `void`不跳转页面，常用于简单的异步
-
-演示：
-
-~~~java
-@Controller
-public class SecondController {
-    @RequestMapping("/methodDemo1.action")
-    public String methodDemo1(){
-        return "/index.jsp";
-    }
-    @RequestMapping("/methodDemo2.action")
-    public ModelAndView methodDemo2(){
-        ModelAndView modelAndView = new ModelAndView();
-        modelAndView.setViewName("/index.jsp");
-        return modelAndView;
-    }
-    @RequestMapping("/methodDemo3.action")
-    public void methodDemo3(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        PrintWriter writer = response.getWriter();
-        writer.write("响应成功");
-    }
-}
-~~~
-
-
-
-### 转发与重定向
+## 转发与重定向
 
 SpringMVC处理器，不管返回值是ModelAndView还是String，默认调用转发
 
@@ -1894,180 +1904,6 @@ public class ThirdController {
     public String jumpByRedirect(){
         return "redirect:/index.jsp";
     }
-}
-~~~
-
-
-
-## SpringMVC处理器适配器
-
-处理器适配器封装了从前端接受参数的过程，以及创建对象的过程
-
-处理器适配器能给对应的处理器提供
-
-* 当前工程中的对象
-* 前端传递的参数
-
-### 提供对象
-
-适配器能为处理器提供当前工程中所有的有无参构造的类对象，
-
-只需要处理器在形参列表中声明：
-
-示例：
-
-~~~java
-@RequestMapping("objectSupport.action")
-public ModelAndView objectSupport(ModelAndView modelAndView , User user){
-    modelAndView.setViewName("redirect:/main.jsp");
-    System.out.println(user);
-    return modelAndView;
-}
-~~~
-
-
-
-### 提供参数
-
-适配器可以给处理器提供前端传递的参数，处理器可以用多种方式接收参数
-
-#### 通过同名参数接收
-
-适配器会将前端的参数传递给与处理器形参名相同的位置，并自动进行类型转换
-
-示例：
-
-前端：
-
-~~~jsp
- <a href="${pageContext.request.contextPath}/demo/getParamDemo1.action?name=张三&age=18">通过同名参数接收参数</a>
-~~~
-
-处理器：
-
-~~~java
-@RequestMapping("/getParamDemo1.action")
-public void getParamDemo1(String name ,int age){
-    System.out.println("name:"+name +"---age:"+(age+2));
-}
-~~~
-
-#### 通过对象接收
-
-适配器会扫描处理器形参上的对象属性，如果前端参数与属性名相同，也会自动将参数值赋值给对象
-
-前端：
-
-~~~jsp
-<a href="${pageContext.request.contextPath}/demo/getParamDemo2.action?name=张三">通过对象接收参数</a>
-~~~
-
-处理器：
-
-~~~java
-@RequestMapping("/getParamDemo2.action")
-public void getParamDemo2(User user){
-    System.out.println(user);
-}
-~~~
-
-#### 通过不同名对象接收
-
-可以通过`@RequestParam`注解，指定处理器形参要接收的参数名
-
-前端：
-
-~~~jsp
-<a href="${pageContext.request.contextPath}/demo/getParamDemo3.action?name=张三">接收不同名参数</a>
-~~~
-
-处理器：
-
-~~~java
-@RequestMapping("/getParamDemo3.action")
-public void getParamDemo3(@RequestParam("name") String uname){
-    System.out.println("uname:"+uname);
-}
-~~~
-
-#### restful风格接收
-
-可以直接将请求写在参数中，接收请求参数需要在请求路径中用`{}`且需要在要接收该参数的形参位置加上注解`@PathVariable()`
-
-springmvc在接收到前端请求后，会先扫描一般请求路径，如果没有匹配的，再匹配restful风格的请求路径，如果格式匹配，则会分发给对应处理器
-
-前端：
-
-~~~jsp
-<a href="${pageContext.request.contextPath}/demo/张三.action">restful风格接收参数</a>
-~~~
-
-后端：
-
-~~~java
-@RequestMapping("/{name}.action")
-public void getParamDemo4(@PathVariable("name") String name){
-    System.out.println(name);
-}
-~~~
-
-
-
-## SpringMVC提供的域对象
-
-在servlet中我们使用request，session，servletContext(application)域对象来向前端传递参数
-
-在SpringMVC中：
-
-* request，session对象可以由处理器适配器直接提供给处理器
-
-* servletContext对象因为没有无参构造，所以只能由servlet-api中的方法获取
-
-除此之外SpringMVC还自己封装了域对象，以供传值：
-
-### ModelAndView
-
-ModelAndView除了提供视图外，还能够起到域对象的作用
-
-生命周期与request相同，但是在重定向时，modelAndView会将key-value拼接到请求中，多用于服务器内跳转
-
-示例：
-
-~~~java
-//ModelAndView  转发时类似request域
-@RequestMapping("/returnParamDemo3.action")
-public ModelAndView returnParamDemo3(ModelAndView modelAndView){
-    modelAndView.addObject("mavKey","这是mav传值");
-    modelAndView.setViewName("forward:/page/paramSuccess.jsp");
-    return modelAndView;
-}
-//ModelAndView  重定向时会把key-value拼接在请求中  多用在跳转其它处理器
-@RequestMapping("/returnParamDemo4.action")
-public ModelAndView returnParamDemo4(ModelAndView modelAndView){
-    modelAndView.addObject("mavKey","这是mav传值");
-    modelAndView.setViewName("redirect:/page/paramSuccess.jsp");
-    return modelAndView;
-}
-~~~
-
-### Model
-
-与ModelAndView类似，为了在String返回值类型的处理器中传值
-
-示例：
-
-~~~java
-//使用Model
-@RequestMapping("/returnParamDemo5.action")
-public String returnParamDemo5(Model model){
-    model.addAttribute("modelKey", "这是model传值");
-    return "forward:/page/paramSuccess.jsp";
-}
-//重定向时会把key-value拼接在请求中  多用在跳转其它处理器
-@RequestMapping("/returnParamDemo6.action")
-public String returnParamDemo6(Model model){
-    model.addAttribute("modelKey", "这是model传值");
-    return "redirect:/page/paramSuccess.jsp";
 }
 ~~~
 
@@ -2103,8 +1939,6 @@ SpringMVC提供了编码过滤器，直接在web.xml中配置即可：
 </filter-mapping>
 ~~~
 
-
-
 ## SpringMVC读取静态资源
 
 在配置SpringMVC的中央控制器DispatcherServlet时，我们设置的url-pattern是`/`,这意味着浏览器的所有请求都会被中央控制器拦截处理，包括动态资源和静态资源的请求
@@ -2116,8 +1950,6 @@ SpringMVC提供了编码过滤器，直接在web.xml中配置即可：
 1. 使用tomcat自带的default Servlet处理
 2. 在SpringMVC中配置静态资源路径
 3. 在SpringMVC中设置静态资源的处理方式：交给default Servlet
-
-
 
 ### 使用Defalut Servlet
 
@@ -2138,8 +1970,6 @@ SpringMVC提供了编码过滤器，直接在web.xml中配置即可：
 
 tomcat会优先处理更具体精确的路径，所以tomcat收到请求后，会先匹配default的路径，如果是default路径指定的url pattern 则会交给default处理，如果在指定的路径范围，才会再交给DispatcherServlet处理
 
-
-
 ### 在SpringM配置静态资源路径
 
 在SpringMVC的核心配置文件中：
@@ -2151,8 +1981,6 @@ tomcat会优先处理更具体精确的路径，所以tomcat收到请求后，�
 <mvc:resources mapping="/js/*" location="/js/" />
 ~~~
 
-
-
 ### SpringMVC交还给default Servlet处理
 
 在SpringMVC核心配置文件中：
@@ -2161,111 +1989,3 @@ tomcat会优先处理更具体精确的路径，所以tomcat收到请求后，�
 <!-- 由springmvc对请求进行分类，如果是静态资源，则交给DefaultServlet处理 -->
 <mvc:default-servlet-handler/>
 ~~~
-
-
-
-## Jackson处理异步数据
-
-springMVC提供了jackson以处理json数据
-
-* 引入依赖：
-
-    需要导入core detabind annotations
-
-    ~~~xml
-    <!--导入jackson-->
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-core</artifactId>
-      <version>2.9.0</version>
-    </dependency>
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>2.9.0</version>
-    </dependency>
-    ~~~
-
-* 注解`@ResponseBody`
-
-    该注解可以在方法上和方法返回值上，可以自动将处理器返回值对象转换成json字符串，并响应给请求
-
-    ~~~java
-    @RequestMapping("/login.action")
-    public @ResponseBody Admin login() throws IOException {
-        Admin  admin= new Admin(1, "123", "123");
-        return admin;
-    }
-    ~~~
-
-    前端js：
-
-    ~~~js
-    $.post(rootPath+ "/admin/login.action" ,data,function(message){
-        alert(message.number+"---"+message.username+"---"+message.password)
-    })
-    ~~~
-
-可以通过这种方法来响应异步请求
-
-* 注解`@RequestBody`(了解)
-
-    在SpringMVC低版本时，接收前台传递的json数据时，必须在处理器的形参上加上该注解，而且形参必须不能是对象
-
-    现在高版本，不需要该注解也可以进行json解析，并自动将参数值赋给对象属性
-
-**注意1：** 返回值对象中，要传递给前端的属性，必须实现get方法
-
-**注意2：** 返回值对象是枚举时，对应的枚举类对象必须实现`@JsonFormat(shape = JsonFormat.Shape.OBJECT)`注解
-
-## 配置前置后置路径
-
-​		如果直接将`.jsp`文件放在webapp文件夹下，用户就可以直接通过浏览器地址栏访问到它，这会造成安全风险；同时这样直接访问，请求不会走处理器映射器和处理器适配器，这意味着SpringMVC的拦截器不会对该资源生效。
-
-​		为了避免这种情况，可以把`.jsp`文件放到WEB-INF下，WEB-INF不接受直接请求，然后让所有对`.jsp`页面的访问通过处理器转发到。这样用户就只能通过访问处理器，间接访问`.jsp`文件了。
-
-为了方便我们设置处理器的跳转路径，我们可以设置视图解析器的前置后置路径，这样通过视图解析器访问的路径，会自动拼装设置的前缀后缀：
-
-~~~xml
-<bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
-    <property name="prefix" value="/WEB-INF/"/>
-    <property name="suffix" value=".jsp"/>
-</bean>
-~~~
-
-这样返回字符串或者ModelAndView对象的处理器，返回视图时，视图路径将自动拼装设置的前后缀：
-
-~~~java
-//index.jsp在项目下的路径为 webapp/WEB-INF/index.jsp
-@RequestMapping("/toIndex.action")
-public String toIndex(){
-    return "index";
-}
-//该处理器返回的实际视图路径为 /WEB-INF/index.jsp
-~~~
-
-## 文件传输
-
-
-
-### 文件下载
-
-~~~java
-@Controller
-public class DownController {
-    @RequestMapping("down")
-    public ResponseEntity<byte[]> down() throws Exception{
-        File file = new File("C:\\yf\\test.png");
-        //设置响应头为下载
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentDispositionFormData("attachment",new String("测试下载.png".getBytes("GBK"),"ISO-8859-1"));
-        byte[] bytes = FileUtils.readFileToByteArray(file);
-        return new ResponseEntity<byte[]>(bytes, headers, HttpStatus.OK);
-    }
-}
-~~~
-
-
-
-
-
