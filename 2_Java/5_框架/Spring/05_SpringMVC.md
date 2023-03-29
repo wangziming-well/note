@@ -1393,15 +1393,13 @@ public @interface RequestMapping {
 | `HttpEntity<B>`                                              | 用以访问请求头和请求体                                       |
 | `@RequestPart`                                               | 用以访问格式为 `multipart/form-data`的请求的请求体的Part, 通过`HttpMessageConverter`来实现转化。 |
 | `Map`, `Model`, `ModelMap`                                   | 用以访问视图信息                                             |
-| `RedirectAttributes`                                         | Specify attributes to use in case of a redirect (that is, to be appended to the query string) and flash attributes to be stored temporarily until the request after redirect. See [Redirect Attributes](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-redirecting-passing-data) and [Flash Attributes](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-flash-attributes). |
+| `RedirectAttributes`                                         | 重定向时传递参数，让参数不会出现在URL中                      |
 | `@ModelAttribute`                                            | 用以访问Model中存在的属性，如果不存在，则实例化并进行数据绑定 |
 | `Errors`, `BindingResult`                                    | 访问`@ModelAtrribute`的数据绑定和校验的错误信息；或者`@RequestBody`和`@RequestPart`参数的检验的错误信息，在使用`@Valide`校验参数后必须声明`Errors`、`BindingResult` |
 | `SessionStatus` + class-level `@SessionAttributes`           | 在`@Controller`类上标记了`@SessionAttributes`后，可以在方法级别的参数上声明`SessionStatus`用以清空`@SessionAttributes`声明的attributes |
 | `@SessionAttribute`                                          | 绑定session属性到方法参数上                                  |
 | `@RequestAttribute`                                          | 绑定request属性到方法参数上                                  |
 | 其他参数                                                     | 如果一个方法参数于表中以上参数都不匹配，并且它是一个简单类型(由BeanUtils#isSimpleProperty定义)，那么这个参数将被视为一个`@RequestParam`参数，否则他将被是为一个`@ModelAttribute`参数 |
-
-
 
 ## MethodHandler方法返回值
 
@@ -1749,7 +1747,7 @@ public class SessionAttributesController {
 }
 ~~~
 
-### @SessionAttribute
+###` @SessionAttribute`
 
 从Servlet的session域中获取已经存在的属性(之前的请求创建的，或者Filter和HandlerIntercepter创建的)
 
@@ -1760,7 +1758,7 @@ public void sessionAttribute(@SessionAttribute("user") User user){
 }
 ~~~
 
-### @RequestAttribute
+### `@RequestAttribute`
 
 从Servlet的request域中获取提前创建的已经存在的属性(Filter和HandlerIntercepter创建的)
 
@@ -1771,9 +1769,19 @@ public void requestAttribute(@RequestAttribute("user") User user){
 }
 ~~~
 
+### `@ResponseBody`
 
+```java
+@RequestMapping("/getUser")
+@ResponseBody
+public User user(){
+    return new User("test","test");
+}
+```
 
+该注解也可和`@Controller`组合使用，表示该`@Controller`类中所有方法都隐士标注了`@ResponseBody`
 
+spring4.0提供了`@RestController`表示`@Controller`和`@ResponseBody`的组合注解
 
 
 
@@ -1845,6 +1853,50 @@ public String accept(Model model){
 @PostMapping("demo7")
 public void handle(HttpEntity<User> httpEntity){
     System.out.println(httpEntity.getBody());
+}
+~~~
+
+### RedirectAttributes
+
+默认情况下，所有model属性都被认为是作为重定向URL中的URI模板变量公开的。在其余属性中，那些基本类型或基本类型的集合或数组将自动作为查询参数追加。
+
+~~~java
+@Controller
+public class RedirectController {
+    @GetMapping("/redirect")
+    public String demo(Model model){
+        model.addAttribute("param","test");
+        model.addAttribute("number",123);
+        return "redirect:/target/{param}";
+    }
+
+    @GetMapping("/target/{param}")
+    public void redirect(@PathVariable("param") String param, int number, HttpServletRequest request){
+        System.out.println(request.getRequestURI());
+        Map<String, String[]> parameterMap = request.getParameterMap();
+        for (Map.Entry<String, String[]> entry: parameterMap.entrySet()){
+            System.out.println(entry.getKey()+"---"+ Arrays.toString(entry.getValue()));
+        }
+        System.out.println(param);
+        System.out.println(number);
+    }
+}
+~~~
+
+但是有时候我们不希望有些参数出现在URI中，就可以使用Model的子接口:`RedirectAttributes`,同样可以传递参数，且不会出现在URI中:
+
+~~~java
+@Controller
+public class RedirectController {
+    @GetMapping("/redirect")
+    public String demo(RedirectAttributes redirectAttributes) {
+        redirectAttributes.addAttribute("param","test");
+        return "redirect:/target";
+    }
+    @GetMapping("/target")
+    public void redirect(String param) {
+        System.out.println(param);
+    }
 }
 ~~~
 
