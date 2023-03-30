@@ -1412,20 +1412,18 @@ public @interface RequestMapping {
 
 | 方法返回值                                                   | 说明                                                         |
 | :----------------------------------------------------------- | :----------------------------------------------------------- |
-| `@ResponseBody`                                              | The return value is converted through `HttpMessageConverter` implementations and written to the response. See [`@ResponseBody`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-responsebody). |
-| `HttpEntity<B>`, `ResponseEntity<B>`                         | The return value that specifies the full response (including HTTP headers and body) is to be converted through `HttpMessageConverter` implementations and written to the response. See [ResponseEntity](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-responseentity). |
-| `HttpHeaders`                                                | For returning a response with headers and no body.           |
-| `ErrorResponse`                                              | To render an RFC 7807 error response with details in the body, see [Error Responses](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-rest-exceptions) |
-| `ProblemDetail`                                              | To render an RFC 7807 error response with details in the body, see [Error Responses](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-rest-exceptions) |
-| `String`                                                     | A view name to be resolved with `ViewResolver` implementations and used together with the implicit model — determined through command objects and `@ModelAttribute` methods. The handler method can also programmatically enrich the model by declaring a `Model` argument (see [Explicit Registrations](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-requestmapping-registration)). |
-| `View`                                                       | A `View` instance to use for rendering together with the implicit model — determined through command objects and `@ModelAttribute` methods. The handler method can also programmatically enrich the model by declaring a `Model` argument (see [Explicit Registrations](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-requestmapping-registration)). |
-| `Map`, `Model`                                               | Attributes to be added to the implicit model, with the view name implicitly determined through a `RequestToViewNameTranslator`. |
+| `@ResponseBody`                                              | 方法返回值将通过`HttpMessageConverter`转化并写入响应体。     |
+| `HttpEntity<B>`, `ResponseEntity<B>`                         | 指定完整的响应(包括响应头和响应状态)的返回值。               |
+| `HttpHeaders`                                                | 返回一个只有响应头没有响应体的响应                           |
+| `String`                                                     | 返回一个字符串，将被是为逻辑视图名，供`ViewResolver`解析生成视图，并渲染隐式的模型(由`@ModelAttribute`提供，或者方法参数声明的Model) |
+| `View`                                                       | 直接返回一个 `View`实例，会被隐式的模型渲染(由`@ModelAttribute`提供，或者方法参数声明的Model) |
+| `Map`, `Model`                                               | 返回一个将被添加到隐式Model的Map或者Model。此时viewName由 `RequestToViewNameTranslator`确定。 |
 | `@ModelAttribute`                                            | 表示返回值将被添加到model中，因为没有指定view或者view的逻辑视图名，将使用`RequestToViewNameTranslator` 来隐式返回视图名 |
-| `ModelAndView`                                               | The view and model attributes to use and, optionally, a response status. |
-| `void`                                                       | A method with a `void` return type (or `null` return value) is considered to have fully handled the response if it also has a `ServletResponse`, an `OutputStream` argument, or an `@ResponseStatus` annotation. The same is also true if the controller has made a positive `ETag` or `lastModified` timestamp check (see [Controllers](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-caching-etag-lastmodified) for details).If none of the above is true, a `void` return type can also indicate “no response body” for REST controllers or a default view name selection for HTML controllers. |
-| `DeferredResult<V>`                                          | Produce any of the preceding return values asynchronously from any thread — for example, as a result of some event or callback. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [`DeferredResult`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-deferredresult). |
-| `Callable<V>`                                                | Produce any of the above return values asynchronously in a Spring MVC-managed thread. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [`Callable`](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-callable). |
-| `ListenableFuture<V>`, `java.util.concurrent.CompletionStage<V>`, `java.util.concurrent.CompletableFuture<V>` | Alternative to `DeferredResult`, as a convenience (for example, when an underlying service returns one of those). |
+| `ModelAndView`                                               | 返回要使用的视图和模型属性以及(可选的)响应状态。             |
+| `void`                                                       | 一个方法如果返回值是`void`类型或者返回了`null`值，那么它需要在方法内部对response进行了处理，比如通过方法参数:`ServletResponse`、`OutputStream`或者注释`@ResponseStatus`.如果控制器已经做了一个正的`ETag `或`lastModified` 时间戳检查，同样是可以的。如果以上都不成立，`void`返回类型也可以表示REST控制器的“无响应体”或HTML控制器的默认视图名称选择。 |
+| `DeferredResult<V>`                                          | 从其他线程异步返回结果                                       |
+| `Callable<V>`                                                | 在SpringMVC的管理线程上异步生成返回值                        |
+| `ListenableFuture<V>`, `CompletionStage<V>`, `CompletableFuture<V>` | `DeferredResult`的替代对象                                   |
 | `ResponseBodyEmitter`, `SseEmitter`                          | Emit a stream of objects asynchronously to be written to the response with `HttpMessageConverter` implementations. Also supported as the body of a `ResponseEntity`. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [HTTP Streaming](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-http-streaming). |
 | `StreamingResponseBody`                                      | Write to the response `OutputStream` asynchronously. Also supported as the body of a `ResponseEntity`. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [HTTP Streaming](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-http-streaming). |
 | Reactor and other reactive types registered via `ReactiveAdapterRegistry` | A single value type, e.g. `Mono`, is comparable to returning `DeferredResult`. A multi-value type, e.g. `Flux`, may be treated as a stream depending on the requested media type, e.g. "text/event-stream", "application/json+stream", or otherwise is collected to a List and rendered as a single value. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [Reactive Types](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-reactive-types). |
@@ -1789,7 +1787,7 @@ spring4.0提供了`@RestController`表示`@Controller`和`@ResponseBody`的组�
 
 我们可以在MethodHandler方法中直接定义下面:
 
-### WebRequest
+### `WebRequest`
 
 `WebRequest`、`NativeWebRequest`:SpringMVC提供的对request参数、request、session属性的通用访问，是对ServletAPI的封装
 
@@ -1802,7 +1800,7 @@ public void accept(WebRequest request){
 }
 ~~~
 
-### ServletRequest&ServletResponse
+### `ServletRequest`&`ServletResponse`
 
 `ServletRequest`、`ServletResponse`:ServletAPI，也可以使用具体的实现如:`HttpServletRequest `, `MultipartRequest`, `MultipartHttpServletRequest`等
 
@@ -1830,7 +1828,7 @@ public void accept(HttpSession session,HttpMethod method){
 
 **注意:**对于`HttpSession`，该对象不是线程安全的，如果有多个MethodHandler使用同一个`HttpSession`对象的情况，需要将`RequestMappingHandlerAdapter`实例的`synchronizeOnSession`设置为true
 
-### Model
+### `Model`
 
 可以指定下面对象:
 
@@ -1845,18 +1843,9 @@ public String accept(Model model){
 }
 ~~~
 
-### HttpEntity
+以访问Model
 
-与`@RequestBody`作用类似，解析请求域中键值对，将其序列化为指定的实体类:
-
-~~~java
-@PostMapping("demo7")
-public void handle(HttpEntity<User> httpEntity){
-    System.out.println(httpEntity.getBody());
-}
-~~~
-
-### RedirectAttributes
+### `RedirectAttributes`
 
 默认情况下，所有model属性都被认为是作为重定向URL中的URI模板变量公开的。在其余属性中，那些基本类型或基本类型的集合或数组将自动作为查询参数追加。
 
@@ -1900,29 +1889,218 @@ public class RedirectController {
 }
 ~~~
 
+### `HttpEntity`
+
+与`@RequestBody`作用类似，解析请求域中键值对，将其序列化为指定的实体类:
+
+~~~java
+@PostMapping("demo7")
+public void handle(HttpEntity<User> httpEntity){
+    System.out.println(httpEntity.getBody());
+}
+~~~
+
+同时也可以作为方法的返回值，被写入响应体
+
+~~~java
+@RequestMapping("/getUserByEntity")
+public HttpEntity<User> getUserByHttpEntity(){
+    return new HttpEntity<>(new User("test","test"));
+}
+~~~
+
+### `ResponseEntity`
+
+作为方法的返回值，和`@ResponseBody`类似，但会返回响应状态和响应头:
+
+~~~java
+@RequestMapping("/getUserByResponseEntity")
+public ResponseEntity<User> getUserByResponseEntity(){
+    return ResponseEntity.ok(new User("test","test"));
+}
+~~~
+
+## 异步请求
+
+servlet和SpringMVC支持对请求进行异步响应。接收到Web请求后，可以在保持Web连接的情况下结束Servlet容器线程，在其他线程进行响应处理，要开启异步支持，首先需要设置Servlet和所有的Filter支持异步`<async-supported>`:
+
+~~~xml
+<servlet>
+    <servlet-name>dispatcherServlet</servlet-name>
+    <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+    <init-param>
+        <param-name>contextConfigLocation</param-name>
+        <param-value>classpath:dispatcher-servlet-annotation.xml</param-value>
+    </init-param>
+    <load-on-startup>1</load-on-startup>
+    <async-supported>true</async-supported>
+</servlet>
+
+<filter>
+    <filter-name>encodingFilter</filter-name>
+    <filter-class>org.springframework.web.filter.CharacterEncodingFilter</filter-class>
+    <async-supported>true</async-supported>
+</filter>
+~~~
+
+并且可以设置mvc以控制异步行为:
+~~~xml
+<mvc:annotation-driven enable-matrix-variables="true" >
+    <mvc:async-support default-timeout="100000"/>
+</mvc:annotation-driven>
+~~~
+
+### `DeferredResult`
+
+当一个请求到达API接口，如果该API接口的return返回值是DeferredResult，在没有超时或者DeferredResult对象设置setResult时，接口不会返回，但是Servlet容器线程会结束，`DeferredResult`另起线程来进行结果处理(即这种操作提升了服务短时间的吞吐能力)，并`setResult()`，如此以来这个请求不会占用服务连接池太久，如果超时或设置`setResult()`，接口会立即返回。
+
+~~~java
+@Controller
+@RequestMapping("/async")
+public class AsynchronousController {
+    @GetMapping("/demo1")
+    @ResponseBody
+    public DeferredResult<String> demo1(){
+        DeferredResult<String> deferredResult = new DeferredResult<>();
+        MyThread myThread = new MyThread(deferredResult);
+        myThread.start();
+        return deferredResult;
+    }
+}
+~~~
+
+最终的结果在MyThread的run方法中处理：
+
+~~~java
+class MyThread extends Thread{
+    private final DeferredResult<String> deferredResult;
+    public MyThread(DeferredResult<String> deferredResult){
+        this.deferredResult = deferredResult;
+    }
+    @SneakyThrows
+    @Override
+    public void run() {
+        Thread.sleep(3000);
+        deferredResult.setResult("123");
+    }
+}
+~~~
+
+### `Callable`
+
+作用和DeferredResult类型，不过让SpringMVC线程来异步执行callable任务:
+~~~java
+@GetMapping("/demo")
+@ResponseBody
+public Callable<String> demo2(){
+    return () ->{
+        Thread.sleep(3000);
+        return "132";
+    };
+}
+~~~
+
+如果不设置，默认使用`SimpleAsyncTaskExecutor`来执行异步任务
+
+### `ResponseBodyEmitter`
+
+使用`DeferredResult`和`Callable`只能异步返回一个值。
+
+使用`ResponseBodyEmitter`可以异步返回多个值。
+
+```java
+@GetMapping("/demo3")
+public ResponseBodyEmitter demo3(){
+    ResponseBodyEmitter emitter = new ResponseBodyEmitter();
+    EmitterThread thread = new EmitterThread(emitter);
+    thread.start();
+    return emitter;
+}
+```
+
+其中EmitterThread为:
+
+~~~java
+class EmitterThread extends Thread{
+    private final ResponseBodyEmitter emitter;
+    public EmitterThread(ResponseBodyEmitter emitter){
+        this.emitter = emitter;
+    }
+    @SneakyThrows
+    @Override
+    public void run() {
+        emitter.send("123");
+        Thread.sleep(1000);
+        emitter.send("456");
+        Thread.sleep(1000);
+        emitter.send("789");
+        emitter.complete();
+    }
+}
+~~~
+
+也可以将`ResponseBodyEmitter`作为`ResponseEntity`的body，以设置响应头和状态码。
+
+可以用fetchAPI接收响应流：
+
+~~~javascript
+function demo() {
+    let url = "....../async/demo3"
+    fetch(url).then((response) => push(response.body.getReader()));
+}
 
 
+function push(reader) {
+    reader.read().then(({done, value}) => {
+        if (done) {
+            return;
+        }
+        console.log(Uint8ArrayToString(value));
+        $("#content").append(Uint8ArrayToString(value))
+        push(reader);
+    });
+}
 
+function Uint8ArrayToString(fileData){
+    let dataString = "";
+    for (let i = 0; i < fileData.length; i++) {
+        dataString += String.fromCharCode(fileData[i]);
+    }
+    return dataString
+}
+~~~
 
+### `SseEmitter`
 
+`SseEmitter `(`ResponseBodyEmitter`的子类)提供了对服务器发送事件的支持，其中从服务器发送的事件按照W3C SSE(Server-Sent Events)规范格式化。
 
+~~~java
+@GetMapping("/demo3")
+public SseEmitter demo4(){
+    SseEmitter emitter = new SseEmitter();
+    EmitterThread thread = new EmitterThread(emitter);
+    thread.start();
+    return emitter;
+}
+~~~
 
+其中`EmitterThread`和上一个示例一样
 
+需要用sse规定的EventSourceAPI来处理响应:
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+~~~javascript
+function demo() {
+    let url = "....../async/demo4"
+    const evtSource = new EventSource(url);
+    evtSource.onmessage = function(event) {
+        $("#content").append(event.data)
+    }
+    evtSource.onerror = function (event) {
+        console.log("error")
+        evtSource.close();
+    }
+}
+~~~
 
 
 
