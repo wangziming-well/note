@@ -827,7 +827,7 @@ SpringMVC提供了几个HandlerAdapter实现以适配不同的Handler处理器:
 * SimpleServletHandlerAdapter：适配Servlet类型的Handler
 * HttpRequestHandlerAdapter：适配HttpRequestHandler类型的Handler
 * HandlerFunctionAdapter：适配HandlerFunction类型的Handler
-* RequestMappingHandlerAdapter：适配被@RequestMapping标注的HandlerMethods.以支持SpringMVC解析注解使用@Controller的Handler
+* RequestMappingHandlerAdapter：适配被@RequestMapping注释的HandlerMethods.以支持SpringMVC解析注解使用@Controller的Handler
 
 ## 自定义Handler
 
@@ -837,7 +837,7 @@ SpringMVC提供了几个HandlerAdapter实现以适配不同的Handler处理器:
 
 ### 定义Handler
 
-首先需要自定义一个Handler接口，当然也可以使用注解的方式标注自定义的Handler，但这需要多一层转换的工作
+首先需要自定义一个Handler接口，当然也可以使用注解的方式注释自定义的Handler，但这需要多一层转换的工作
 
 ~~~java
 public interface MyHandler {
@@ -1081,9 +1081,9 @@ HandlerExceptionResolver的继承体系如下：
 
 其中的一些我们不做探究:
 
-* `ResponseStatusExceptionResolver`：用` @ResponseStatus`标注的方法表示的异常映射来处理异常
+* `ResponseStatusExceptionResolver`：用` @ResponseStatus`注释的方法表示的异常映射来处理异常
 
-* `ExceptionHandlerExceptionResolver`：它通过`@ExceptionHandler`标注方法来处理异常。
+* `ExceptionHandlerExceptionResolver`：它通过`@ExceptionHandler`注释方法来处理异常。
 
 * `HandlerExceptionResolverComposite`:复合HandlerExceptionResolver的实现，将异常处理委托给它持有的一组HandlerExceptionResolver
 
@@ -1236,7 +1236,7 @@ SpringMVC提供的基于注解的Controller也是这样，提供了相应的基�
 * RequestMappingHandlerMapping
 * RequestMappingHandlerAdapter
 
-基于以上组件，SpringMVC提供了注解`@Controller`、`@RequestMapping`来标注基于注解的Controller,告知SpringMVC框架该类是标注的Handler:
+基于以上组件，SpringMVC提供了注解`@Controller`、`@RequestMapping`，通过注释来声明基于注解的Controller,告知SpringMVC框架该类是注释的Handler:
 
 ~~~java
 @Controller
@@ -1256,17 +1256,19 @@ public class AnnotatedController {
 <context:component-scan base-package="com.wzm.spring"/>
 ~~~
 
-启动mvc的注解驱动，并将刚刚标注的类交给ioc容器管理即可
+启动mvc的注解驱动，并将刚刚注释的类交给ioc容器管理即可
 
-这样，一个`@Controller`方法标注的类中的每个`@RequestMapping`标注的方法都对应一个handler，叫做方法处理器(MethodHandler)
+这样，一个`@Controller`方法注释的类中的每个`@RequestMapping`注释的方法都对应一个handler，叫做处理器方法(Handler Method)
 
-## 基本MethodHandler
+## 基本Handler Method
 
-我们可以使用`@Controller`和`@RequestMapping`注解标注一个基本的方法处理器
+我们可以使用`@Controller`和`@RequestMapping`注解注释以声明一个基于注解的Controller
+
+因为一个`@RequestMapping`注释的方法在SpringMVC就对应一个Controller，所以被`@RequestMapping`注释的方法也可以叫处理器方法或者处理方法(Handler Method)
 
 ### `@Controller`
 
-想要让一个普通的pojo类成为SpringMVC框架下的handler处理器，必须使用`@Controller`注解标注该类
+想要让一个普通的pojo类成为SpringMVC框架下的handler处理器，必须使用`@Controller`注解注释该类
 
 `@Controller`的定义如下:
 
@@ -1284,9 +1286,9 @@ public @interface Controller {
 
 ~~~
 
-可以看到它被`@Component`注解标注，所有被标注了`@Controller`注解的类，同样可以被扫描管理到Spring的ioc容器中，而不需要额外使用其他注解
+可以看到它被`@Component`注解注释，所有被注释了`@Controller`注解的类，同样可以被扫描管理到Spring的ioc容器中，而不需要额外使用其他注解
 
-除此之外，`RequestMappingHandlerMapping`在收到Web请求时，匹配的就是所有容器中被`@Controller`标注的对象
+除此之外，`RequestMappingHandlerMapping`在收到Web请求时，匹配的就是所有容器中被`@Controller`注释的对象
 
 ### `@RequsetMapping`
 
@@ -1367,18 +1369,16 @@ public @interface RequestMapping {
 
 他们与`@RequsetMapping`不同之处只在`method`值已经预先固定
 
-## MethodHandler方法参数
+## Handler Method参数
 
-@RequestMapping标注的方法参数可以有很多选择，
+@RequestMapping注释的方法参数可以有很多选择，
 
 * 可以使用特定类型的参数，RequestMappingHandlerAdapter会对特定的参数类型进行赋值或者其他操作，
-* 可以使用注解标注参数，指示通知RequestMappingHandlerAdapter对该参数进行特定操作
+* 可以使用注解注释参数，指示通知RequestMappingHandlerAdapter对该参数进行特定操作
 
-以供MethodHandler方法内部使
+以供Handler Method内部使
 
-可以作为MethodHandler参数的类型和可以标注MethodHandler方法参数的注解如下表:
-
-
+可以作为Handler Method参数的类型和可以注释Handler Method方法参数的注解如下表:
 
 | 方法参数                                                     | 说明                                                         |
 | ------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -1386,7 +1386,7 @@ public @interface RequestMapping {
 | `ServletRequest`, <br />`ServletResponse`                    | ServletAPI，也可以使用具体的实现如:`HttpServletRequest `, `MultipartRequest`, `MultipartHttpServletRequest`等 |
 | `HttpSession`、`PushBuilder`、`Principal`、`HttpMethod`、`Locale`、`TimeZone`、`ZoneId`、`InputStream`、`Reader`、`OutputStream`、`Writer` | RequestMappingHandlerAdapter会从requestAPI获取对应的对象     |
 | `@PathVariable`                                              | 用以访问URI的模板变量                                        |
-| `@RequestParam`                                              | 用该注解标注以绑定Servlet的request域中的参数(请求参数或者form表单中的参数) |
+| `@RequestParam`                                              | 用该注解注释以绑定Servlet的request域中的参数(请求参数或者form表单中的参数) |
 | `@RequestHeader`                                             | 用以访问请求的请求首部信息                                   |
 | `@CookieValue`                                               | 用以访问请求的Cookie信息                                     |
 | `@RequestBody`                                               | 用以访问请求的请求体信息使用 `HttpMessageConverter` 实现     |
@@ -1401,19 +1401,19 @@ public @interface RequestMapping {
 | `@RequestAttribute`                                          | 绑定request属性到方法参数上                                  |
 | 其他参数                                                     | 如果一个方法参数于表中以上参数都不匹配，并且它是一个简单类型(由BeanUtils#isSimpleProperty定义)，那么这个参数将被视为一个`@RequestParam`参数，否则他将被是为一个`@ModelAttribute`参数 |
 
-## MethodHandler方法返回值
+## Handler Method返回值
 
-@RequestMapping标注的方法返回值同样有以下两种：
+@RequestMapping注释的方法返回值同样有以下两种：
 
 * 可以使用特定类型的参数
-* 可以使用注解标注参数，指示通知RequestMappingHandlerAdapter对该参数进行特定操作
+* 可以使用注解注释参数，指示通知RequestMappingHandlerAdapter对该参数进行特定操作
 
 以帮助`RequestMappingHandlerAdapter`完成最终的ModelAndView
 
 | 方法返回值                                                   | 说明                                                         |
 | :----------------------------------------------------------- | :----------------------------------------------------------- |
 | `@ResponseBody`                                              | 方法返回值将通过`HttpMessageConverter`转化并写入响应体。     |
-| `HttpEntity<B>`, `ResponseEntity<B>`                         | 指定完整的响应(包括响应头和响应状态)的返回值。               |
+| `HttpEntity<B>`, `ResponseEntity<B>`                         | 指定完整的响应(包括响应头和响应状态)的返回值。通过`HttpMessageConverter`转化 |
 | `HttpHeaders`                                                | 返回一个只有响应头没有响应体的响应                           |
 | `String`                                                     | 返回一个字符串，将被是为逻辑视图名，供`ViewResolver`解析生成视图，并渲染隐式的模型(由`@ModelAttribute`提供，或者方法参数声明的Model) |
 | `View`                                                       | 直接返回一个 `View`实例，会被隐式的模型渲染(由`@ModelAttribute`提供，或者方法参数声明的Model) |
@@ -1424,22 +1424,15 @@ public @interface RequestMapping {
 | `DeferredResult<V>`                                          | 从其他线程异步返回结果                                       |
 | `Callable<V>`                                                | 在SpringMVC的管理线程上异步生成返回值                        |
 | `ListenableFuture<V>`, `CompletionStage<V>`, `CompletableFuture<V>` | `DeferredResult`的替代对象                                   |
-| `ResponseBodyEmitter`, `SseEmitter`                          | Emit a stream of objects asynchronously to be written to the response with `HttpMessageConverter` implementations. Also supported as the body of a `ResponseEntity`. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [HTTP Streaming](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-http-streaming). |
-| `StreamingResponseBody`                                      | Write to the response `OutputStream` asynchronously. Also supported as the body of a `ResponseEntity`. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [HTTP Streaming](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-http-streaming). |
-| Reactor and other reactive types registered via `ReactiveAdapterRegistry` | A single value type, e.g. `Mono`, is comparable to returning `DeferredResult`. A multi-value type, e.g. `Flux`, may be treated as a stream depending on the requested media type, e.g. "text/event-stream", "application/json+stream", or otherwise is collected to a List and rendered as a single value. See [Asynchronous Requests](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async) and [Reactive Types](https://docs.spring.io/spring-framework/docs/current/reference/html/web.html#mvc-ann-async-reactive-types). |
-| Other return values                                          | If a return value remains unresolved in any other way, it is treated as a model attribute, unless it is a simple type as determined by [BeanUtils#isSimpleProperty](https://docs.spring.io/spring-framework/docs/6.0.7/javadoc-api/org/springframework/beans/BeanUtils.html#isSimpleProperty-java.lang.Class-), in which case it remains unresolved. |
+| `ResponseBodyEmitter`, `SseEmitter`                          | 异步响应多个值。                                             |
+| `StreamingResponseBody`                                      | 可以通过`StreamingResponseBody`来异步响应输出流              |
+| Other return values                                          | 如果返回值用以上方式都无法解析，那么它将被是为一个Model属性。如果返回值是一个简单类型(BeanUtils#isSimpleProperty)，那么将无法解析。 |
 
-
-
-
-
-##  MethodHandler可用注解
-
-
+##  Handler Method可用注解
 
 ### `@RequestParam`
 
-用该注解标注以绑定Servlet的request域中的参数(请求参数或者form表单中的参数)
+用该注解注释以绑定Servlet的request域中的参数(请求参数或者form表单中的参数)
 
 如果取的是post请求的请求体参数，要求请求体的格式为`application/x-www-form-urlencoded`或者`multipart/form-data`
 
@@ -1450,7 +1443,7 @@ public void requestParam(@RequestParam("param") String param){
 }
 ~~~
 
-* 可以标注在类型为Array或者List的参数上，以解析同一参数名称的多个参数值。
+* 可以注释在类型为Array或者List的参数上，以解析同一参数名称的多个参数值。
 
   ~~~java
   // url: /requestParam/demo1?list=1,2,3,4,5
@@ -1460,7 +1453,7 @@ public void requestParam(@RequestParam("param") String param){
   }
   ~~~
   
-* 如果标注的参数类型不是String，而是其他简单类型(由BeanUtils#isSimpleProperty定义)，SpringMVC将自动尝试使用类型转换
+* 如果注释的参数类型不是String，而是其他简单类型(由BeanUtils#isSimpleProperty定义)，SpringMVC将自动尝试使用类型转换
 
   * 简单类型包括：基本数据类型及其包装类、Enum、CharSequence、Number、Date、Temporal、URI、URL、Locale、Class
 
@@ -1473,7 +1466,7 @@ public void requestParam(@RequestParam("param") String param){
 
 * 如果启用了`MultipartResolver`，它会将格式为`multipart/form-data`的请求体解析为普通的请求参数
 
-  这样`@RequestParam`就可以标注`MultipartFile`类型的参数以接收上传的文件:
+  这样`@RequestParam`就可以注释`MultipartFile`类型的参数以接收上传的文件:
 
   ~~~java
   @PostMapping("/requestParam/demo2")
@@ -1510,7 +1503,7 @@ public void requestParam(@RequestParam("param") String param){
 
 ### `@RequestBody`
 
-使用`HttpMessageConverter`将请求参数序列化为标注的参数类型:
+使用`HttpMessageConverter`将请求参数序列化为注释的参数类型:
 
 将参数类型进行实例化，并用set方法进行参数绑定
 
@@ -1533,7 +1526,7 @@ public class User {
 }
 ~~~
 
-**注意:**作为`@RequestBody`标注的方法类型对象，必须有无参构造，而且对象内想要被映射的参数必须实现对应的set方法，否则无法映射
+**注意:**作为`@RequestBody`注释的方法类型对象，必须有无参构造，而且对象内想要被映射的参数必须实现对应的set方法，否则无法映射
 
 ### `@RequestPart`
 
@@ -1565,7 +1558,7 @@ public Pet findPet(@PathVariable Long ownerId, @PathVariable Long petId) {
 }
 ~~~
 
-如果标注的参数类型是` Map<String, String> `，则将填充所有的路径变量到该Map中
+如果注释的参数类型是` Map<String, String> `，则将填充所有的路径变量到该Map中
 
 ~~~java
 @GetMapping("/demo/{version}/{id}")
@@ -1626,7 +1619,7 @@ public void handle(@CookieValue("JSESSIONID") Cookie cookie) {
 
 #### 注释在方法参数上
 
-`@ModelAttribute`标注在方法入参时:
+`@ModelAttribute`注释在方法入参时:
 
 可以解析`form-data`或者`x-www-form-urlencoded`格式的请求体中参数
 
@@ -1678,11 +1671,11 @@ public void modelAttribute(@ModelAttribute(binding = false) User user){
 }
 ~~~
 
-**注意:**使用`@ModelAttribute`是可选的，默认请求下，任何不是简单类型( 由BeanUtils#isSimpleProperty定义)的参数，并且该参数没有被其他参数处理器处理过，那么该参数就会被视为被`@ModelAttribute`注解标注了。
+**注意:**使用`@ModelAttribute`是可选的，默认请求下，任何不是简单类型( 由BeanUtils#isSimpleProperty定义)的参数，并且该参数没有被其他参数处理器处理过，那么该参数就会被视为被`@ModelAttribute`注解注释了。
 
 #### 注释在方法体上
 
-单独标注`@Controller`类中的方法，为该类中其他所有`@RequestMapping`方法初始化model
+单独注释`@Controller`类中的方法，为该类中其他所有`@RequestMapping`方法初始化model
 
 一个`@Controller`控制器中可以有任意数量的`@ModelAttribute`方法。接收到Web请求后，所有的这些`@ModelAttribute`方法将先于`@RequestMapping`方法被调用，为其初始化model
 
@@ -1707,9 +1700,9 @@ public void modelAttribute(@ModelAttribute(binding = false) User user){
   }
   ~~~
 
-当然，`@ModelAttribute`方法和`@RequestMapping`方法一样，可以定义特定类型的方法参数或者为方法参数标注特定注解，以访问请求的信息
+当然，`@ModelAttribute`方法和`@RequestMapping`方法一样，可以定义特定类型的方法参数或者为方法参数注释特定注解，以访问请求的信息
 
-除了单独标注`@Controller`类中的方法，`@ModelAttribute`还可以于`@RequestMapping`注解组合使用，以标注方法的返回值是`model`中的属性。通常情况下这种使用方式是不必要的，因为这是controller的默认行为，除非你的返回值是String，而不想让该String被解释为是view 的逻辑名:
+除了单独注释`@Controller`类中的方法，`@ModelAttribute`还可以于`@RequestMapping`注解组合使用，以注释方法的返回值是`model`中的属性。通常情况下这种使用方式是不必要的，因为这是controller的默认行为，除非你的返回值是String，而不想让该String被解释为是view 的逻辑名:
 
 ~~~java
 @PostMapping("/modelAttribute/demo3")
@@ -1745,7 +1738,7 @@ public class SessionAttributesController {
 }
 ~~~
 
-###` @SessionAttribute`
+### ` @SessionAttribute`
 
 从Servlet的session域中获取已经存在的属性(之前的请求创建的，或者Filter和HandlerIntercepter创建的)
 
@@ -1777,15 +1770,15 @@ public User user(){
 }
 ```
 
-该注解也可和`@Controller`组合使用，表示该`@Controller`类中所有方法都隐士标注了`@ResponseBody`
+该注解也可和`@Controller`组合使用，表示该`@Controller`类中所有方法都隐士注释了`@ResponseBody`
 
 spring4.0提供了`@RestController`表示`@Controller`和`@ResponseBody`的组合注解
 
 
 
-## MethodHandler可用实体类
+## Handler Method可用实体类
 
-我们可以在MethodHandler方法中直接定义下面:
+SpringMVC允许和提供了一些对象，以声明在Handler Method的参数和返回值上
 
 ### `WebRequest`
 
@@ -1813,9 +1806,9 @@ public void accept(HttpServletRequest request, HttpServletResponse response){
 }
 ~~~
 
-### ServletRequestAPI获取的对象
+### ServletRequestAPI对象
 
-可以直接指定下面类型的对象，RequestMappingHandlerAdapter会从requestAPI获取对应的对象:
+可以直接指定下面类型的对象，RequestMappingHandlerAdapter会通过Servlet RequestAPI从当前请求获取对应的对象:
 
 `HttpSession`、`PushBuilder`、`Principal`、`HttpMethod`、`Locale`、`TimeZone`等
 
@@ -1826,15 +1819,13 @@ public void accept(HttpSession session,HttpMethod method){
 }
 ~~~
 
-**注意:**对于`HttpSession`，该对象不是线程安全的，如果有多个MethodHandler使用同一个`HttpSession`对象的情况，需要将`RequestMappingHandlerAdapter`实例的`synchronizeOnSession`设置为true
+**注意:**对于`HttpSession`，该对象不是线程安全的，如果有多个Controller使用同一个`HttpSession`对象的情况，需要将`RequestMappingHandlerAdapter`实例的`synchronizeOnSession`设置为true
 
 ### `Model`
 
-可以指定下面对象:
+SpringMVC在调用处理器方法之前，会创建一个隐式的Model对象，作为模型数据的存储容器
 
-* java.util.Map
-* org.springframework.ui.Model
-* org.springframework.ui.ModelMap
+如果Handler Method的入参有声明`Map`、`Model`或者其子类(如`ModelMap`),则SpringMVC会将事先创造的Model的引用传递给入参，或者将其中的属性填充到map里供方法访问model属性。
 
 ~~~java
 @RequestMapping("/accept")
@@ -1843,7 +1834,9 @@ public String accept(Model model){
 }
 ~~~
 
-以访问Model
+
+
+
 
 ### `RedirectAttributes`
 
@@ -1920,6 +1913,21 @@ public ResponseEntity<User> getUserByResponseEntity(){
 }
 ~~~
 
+## HttpMessageConverter
+
+在前面介绍MehtodHandler方法的返回值和入参时，已经多次提到了`HttpMessageConverter`,它能帮助`RequestMappingHandlerAdapter`：
+
+* 将读取到的Web请求体中的字符串String信息转换为对象传递给Handler Method的参数
+* 将Handler Method返回的对象转换为String字符串以写入Web响应体
+
+`RequestBody`、`ResponseBody`、`RequestPart`、`HttpEntity`、`ResponseEntity`背后的实现都需要`HttpMessageConverter`的支持
+
+以实现类型转换和数据绑定
+
+
+
+
+
 ## 异步请求
 
 servlet和SpringMVC支持对请求进行异步响应。接收到Web请求后，可以在保持Web连接的情况下结束Servlet容器线程，在其他线程进行响应处理，要开启异步支持，首先需要设置Servlet和所有的Filter支持异步`<async-supported>`:
@@ -1949,6 +1957,8 @@ servlet和SpringMVC支持对请求进行异步响应。接收到Web请求后，�
     <mvc:async-support default-timeout="100000"/>
 </mvc:annotation-driven>
 ~~~
+
+然后可以声明下面的Handler Method返回值以实现异步请求
 
 ### `DeferredResult`
 
@@ -2101,6 +2111,28 @@ function demo() {
     }
 }
 ~~~
+
+### `StreamingResponseBody`
+
+可以通过`StreamingResponseBody`来异步响应输出流
+
+~~~java
+@GetMapping("/demo5")
+public StreamingResponseBody demo5(){
+    return outputStream -> {
+        for (int i = 0; i < 10; i++) {
+            outputStream.write(Integer.toString(i).getBytes(StandardCharsets.UTF_8));
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    };
+}
+~~~
+
+
 
 
 
