@@ -560,9 +560,16 @@ public interface ViewResolver {
 
 ### 面向单一视图类型
 
-面向单一视图类型的ViewResolver类都会直接或间接的继承UrlBasedViewResolver
+面向单一视图类型的ViewResolver类都会直接或间接的继承`UrlBasedViewResolver`
 
 使用该类型的ViewResolver，不需要配置具体的逻辑视图名到具体View的映射关系。通常只要指定以下视图模板所在的位置，这些ViewResolver会按照逻辑视图名，找到相应的模板文件、构造相应的View实例并返回。
+
+`UrlBasedViewResolver`除了提供基本的前后缀映射的支持，还提供了解析转发和重定向URL的支持:
+
+在正式解析viewName前，首先会判断viewName的字符串前缀，如果前缀为:
+
+* `forward:`指示`ViewResolver`进行URL的转发
+* `redirect:`指示`ViewResolver`进行URL的重定向
 
 之所以面向叫单一视图类型是因为该类别中，每个具体的ViewResolver实现都只负责一种View类型的映射。它的主要实现类如下:
 
@@ -1507,8 +1514,6 @@ public void requestParam(@RequestParam("param") String param){
 
 将参数类型进行实例化，并用set方法进行参数绑定
 
-仅仅适用于请求体格式为 application/json的请求
-
 ~~~java
 @PostMapping( "/requestBody/demo0")
 public void requestBody(@RequestBody User user){
@@ -1827,6 +1832,8 @@ SpringMVC在调用处理器方法之前，会创建一个隐式的Model对象，
 
 如果Handler Method的入参有声明`Map`、`Model`或者其子类(如`ModelMap`),则SpringMVC会将事先创造的Model的引用传递给入参，或者将其中的属性填充到map里供方法访问model属性。
 
+可以在处理方法内访问model属性，也可以像model中添加model
+
 ~~~java
 @RequestMapping("/accept")
 public String accept(Model model){
@@ -1913,16 +1920,92 @@ public ResponseEntity<User> getUserByResponseEntity(){
 }
 ~~~
 
-## HttpMessageConverter
+## 处理Handler Method出入参
+
+我们知道，Web请求和响应的正文都是不同媒体格式的字符串类型，而我们定义的HandlerMethod出入参一般是Java对象，`RequestMappingHandlerAdapter`需要一些组件的支持，以实现Java对象和Web请求响应体的转换
+
+### HttpMessageConverter
 
 在前面介绍MehtodHandler方法的返回值和入参时，已经多次提到了`HttpMessageConverter`,它能帮助`RequestMappingHandlerAdapter`：
 
-* 将读取到的Web请求体中的字符串String信息转换为对象传递给Handler Method的参数
-* 将Handler Method返回的对象转换为String字符串以写入Web响应体
+* 将读取到的Web请求体中的请求体信息转换为对象传递给Handler Method的参数
+* 将Handler Method返回的对象转换为响应体信息以写入Web响应体
 
-`RequestBody`、`ResponseBody`、`RequestPart`、`HttpEntity`、`ResponseEntity`背后的实现都需要`HttpMessageConverter`的支持
+`@RequestBody`、`@ResponseBody`、`@RequestPart`、`HttpEntity`、`ResponseEntity`背后的实现都需要`HttpMessageConverter`的支持
 
 以实现类型转换和数据绑定
+
+其定义如下:
+
+~~~java
+public interface HttpMessageConverter<T> {
+	//指示给定的类型是否是可读的，同时指示支持的请求体Content-Type
+	boolean canRead(Class<?> clazz, MediaType mediaType);
+	//指示可写的对象类型，同时指示支持的响应体Content-Type
+	boolean canWrite(Class<?> clazz, MediaType mediaType);
+	//返回当前转换器支持的媒体类型
+	List<MediaType> getSupportedMediaTypes();
+	//将请求信息流转换为T类型对象
+	T read(Class<? extends T> clazz, HttpInputMessage inputMessage);
+	//请T类型对象实例转换为输出信息流
+	void write(T t, MediaType contentType, HttpOutputMessage outputMessage);
+}
+~~~
+
+Spring为`HttpMessageConverter`提供了众多的实现类，以支持不同场景的类型转换:
+
+| `HttpMessageConverter`实现                | `<T>` Type                         | Supported Read<br />Content-Type    | Supported Write <br />Content-Type                           |
+| ----------------------------------------- | ---------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
+| `StringHttpMessageConverter`              | `String`                           | `*/*`                               | `text/plain`                                                 |
+| `FormHttpMessageConverter`                | `MultiValueMap`<br />`<String, ?>` | `application/x-www-form-urlencoded` | `application/x-www-form-urlencoded`<br />`multipart/form-data` |
+| `AllEncompassingFormHttpMessageConverter` | `MultiValueMap`<br />`<String, ?>` | `application/x-www-form-urlencoded` | `application/x-www-form-urlencoded`<br />`multipart/form-data` |
+| `ResourceHttpMessageConverter`            | `Resource`                         | `*/*`                               | 由写入的`Resource`决定                                       |
+| `BufferedImageHttpMessageConverter`       | `BufferedImage`                    | 由注册的` image readers`决定        | `BuferedImage`对应的类型                                     |
+| `ByteArrayHttpMessageConverter`           | `byte[]`                           | `*/*`                               | `application/octet-stream`                                   |
+| `SourceHttpMessageConverter`              | `T extends Source`                 | `text/xml`、`application/xml`       | `text/xml`、`application/xml`                                |
+| `MappingJackson2HttpMessageConverter`     | `Object`                           | `application/json`                  | `application/json`                                           |
+| `RssChannelHttpMessageConverter`          | `Channel`                          | `application/rss+xml`               | `application/rss+xml`                                        |
+| ······                                    |                                    |                                     |                                                              |
+
+`RequestMappingHandlerAdapter`默认已经装配了下面`HttpMessageConverter`:
+
+* `StringHttpMessageConverter`
+* `ByteArrayHttpMessageConverter`
+* `SourceHttpMessageConverter`
+* `AllEncompassingFormHttpMessageConverter`
+
+如果想要使用其他的`HttpMessageConverter`，需要在SpringWeb容器中显示定义`RequestMappingHandlerAdapter`并指定`HttpMessageConverter`
+
+### DataBinder
+
+ `@RequestParam`, `@RequestHeader`, `@PathVariable`, `@CookieValue`、`@ModelAttribute`等注解指示的方法参数的传递，需要`DataBinder`来实现数据绑定，绑定过程包括数据的转换、格式化、校验等
+
+其中`@ModelAttribute`绑定的是参数对象中的字段
+
+![DataBinder工作流程](https://gitee.com/wangziming707/note-pic/raw/master/img/DataBinder%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%A8%8B.jpeg)
+
+SpringMVC将ServletRequest对象以及处理方法的入参对象实例传递给`DataBinder`
+
+* `DataBinder`首先调用装配在SpringWeb上下文的ConverionService组件进行数据转换、数据格式化的工作，将ServletRequest中的消息填充到入参对象中
+* 然后调用`Validator`组件对已经绑定了请求消息数据的入参对象进行数据合法性校验，最终生成数据绑定结果BindingResult对象
+
+#### 数据转换
+
+
+
+#### 数据格式化
+
+
+
+#### 数据校验
+
+
+
+
+
+
+
+
 
 
 
@@ -2141,33 +2224,6 @@ public StreamingResponseBody demo5(){
 
 
 # 其他
-
-## 转发与重定向
-
-SpringMVC处理器，不管返回值是ModelAndView还是String，默认调用转发
-
-可以通过在表示资源路径的字符串中指定跳转类型来指定跳转方式：
-
-* forward：表示转发
-* redirect：表示重定向
-
-演示：
-
-~~~java
-@Controller
-public class ThirdController {
-    @RequestMapping("/jumpByForward.action")
-    public ModelAndView jumpByForward(){
-        ModelAndView modelAndView = new ModelAndView();
-        modelAndView.setViewName("forward:/index.jsp");
-        return modelAndView;
-    }
-    @RequestMapping("/jumpByRedirect.action")
-    public String jumpByRedirect(){
-        return "redirect:/index.jsp";
-    }
-}
-~~~
 
 ## SpringMVC解决中文乱码问题
 
