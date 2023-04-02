@@ -1779,7 +1779,7 @@ public User user(){
 
 spring4.0提供了`@RestController`表示`@Controller`和`@ResponseBody`的组合注解
 
-
+**注意:**作为`@ResponseBody`注解方法返回值的对象，一般需要实现`Serializable`接口，才能实现序列化成json字符串。
 
 ## Handler Method可用实体类
 
@@ -1991,25 +1991,220 @@ SpringMVC将ServletRequest对象以及处理方法的入参对象实例传递给
 
 #### 数据转换
 
+数据类型转换工作由DataBinder委托ConversionService完成，其定义如下:
 
+~~~Java
+public interface ConversionService {
+	boolean canConvert(Class<?> sourceType, Class<?> targetType);
+	//判断是否能将source类型转换为target类型
+	boolean canConvert(TypeDescriptor sourceType, TypeDescriptor targetType);
+	//通过TypeDescriptor，判断是否能将source类型转换为target类型
+    //TypeDescriptor不但描述了需要转换类的信息，还描述了宿主类的上下文信息，如注解等
+	<T> T convert(Object source, Class<T> targetType);
+	//进行类型转换
+	Object convert(Object source, TypeDescriptor sourceType, TypeDescriptor targetType);
+    //通过TypeDescriptor进行类型转换
+}
+~~~
+
+可以通过`ConversionServiceFactoryBean`注册一个`DefaultConversionService`在SpringIoC容器中
+
+`DefaultConversionService`提前注册了一些常用的`Converter`以支持常见的类型转换，在使用`ConversionServiceFactoryBean`时，可以通过`converters`添加一些其他的或者自定义的`Converter`：
+
+~~~xml
+<bean id="myConversionService" class="org.springframework.context.support.ConversionServiceFactoryBean">
+    <property name="converters">
+        <set>
+            <bean class="com.wzm.spring.converter.MyConverter"/>
+        </set>
+    </property>
+</bean>
+~~~
+
+ConversionServiceFactoryBean支持注册以下三种`converter`:
+
+* `Converter<S, T>`
+* `GenericConverter`
+* `ConverterFactory`
+
+使用SpringMVC提供的命名空间`mvc`启动注解驱动时:
+
+~~~xml
+<mvc:annotation-driven/>
+~~~
+
+如果没有指定，将注册一个默认的`RequestMappingHandlerAdapter`。和默认的`ConversionService`，即`FormattingConversionServiceFactoryBean`
+
+可以通过指定属性`conversion-service`覆盖默认的`ConversionService`
+
+~~~xml
+<mvc:annotation-driven conversion-service="myConversionService" >
+~~~
+
+##### 使用自定义Converter
+
+通过以上信息，我们可以自定义一个Converter并注册到SpringMVC的框架流程中:
+
+~~~java
+public class MyConverter implements Converter<String, User> {
+    //String format: "username;password"
+    @Override
+    public User convert(String source) {
+        String[] split = source.split(";");
+        return new User(split[0],split[1]);
+    }
+}
+~~~
+
+这样就可以使用对应的String格式来传递User:
+
+~~~java
+@RequestMapping("/converter")
+@ResponseBody
+public String converter(User user){
+    System.out.println(user);
+    return "ok";
+}
+//GET: /converter?user=wangziming;123321
+//print: User(username=wangziming, password=123321)
+~~~
 
 #### 数据格式化
 
+在对日期、时间、数字、货币等具有一定格式的数据进行类型转化时，需要使用特定的格式转换器进行转换，根据不同的本地化环境和给定的格式信息进行转换。
 
+在刚刚讲数据转换时，可能已经注意到了，SpringMVC注册的默认的`ConversionService`是`FormattingConversionServiceFactoryBean`,它生产`FormattingConversionService`通过它的名字就可以知道，它同样负责数据的格式化工作，实际上该类实现了`FormatterRegistry`以注册格式化组件，`FormatterRegistry`定义如下:
+
+~~~java
+public interface FormatterRegistry extends ConverterRegistry {
+	void addPrinter(Printer<?> printer);
+	void addParser(Parser<?> parser);
+	void addFormatter(Formatter<?> formatter);
+	void addFormatterForFieldType(Class<?> fieldType, Formatter<?> formatter);
+	void addFormatterForFieldType(Class<?> fieldType, Printer<?> printer, Parser<?> parser);
+	void addFormatterForFieldAnnotation(AnnotationFormatterFactory<? extends Annotation> annotationFormatterFactory);
+
+}
+~~~
+
+该接口规范了添加`Printer`、`Parser`、`Formatter`、`AnnotationFormatterFactory`的方法，以让实现该接口的类拥有数据格式化的能力:
+
+* `Printer`将对象和根据locale转换为字符串
+* `Parser`将字符串根据locale转化为对象
+* `Formatter`只继承`Printer`和`Parser`
+* `AnnotationFormatterFactory`：生产格式化器来格式化用特定注解标注的字段的值
+
+使用注解注释参数以指示格式化格式相对更方便一些，注解方式的格式化工作由`AnnotationFormatterFactory`完成，Spring提供了一些实现类:
+
+* `DateTimeFormatAnnotationFormatterFactory`—对应注解`@DateTimeFormat`
+* `NumberFormatAnnotationFormatterFactory`—对应注解`@NumberFormat `
+
+等
+
+启用SpringMVC的注解驱动后，默认支持这两个格式化注解:
+
+~~~java
+@RequestMapping("/formatter")
+@ResponseBody
+public String formatter(@DateTimeFormat(pattern = "yyyy-MM-dd") Date date,
+                        @NumberFormat(pattern = "#,###.##") long number){
+    System.out.println(date);
+    System.out.println(number);
+    return "OK";
+}
+//GET: /formatter?date=2021-01-01&number=2,222.01
+//Print Fri Jan 01 00:00:00 CST 2021 和 2222
+~~~
 
 #### 数据校验
 
+##### JSR-303
 
+应用程序在执行业务逻辑前，必须通过数据校验以保证接收到的输入数据是正确合法的，比如工资必须是正的、生日必须是过去的时间等等。为了避免数据校验的代码分散在应用程序的不同层，最好将验证逻辑与相应的域模型进行绑定，将代码验证的逻辑集中起来管理。
 
+JSR-303是Java为Bean数据合法性校验提供的标准框架。`hibernate-validator`包是对该框架的实现，可以引入它来进行数据校验:
 
+~~~xml
+ <!-- 实现了jdk的Validator、ConstraintValidator、Constraint接口，提供校验实现 -->
+ <dependency>
+     <groupId>org.hibernate.validator</groupId>
+     <artifactId>hibernate-validator</artifactId>
+     <version>6.1.5.Final</version>
+ </dependency>
 
+~~~
 
+JSR-303定义了如下注解规范:
 
+| 注解                        | 代码内容                                                 |
+| --------------------------- | -------------------------------------------------------- |
+| @Null                       | 被注释的元素必须为 null                                  |
+| @NotNull                    | 被注释的元素必须不为 null                                |
+| @AssertTrue                 | 被注释的元素必须为 true                                  |
+| @AssertFalse                | 被注释的元素必须为 false                                 |
+| @Min(value)                 | 被注释的元素必须是一个数字，其值必须大于等于指定的最小值 |
+| @Max(value)                 | 被注释的元素必须是一个数字，其值必须小于等于指定的最大值 |
+| @DecimalMin(value)          | 被注释的元素必须是一个数字，其值必须大于等于指定的最小值 |
+| @DecimalMax(value)          | 被注释的元素必须是一个数字，其值必须小于等于指定的最大值 |
+| @Size(max, min)             | 被注释的元素的大小必须在指定的范围内                     |
+| @Digits (integer, fraction) | 被注释的元素必须是一个数字，其值必须在可接受的范围内     |
+| @Past                       | 被注释的元素必须是一个过去的日期                         |
+| @Future                     | 被注释的元素必须是一个将来的日期                         |
+| @Pattern(value)             | 被注释的元素必须符合指定的正则表达式                     |
 
+hibernate-validator提供的额外注解:
 
+| @代码     | 代码内容                               |
+| --------- | -------------------------------------- |
+| @Email    | 被注释的元素必须是电子邮箱地址         |
+| @Length   | 被注释的字符串的大小必须在指定的范围内 |
+| @NotEmpty | 被注释的字符串的必须非空               |
+| @Range    | 被注释的元素必须在合适的范围内         |
 
+##### Spring Validator
 
+spring有自己的数据验证框架，同时支持JSR-303框架
 
+spring提供的验证框架的顶级接口是`org.springframework.validation.Validator`
+
+spring提供的`LocalValidatorFactoryBean`同时实现了spring的`Validator`和 JSR-303框架的`Validator`
+
+`<mvc:annotation-driven/>`默认会装配一个`LocalValidatorFactoryBean`,只要在需要检验数据的参数注释`@Valid`注解，即可通知`DataBinder`在完成数据转化后使用`LocalValidator`进行数据校验，数据校验的结果可以通过声明` BindingResult`和`Errors`来访问
+
+定义进行数据校验的对象:
+
+~~~java
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class User implements Serializable {
+    @NonNull
+    private String username;
+    @NonNull
+    private String password;
+    @Past
+    @DateTimeFormat(pattern = "yyyy-MM-dd")
+    private Date birthday;
+}
+~~~
+
+进行数据校验:
+
+~~~java
+@RequestMapping("/validator")
+@ResponseBody
+public String validator(@Valid User user, BindingResult result){
+    System.out.println(user);
+    System.out.println(result.hasErrors());
+    List<ObjectError> allErrors = result.getAllErrors();
+    for (ObjectError error : allErrors) {
+        System.out.println(error);
+    }
+    return "OK";
+}
+//GET:    /validator?password=123123&birthday=2029-02-02
+//Print:  username不能为null ，birthday 需要是一个过去的时间
+~~~
 
 ## 异步请求
 
@@ -2217,11 +2412,116 @@ public StreamingResponseBody demo5(){
 
 
 
+# SpringMVC Config
+
+对SpringMVC进行配置，以控制SpringMVC的流程行为
+
+SpringMVC提供了两种配置方式
+
+* 使用MVC XML命名空间的进行配置
+* 使用MVC Java编码配置
+
+他们首先提供了一套适用于大部分应用程序的默认配置，并允许我们进行自定义配置以覆盖这些默认配置
+
+## MVC XML Configuration
+
+可以使用`<mvc:annotation-driven>`标签以启用xml配置:
+
+~~~xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/mvc
+       http://www.springframework.org/schema/mvc/spring-mvc.xsd 
+       http://www.springframework.org/schema/context 
+       https://www.springframework.org/schema/context/spring-context.xsd">
+    <mvc:annotation-driven/>
+</beans>
+~~~
+
+如果不指定`<mvc:annotation-driven>`的属性和子标签，那么SpringMVC将使用默认配置，我们可以指定`mvc:annotation-driven`的子标签和属性以改变默认行为。
+
+`<mvc:annotation-driven>`属性：
+
+* `enable-matrix-variables`:启用解析URL的矩阵变量
+* `validator`:指定`DataBinder`在进行数据校验时使用的 `Validator`实例
+* `conversion-service`:指定`DataBinder`在进行数据转化和格式化时使用的`ConversionService`
+* `content-negotiation-manager`:指定SpringMVC用来确定请求的媒体类型的`ContentNegotiationManager`
+* `ignore-default-model-on-redirect`:指定重定向场景中是否启用默认model
+* `message-codes-resolver`：指定`DataBinder`在生成`BindingResult`时解析error code所使用的`MessageCodesResolver`
+
+`<mvc:annotation-driven>`子标签：
+
+* `<mvc:argument-resolvers>`指定用于解析自定义参数的`HandlerMethodArgumentResolver`，该配置不会覆盖默认的参数解析器
+* `<mvc:async-support>`：异步请求配置
+* `<mvc:message-converters>`：配置自定义的` HttpMessageConverter` 
+* `<mvc:path-matching>`：自定义与路径匹配和URL处理相关的行为
+* `<mvc:return-value-handlers>`：自定义返回值处理器
+
+## MVC Java Configuration
+
+使用`@EnableWebMvc`注解，并实现`WebMvcConfigurer`的普通类，可以实现配置SpringMVC
+
+~~~java
+@EnableWebMvc
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    //实现WebMvcConfigurer方法以配置SpringMVC
+}
+~~~
+
+WebMvcConfigurer可配置的方法如下:
+
+~~~java
+public interface WebMvcConfigurer {
+	//配置PathHelper和PathMatcher
+	default void configurePathMatch(PathMatchConfigurer configurer) ;
+	//配置ContentNegotiationManager
+	default void configureContentNegotiation(ContentNegotiationConfigurer configurer);
+	//配置异步支持
+	default void configureAsyncSupport(AsyncSupportConfigurer configurer);
+	//配置默认Servlet Handler
+	default void configureDefaultServletHandling(DefaultServletHandlerConfigurer configurer) ;
+
+	default void addFormatters(FormatterRegistry registry);
+
+	default void addInterceptors(InterceptorRegistry registry) ;
+
+	default void addResourceHandlers(ResourceHandlerRegistry registry);
 
 
+	default void addCorsMappings(CorsRegistry registry);
 
 
+	default void addViewControllers(ViewControllerRegistry registry) ;
 
+
+	default void configureViewResolvers(ViewResolverRegistry registry);
+
+
+	default void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers);
+
+
+	default void addReturnValueHandlers(List<HandlerMethodReturnValueHandler> handlers);
+
+	default void configureMessageConverters(List<HttpMessageConverter<?>> converters);
+
+	default void extendMessageConverters(List<HttpMessageConverter<?>> converters);
+
+	default void configureHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers) ;
+
+	default void extendHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers);
+
+
+	@Nullable
+	default Validator getValidator();
+
+	default MessageCodesResolver getMessageCodesResolver();
+}
+~~~
 
 # 其他
 
@@ -2238,17 +2538,6 @@ SpringMVC提供了编码过滤器，直接在web.xml中配置即可：
     <init-param>
         <param-name>encoding</param-name>
         <param-value>utf-8</param-value>
-    </init-param>
-    <!--这两个可以不写-->
-    <!--强制开启request字符集-->
-    <init-param>
-        <param-name>forceRequestEncoding</param-name>
-        <param-value>true</param-value>
-    </init-param>
-    <!--强制开启response字符集-->
-    <init-param>
-        <param-name>forceResponseEncoding</param-name>
-        <param-value>true</param-value>
     </init-param>
 </filter>
 <filter-mapping>
