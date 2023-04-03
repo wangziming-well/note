@@ -1,15 +1,15 @@
-* 复习一遍HTTP，再学一遍servlet ，最后在学一遍SpringMVC
-    
+* javax.validation 和springboot的validation
+
 * 书
-    
+
     * JDBC API Tutorial and Reference 和 JDBC规范
     * 数据库系统概念（原书第7版）
     * Java 多线程程序设计
-    
+
 * JTA 分布式事务
-  
+
 * JNDI 
-  
+
 * Java 国际化 api ResourceBundle
 
 * Java 自定义时间发布java.util.EventObject类和java.util.EventListener接口  
@@ -39,10 +39,10 @@
     * SequenceDiagram
     * Docker
     * MavenHelper
-    
+
 * vue 
 
 * axios
 
-    
+      
 
