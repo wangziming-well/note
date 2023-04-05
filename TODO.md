@@ -1,5 +1,7 @@
 * javax.validation 和springboot的validation
 
+* jackson
+
 * 书
 
     * JDBC API Tutorial and Reference 和 JDBC规范
@@ -44,5 +46,5 @@
 
 * axios
 
-      
+  ​    
 
