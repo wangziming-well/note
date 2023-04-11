@@ -436,7 +436,7 @@ if(f){
 格式：
 
 ~~~java
-swithc(expression){
+switch(expression){
     case value1:
         //语句
     case value2:
@@ -460,6 +460,11 @@ swithc(expression){
 ​			default一定会被定义，并且只会被定义在最后位置
 
 * default永远是case都不满足表达式值时，才会被执行
+* case标签的值可以为:
+  * char、byte、short、int的常量表达式
+  * 枚举常量
+  * 字符串字面量
+
 
 ## 循环结构
 
