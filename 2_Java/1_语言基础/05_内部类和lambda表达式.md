@@ -6,6 +6,12 @@
 
 根据定义的位置，可以将内部类分为成员内部类和局部内布类
 
+内部类可以：
+
+* 访问其定义所在作用域中的成员和变量，包括私有成员
+* 可以对同一个包中的其他类隐藏起来
+* 使用匿名内部类实现回调
+
 ## 成员内部类
 
 成员内部类是定义在外部类成员位置的类，和成员方法，成员域等平级
@@ -51,7 +57,7 @@ Outer.Inner inner = new Outer().inner();
 
 ### 访问外部类
 
-内部类作为外部类的成员中可以访问外部类中的其他成员:
+内部类作为外部类的成员中可以访问创建它的外部类中的其他成员:
 
 ~~~java
 public class Outer {
@@ -341,45 +347,75 @@ class Main{
 //sub
 ~~~
 
-
-
-
-
-
-
-
-
-# 函数式接口
-
-* 定义：有且只有一个抽象方法的接口
-* 可以用注解`@FunctionalInterface`来检测
-
-* 常用函数式接口
-  * Runnerable:线程任务接口
-  * FilenameFilter：文件名过滤器
-  * FileFileter：文件对象过滤器
-  * Comparator：比较器
-
 # Lambda表达式
 
-* 用于优化函数式接口的匿名内部类的使用
+Lambda表达式是一段可被重复调用执行的代码块，可以也只能传递给函数式接口
 
-* 本质是用更简单的方法重写函数式接口的抽象方法
+## 函数式接口
 
-* 语法格式
+在正式了解Lambda表达式之前，有必要了解函数式接口的概念：有且只有一个抽象方法的接口被称为函数式接口
 
-  ~~~java
-  (形参列表)->{重写抽象方法的方法体}
-  ~~~
+可以用注解`@FunctionalInterface`来检测注释接口是否为函数式接口
 
-  
+Java提供了许多函数式接口如,例如`Comparator`比较器接口:
 
-* Lambda表达式省略格式：
+~~~java
+@FunctionalInterface
+public interface Comparator<T> {
+    int compare(T o1, T o2);
+    ......
+}
+~~~
 
-  * ()中的数据类型可以省略
-  * ()中有且仅有一个参数是，()可以省略
-  * {}中只有一条语句时， `return {} ;`可以省略[必须一起省略]
+## Lambda表达式格式
 
-* 好处：语句简单直接
+当方法的参数中或者返回值有函数式接口类型的参数时，可以使用Lambda表达式以替代匿名内部类，或者普通的函数式接口类型实现类。
 
-* 弊端：可读性不高
+Lambda表达式的格式如下：
+
+~~~java
+(形参列表)->{重写抽象方法的方法体}
+~~~
+
+以传递给Comparator接口的Lambda表达式为例:
+
+~~~java
+Comparator<String> comparator =
+(String a, String b) -> {return a.length() - b.length();};
+~~~
+
+即使 lambda 表达式没有参数， 仍然要提供空括号，就像无参数方法一样：
+
+~~~java 
+() -> { for (int i = 100;i >= 0;i-- ) System.out.println(i); }
+~~~
+
+而lambda表达式在很多情况下可以省略部分符号以简化书写:
+
+在形参列表的参数类型已知的情况下，`()`中的数据类型可以省略：
+
+~~~java
+Comparator<String> comparator = 
+    (a, b) -> {return a.length() - b.length();};
+~~~
+
+`()`中有且只有一个参数时，`()`可以省略：
+
+~~~java
+100 -> { for (int i = n;i >= 0;i++ ) System.out.println(i); } 
+~~~
+
+`{}`中只有一条语句时， `return {} ;`可以省略(必须一起省略):
+
+~~~java
+Comparator<String> comparator = 
+    (a, b) ->  a.length() - b.length();
+~~~
+
+所以，如果要对一个`String`泛型的`ArrayList`容器进行排序，使用Lambda表达式进行编写将非常简便:
+
+~~~java
+//strings是类型为ArrayList<String>的对象
+strings.sort((a, b) ->  a.length() - b.length());
+~~~
+
