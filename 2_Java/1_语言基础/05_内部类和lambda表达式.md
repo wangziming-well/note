@@ -351,6 +351,8 @@ class Main{
 
 Lambda表达式是一段可被重复调用执行的代码块，可以也只能传递给函数式接口
 
+在很多场景下能够替代匿名内部表达式作为回调的使用。
+
 ## 函数式接口
 
 在正式了解Lambda表达式之前，有必要了解函数式接口的概念：有且只有一个抽象方法的接口被称为函数式接口
@@ -419,3 +421,54 @@ Comparator<String> comparator =
 strings.sort((a, b) ->  a.length() - b.length());
 ~~~
 
+## 方法引用
+
+可以使用方法引用让lambda表达式传递某个指定的现成方法。
+
+用如下格式的代码替换lambda表达式:
+
+~~~java
+object::instanceMethod; //引用对象的实例方法
+Class::staticMethod;    //引用类的静态方法
+Class::instanceMethod;  //引用第一个参数对象的实例方法
+~~~
+
+如：`System.out::println`就等价于`s -> System.out.println(s);`
+
+使用示例格式中的第三种情况时，第一个参数将会成为方法的目标(方法所在的对象)例如:
+
+~~~java
+Arrays.sort(strings,(s1,s2) -> s1.compareToIgnoreCase(s2));
+//可以用如下方法引用
+Arrays.sort(strings,String::compareToIgnoreCase);
+~~~
+
+### `this&super`
+
+可以在方法引用中使用`this`和`super`引用当前对象的方法或者当前对象超类的方法:
+
+~~~java
+public class App {
+    public void main( ) {
+        String [] strings = {"a","c","b"};
+        Arrays.sort(strings,this::compareString);
+    }
+
+    public int compareString (String s1,String s2){
+        return s1.length() - s2.length();
+    }
+}
+~~~
+
+这里的`this::compareString`就等价于`(s1,s2) -> this.compareString(s1,s2)`
+
+### 引用构造方法
+
+构造方法作为一种特殊的方法， 方法引用的格式和普通方法不一样，通过`new`关键字引用如:
+
+~~~java
+ArrayList<String> names = ...;
+List<Person> people = names.stream().map(Person::new).collect(Collectors.toList());
+~~~
+
+这里的`Person::new`就等价于`str -> new Person(str)`
