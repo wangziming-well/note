@@ -677,6 +677,16 @@ Stream.iterate(1,i ->{int result = before[0] + i;  before[0] = i; return result;
     .forEach(i-> System.out.print(i+","));//1,2,3,5,8,13,21,34,55,89,144,233,···
 ~~~
 
+# 基本数据流
+
+如果要操作基本数据类型元素流，直接使用`Stream`就需要将每个基本数据类型包装然后放入流中；这显然是很低效的；所以Java提供了专门的类型`IntStream、LongStream、DoubleStream`用来直接储存基本类型值；
+
+使用IntStream存储`short、char、byte、boolean、int`
+
+使用LongStream存储`long`
+
+使用`DoubleStream`存储`double、float`
+
 # Collector和Collectors
 
 Stream有以`Collector`作为入参的`collect()`重载函数：
