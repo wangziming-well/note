@@ -716,7 +716,7 @@ Collectors常用静态方法：
 
 ~~~java
 <T, C extends Collection<T>> Collector<T, ?, C> toCollection(Supplier<C> collectionFactory) ;
-//返回一个Collector，它按遇到的顺序将输入元素累积到一个新的集合中。集合由提供的工厂创建，使用例:
+//返回一个Collector，它按遇到的顺序将输入元素累积到一个新的集合中。集合由提供的工厂创建
 <T> Collector<T, ?, List<T>> toList();
 //返回一个Collector，它将输入元素累加到一个新的List中;该List实际是ArrayList;如果需要对返回的List进行更多控制，则使用toCollection(Supplier)
 <T> Collector<T, ?, Set<T>> toSet();
