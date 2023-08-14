@@ -107,7 +107,9 @@ ByteBuffer allocateDirect(int capacity);
 //获取指定大小的空DirectByteBuffer
 ~~~
 
-初次之外`ByteBuffer`作为最基本的缓冲区也可以转换为其他类型的`Buffer`
+## ByteBuffer
+
+`ByteBuffer`作为最基本的缓冲区也可以转换为其他类型的`Buffer`
 
 ~~~java
 CharBuffer asCharBuffer();
@@ -117,8 +119,6 @@ LongBuffer asLongBuffer();
 FloatBuffer asFloatBuffer();
 DoubleBuffer asDoubleBuffer();
 ~~~
-
-
 
 
 
