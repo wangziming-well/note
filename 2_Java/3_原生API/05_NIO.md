@@ -316,7 +316,79 @@ ssc.socket().bind(new InetSocketAddress(3307));
 DatagramChannel dc = DatagramChannel.open();
 ~~~
 
+## 使用通道
 
+`WritableByteChannel`和`ReadableByteChannel`提供了write()和read()方法支持通道读写字节缓冲区：
+
+~~~java
+public interface WritableByteChannel extends Channel{
+    public int write(ByteBuffer src) throws IOException;
+    //从缓冲区读取字节序列写入到通道中，
+}
+public interface ReadableByteChannel extends Channel {
+    public int read(ByteBuffer dst) throws IOException;
+    //从此通道读取字节序列写入到给定的缓冲区,尝试从通道读取r个字节，其中r是缓冲区中剩余的字节数，即 dst.remaining()。
+}
+~~~
+
+如果一个通道实现了`WritableByteChannel`和`ReadableByteChannel`中的一个，那么通道就是单向的。如果一个通道同时实现这两个接口，那么它就是双向的。
+
+因为`ByteChannel`接口本身只继承了`ReadableByteChannel`和`WritableByteChannel`,聚集这两个接口的功能，它本身没有提供任何功能。所以实现了`ByteChannel`接口的通道就是双向通道。
+
+通过Channel的继承体系我们发现，一个file通道和三个socket通道都是双向通道。这对socket通道来说没什么问题，因此网络通道一直是双向的。
+
+但对file通道却是个问题，因为一个文件可以在不同的时候以不同的权限打开：
+
+从`FileInputStream.getChannel()`方法获取到的`FileChannel`对象是只读的，但是从接口声明的角度来看它是双向的。在这样一个通道上调用`write()`方法会抛出异常
+
+下面演示使用通道和缓冲区将一个通道的数据移动到另一个通道：
+
+~~~java
+ReadableByteChannel in = Channels.newChannel(System.in);
+WritableByteChannel out = Channels.newChannel(System.out);
+ByteBuffer buffer = ByteBuffer.allocate(16 * 1024);
+while (in.read(buffer) != -1) { //操作1
+    buffer.flip(); //操作2
+    out.write(buffer); //操作3
+    buffer.compact(); //操作4
+}
+~~~
+
+我们来看下在操作1到操作4之间，缓冲区的数据和索引是怎样变化以完成反复读写数据的：
+
+* 初始状态：buffer中没有数据，position为0，limit等于cap：
+
+  ![BufferIndex0](https://gitee.com/wangziming707/note-pic/raw/master/img/BufferIndex0.png)
+
+* 操作1：in通道将读入的数据写入buffer中，position变为写入的数据的长度：
+
+  ![BufferIndex1](https://gitee.com/wangziming707/note-pic/raw/master/img/BufferIndex1.png)
+
+* 操作2：翻转缓冲区，将其变为可读的状态，limit变为position，position变为0：
+
+  ![BufferIndex2](https://gitee.com/wangziming707/note-pic/raw/master/img/BufferIndex2.png)
+
+* 操作3：out通道读取buffer中的数据到通道中，假设本次读取没有读取buffer中的所有数据，假设只读取了1个字节：
+
+  ![BufferIndex3](https://gitee.com/wangziming707/note-pic/raw/master/img/BufferIndex3.png)
+
+* 操作4：压缩此缓冲区，使其变为可写状态，同时保留未读取的数据：将未读数据复制到数组开头，position置为未读字节个数，limit置为capacity：
+
+  ![BufferIndex4](https://gitee.com/wangziming707/note-pic/raw/master/img/BufferIndex4.png)
+
+当然我们也可以使用如下方式保障每次从缓冲区中读取数据时，一定读取完缓冲区所有的数据才继续写入：
+
+~~~java
+ReadableByteChannel in = Channels.newChannel(System.in);
+WritableByteChannel out = Channels.newChannel(System.out);
+ByteBuffer buffer = ByteBuffer.allocate(16 * 1024);
+while (in.read(buffer) != -1){
+    buffer.flip();
+    while (buffer.hasRemaining()) //确保缓冲区数据被完全读取
+        out.write(buffer);
+    buffer.clear();
+}
+~~~
 
 
 
