@@ -306,6 +306,13 @@ FileChannel channel = new FileInputStream("data.txt").getChannel();//只读通�
 FileChannel channel = new RandomAccessFile("data.txt", "rw").getChannel();//读写通道
 ~~~
 
+JDK1.7`FileChannel`添加了两个静态方法，以直接创建文件对应的通道实例：
+
+~~~java
+public static FileChannel open(Path path, Set<? extends OpenOption> options,FileAttribute<?>... attrs);
+public static FileChannel open(Path path, OpenOption... options);
+~~~
+
 而Socket通道可以通过各自的工厂方法创建：
 
 ~~~java
@@ -389,6 +396,105 @@ while (in.read(buffer) != -1){
     buffer.clear();
 }
 ~~~
+
+## 关闭通道
+
+与缓冲区不同，通道不能被反复使用。一个打开的通道就代表与一个特定I/O服务的特定连接。当通道关闭时，这个连接会丢失，然后通道将不再连接任何东西。
+
+调用通道的`close()`方法时，可能会导致线程阻塞，哪怕该通道处于非阻塞模式。通道关闭时的阻塞行为取决于操作系统或者文件系统。
+
+可以在一个通道上多次调用`close()`方法：如果第一个线程在`close()`方法中阻塞，那么在它完成关闭通道前，其他任何调用这个通道的`close()`方法的线程都会阻塞。后续在该已关闭的通道上调用`close()`不会产生任何操作，只会立即返回。
+
+### InterruptibleChannel的中断关闭
+
+`InterruptibleChannel`通道的中断行为可能会导致通道关闭：如果一个线程在一个`InterruptibleChannel`上被阻塞的同时被中断，那么该通道将被关闭，该被阻塞线程也会产生一个`ClosedByInterruptException`
+
+此外如果一个线程的中断状态被设置并且该线程试图访问访问一个`InterruptibleChannel`通道，那么这个通道将被立即关闭
+
+## Scatter/Gather
+
+操作系统支持本地矢量I/O，进程只需要一个系统调用，就可以把一连串缓冲区地址传递给操作系统。然后，内核就可以顺序填充或者排干多个缓冲区，读的时候就把数据发散到多个用户空间缓冲区，写的时候再从多个缓冲区汇聚起来。这样用户进程就不必多次执行系统调用，这样开销很大。
+
+`ScatteringByteChannel`和`GatheringByteChannel`就是基于这样技术的接口，它们的定义如下：
+
+~~~java
+public interface ScatteringByteChannel extends ReadableByteChannel{
+    public long read(ByteBuffer[] dsts, int offset, int length) throws IOException;
+    public long read(ByteBuffer[] dsts) throws IOException;
+}
+public interface GatheringByteChannel extends WritableByteChannel{
+    public long write(ByteBuffer[] srcs, int offset, int length)
+        throws IOException;
+    public long write(ByteBuffer[] srcs) throws IOException;
+}
+~~~
+
+这两个接口为通道提供了在I/O时读取并写入多个缓冲区；将多个缓冲区的数据组合发送出去。
+
+这使我们可以委托操作系统来完成将读取到的数据分开存放到多个缓冲区，或者将不同的数据合并成一个整体的操作。
+
+## FileChannel
+
+`FileChannel`类实现常用的`read/write`和`scatter/gather`操作，同时也提供了专用于文件的方法。
+
+### 文件和位置
+
+它除了实现`GatheringByteChannel`, `ScatteringByteChannel`,还实现了`SeekableByteChannel`接口，
+
+`SeekableByteChannel`是一个维护了当前位置并且允许位置变动的字节通道，其API如下：
+
+~~~Java
+public interface SeekableByteChannel
+    extends ByteChannel{
+    int read(ByteBuffer dst);//从通道中读取字节序列到给定的buffer，读取是从通道的当前位置开始，读取后通道位置position值将增加读取的字节数。当position值达到文件大小的值(size())，方法返回-1;
+    int write(ByteBuffer src);//从给定的buffer中读取字节序列写入到通道中，写入是从通道的当前位置开始的，写入后通道位置position值将增加实际写入的字节数. position前进到超过文件大小的值时，该文件会扩展以容纳新写入的字节。
+    long position() throws IOException;	//返回通道的当前位置
+    SeekableByteChannel position(long newPosition); //设置此通道的位置
+    long size() throws IOException; //返回此通道连接到的实体的当前大小
+    SeekableByteChannel truncate(long size); //将此通道连接到的实体截断为给定大小，size为截断后新实体的大小，position会被设置为size的值
+}
+~~~
+
+除此之外，`FileChannel`还提供如下操作文件和位置API：
+
+~~~java
+public abstract void force(boolean metaData);//通知通道强制将对文件的修改缓冲都应用到磁盘的文件上，如果文件不在本地机器上，则不能保证方法生效。metaData表示在方法返回值前文件的元数据（metadata）是否也要被同步更新到磁盘
+public abstract int read(ByteBuffer dst, long position);
+public abstract int write(ByteBuffer src, long position);
+//在指定的position处读写，不会改变当前文件的position;也被称为绝对读写操作
+~~~
+
+在文件末尾之外的position进行一个绝对读操作，`read()`会返回-1。在超出文件大小的position上进行一个绝对写操作会导致文件增加以容纳正在被写入的新字节。
+
+### 文件锁
+
+`FileChannel`提供文件锁定的功能，其注意，文件锁的对象是文件，文件锁的持有者是JVM进程，而不是线程和通道。
+
+这意味着，同一个JVM中一个线程申请了文件锁，另一个线程仍然可以访问到该文件。
+
+~~~java
+public abstract FileLock lock(long position, long size, boolean shared);
+public final FileLock lock();
+public abstract FileLock tryLock(long position, long size, boolean shared);
+public final FileLock tryLock();
+~~~
+
+### 内存映射文件
+
+~~~java
+public abstract MappedByteBuffer map(MapMode mode,long position, long size);
+~~~
+
+### 转换
+
+~~~java
+public abstract long transferTo(long position, long count, WritableByteChannel target);
+public abstract long transferFrom(ReadableByteChannel src,long position, long count);
+~~~
+
+
+
+
 
 
 
