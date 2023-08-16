@@ -474,10 +474,57 @@ public abstract int write(ByteBuffer src, long position);
 
 ~~~java
 public abstract FileLock lock(long position, long size, boolean shared);
-public final FileLock lock();
+public final FileLock lock(); // lock(0L, Long.MAX_VALUE, false);
 public abstract FileLock tryLock(long position, long size, boolean shared);
-public final FileLock tryLock();
+public final FileLock tryLock(); // tryLock(0L, Long.MAX_VALUE, false)
+
 ~~~
+
+参数说明：
+
+* `position`:锁定区域开始的位置
+* `size`:锁定区域的大小
+* `shared`:如果为 true，则请求共享锁,false 请求独占锁
+
+`position`和`size`参数决定了文件锁锁定的区域，锁定区域不一定要限制在文件的size值内，锁可以拓展超出文件尾。所以我们可以把待写入数据的区域锁定，也可以锁定一个不包含任何文件内容的区域，比如从文件最后一个字节以外的区域。如果以后文件增长到达这块区域，那么文件锁能作用到文件新增部分的区域。
+
+`lock()`方法是一个阻塞方法，如果请求的文件锁的范围已经被其他程序/应用占用。那么该方法会阻塞，直到文件锁的范围数据被释放。
+
+该阻塞方法受中断语义控制：
+
+* 如果通道被另外一个线程关闭，该暂停线程将被唤醒并产生一个`AsynchronousCloseException`异常
+* 如果该暂停线程被直接中断，它将唤醒并产生一个`FileLockInterruptionException`异常
+* 如果在调用`lock()`方法时线程的中断状态已经被设置，也会产生`FileLockInterruptionException`异常
+
+而`tryLock()`方法是`lock()`方法的非阻塞变体。它们作用相同，不过`tryLock()`请求锁如果不能立刻申请到会返回一个null，而不是阻塞。
+
+调用`tryLock()`和`lock()`方法返回一个`FileLock`对象，以下是其完整API：
+
+~~~Java
+public final FileChannel channel();
+public Channel acquiredBy();
+public final long position();
+public final long size();
+public final boolean isShared();
+public final boolean overlaps(long position, long size);
+public abstract boolean isValid();
+public abstract void release();
+public final void close();
+~~~
+
+`FileLock`类封装一个锁定的文件区域。`FileLock`对象由`FileChannel`创建并且总是关联到那个特定的通道实例。可以通过`channel()`、`acquiredBy`获取创建它的通道。
+
+一个`FileLock`对象创建之后即有效，直到它的`release()`或者`close()`方法被调用或者它关联的通道被关闭或者JVM关闭时才会失效。可以通过调用它的`isValid()`方法测试有效性。
+
+一个锁的有效性会随时间改变，但是它的其他属性：position、size和exclusivity，在创建时就被确定，不会随着时间而改变。
+
+可以通过调用`isShared()`方法来判断一个锁是共享的还是独占的。需要注意：调用`FileChannel.lock()`时，`isShared`传true，并不意味着获得的`FileLock`实例的`isShared()`一定返回true。因为操作系统或者文件系统可能不支持共享锁。
+
+所以我们在申请一个共享锁后，最好再调用`FlieLock.isShared()`方法进行判断。
+
+我们可以通过调用`overlaps()`方法来查询当前锁是否与指定的文件区域有重叠。可以用来判断你拥有的锁和指定的区域是否有交叉。
+
+
 
 ### 内存映射文件
 
