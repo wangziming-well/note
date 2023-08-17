@@ -524,20 +524,181 @@ public final void close();
 
 我们可以通过调用`overlaps()`方法来查询当前锁是否与指定的文件区域有重叠。可以用来判断你拥有的锁和指定的区域是否有交叉。
 
-
-
 ### 内存映射文件
+
+传统的文件I/O是通过用户进程发布`read()`和`write()`系统调用来传输数据的。为了在内核空间的文件系统页与用户空间的内存区之间移动数据，一次以上的拷贝操作总是免不了的。这是因为，在文件系统页与用户缓冲区之间没有一一对应关系。
+
+操作系统提供了一种特殊类型的I/O操作，允许用户进程最大限度地利用面向页的系统I/O特性，并完全摒弃缓冲区拷贝，这就是内存映射I/O。
+
+内存映射I/O使用文件系统建立从用户空间到可用文件系统页的虚拟内存映射。这样：
+
+* 用户进程把文件数据当作内存，无需发布`read()/write()`系统调用
+* 用户进程读取映射内存空间，页错误会自动产生，从而将文件数据从磁盘读取进内存。如果用户修改了映射内存空间，相关页会自动标记为脏，随后刷新到磁盘，文件得到更新。
+* 操作系统的虚拟内存子系统会对页进行高速缓冲，自动根据系统负载进行内存管理
+* 大型文件使用映射，无需消耗大量内存，即课进行数据拷贝。
+
+所以内存映射I/O会比常规I/O更高效，因为不需要做明确的系统调用。并且操作系统的虚拟内存可以自动缓冲内存页。这些页是由系统内存来缓存的，所以不会消耗JVM内存堆。
+
+`FileChannel`支持对内存映射I/O的应用，它提供的`map()`方法如下：
 
 ~~~java
 public abstract MappedByteBuffer map(MapMode mode,long position, long size);
 ~~~
 
-### 转换
+该方法会创建一个由磁盘文件支持的虚拟内存映射，将这个虚拟内存空间封装为`MappedByteBuffer`对象返回。它的参数说明如下：
+
+* mode:指定虚拟映射内存打开的模式，可以指定一下模式：
+  * `FileChannel.MapMode.READ_ONLY`:只读模式，对应的通道可以是读写通道、只写通道。
+  * `FileChannel.MapMode.READ_WRITE`:读写模式，对应的通道必须是读写通道
+  * `FileChannel.MapMode.PRIVATE`:写时拷贝模式，对应的通道必须是读写通道
+* position:指定映射文件的起始位置
+* size:指定映射文件的大小
+
+例如，要映射100到299位置的字节，可以使用如下代码：
+
+~~~java
+buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY,100,300);
+~~~
+
+要映射整个文件，可以用：
+
+~~~java
+buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY,0,fileChannel.size());
+~~~
+
+与文件锁的范围机制不一样，映射文件的范围不应超过文件的实际大小。如果请求一个超出文件大小的映射。文件会被增大以匹配映射的大小。
+
+#### 写时拷贝
+
+COW(copy-on-write)是文件系统中常用的一种优化策略
+
+常规情况下，如果有多个进程读取同一个文件，那么文件系统会为每个系统拷贝一份内存，但是并不是每一个进程都会修改文件的，可能大部分进程都是共用一份文件，那么为每个进程都复制一份内存就会很浪费，特别是访问的文件很大时。并且使用这种全部拷贝的策略，在并发访问的情况下是线程不安全的，会发生脏读和写覆盖。所以使用这种策略并发访问文件必须加文件锁。
+
+使用有了COW的策略后，文件系统只会为多个文件访问者分配一个共享的拷贝内存，多个访问者在读取文件内容时，访问的是同一个内存，只有在访问者打算修改文件时，文件系统才会为访问者拷贝一份访问者独享的文件内存供其修改。这样够延迟必要的拷贝，能够减少内存的开销，特别是大部分访问者只读的情况下。并且能够在不加锁的情况下保证了访问的线程安全。
+
+在请求映射文件时，mode可以传`FileChannel.MapMode.PRIVATE`,以获得一个写时拷贝文件映射，如果以`REIVATE`模式创建多个对相同文件的`MappedByteBuffer`映射内存。
+
+#### MappedByteBuffer
+
+`MappedByteBuffer`的行为很类似基于内存的缓冲区，只不过该对象的数据元素存储在磁盘上的一个文件中
+
+调用`get()`方法会从磁盘f文件中获取数据，`get()`方法实时反应文件的当前内容。
+
+调用`put()`方法会更新磁盘上的文件，这样的更新对其他文件的访问方可见。
+
+除此之外，它还有其独有的方法：
+
+~~~java
+public final boolean isLoaded();
+public final MappedByteBuffer load();
+public final MappedByteBuffer force();
+~~~
+
+当我们为一个文件建立了虚拟内存映射之后，文件数据通常不会立即被从磁盘读取到内存，只有当访问者执行访问操作时，文件系统才会把相应位置的文件数据加载到内存(通常是文件的若干页)
+
+我们可以选择先把文件的所有页都读进内存，以实现最低的访问延迟，此时它的访问速度就和访问一个基于内存的缓冲区一样了。
+
+`load()`方法会加载整个文件以使它常驻内存。在一个映射缓冲区上调用`load()`方法会是一个代价高的操作，它会导致大量的页调用。
+
+对那些要求近乎实时访问的程序，就可以使用`load()`进行预加载。
+
+可以使用`isLoad()`方法判断当前映射缓冲区对应的文件是否完全常驻内存。
+
+`force()`方法和`FileChannel`类的同名方法作用相似，会强制将缓冲区上的更改从内存冲刷到磁盘上。
+
+当用 `MappedByteBuffer `对象来更新一个文件，应使用` MappedByteBuffer.force()`而非 `FileChannel.force()`，因为通道对象可能不清楚通过映射缓冲区做出的文件的全部更改。   
+
+`force()`方法只有在`MapMode.READ_WRITE`模式下起作用。
+
+### 传输
+
+由于经常需要从一个位置将文件数据传输到另一个位置。`FileChannel`提供了一些方法来提高传输过程的效率：
 
 ~~~java
 public abstract long transferTo(long position, long count, WritableByteChannel target);
+//将当前文件数据传输到给定可写通道，传输的数据从position开始，不超过count个字节。
 public abstract long transferFrom(ReadableByteChannel src,long position, long count);
+//从可读通道中读取数据到当前文件通道，读取的数据从src的指定position开始，不超过count个字节
 ~~~
+
+示例
+
+文件复制：
+
+~~~java
+FileChannel src = new RandomAccessFile("srcPath","rw").getChannel();
+FileChannel target = new RandomAccessFile("targetPath","rw").getChannel();
+src.transferTo(0,src.size(),target);
+target.close();
+src.close();
+~~~
+
+输出文件内容到打印台：
+
+~~~java
+FileChannel src = new RandomAccessFile("srcPath","rw").getChannel();
+WritableByteChannel target = Channels.newChannel(System.out);
+src.transferTo(0,src.size(),target);
+~~~
+
+键盘输入键入到文件中：
+
+~~~java
+FileChannel target = new RandomAccessFile("ccc.txt","rw").getChannel();
+ReadableByteChannel src = Channels.newChannel(System.in);
+target.transferFrom(src,0,100);
+~~~
+
+## Socket通道
+
+Socket通道是模拟网络Socket的通道类。Socket通道可以以非阻塞模式允许并且是可选择的。这可以为程序提供巨大的可伸缩性和灵活性。
+
+全部socket通道类(`DatagramChannel `,`SocketChannel `,`ServerSocketChannel `)都拓展于`AbstractSelectableChannel`，这意味着我们可以用一个Selector对象来执行socket通道的有条件的选择。
+
+`DatagramChannel`和`SocketChannel`实现定义了读写功能，但`ServerSocketChannel`不实现。`ServerSocketChannel`负责监听传入的连接和创建新的`SocketChannel`队形，它本身不传输数据。
+
+全部socke通道类在被实例化时都会创建一个对等的socket对象，这些对象是`java.net`的类(`Socket`、`ServerSocket`、`DatagramSocket`)可以通过通道的`socket()`方法获取通道关联的socket对象。
+
+此外，这三个`java.net`类现在都有`getChannel()`方法。
+
+### 非阻塞模式
+
+Socket通道可以在非阻塞 模式下运行。在所有socket通道的父类`SelectableChannel`中，提供了关于阻塞模式的相关API：
+
+~~~java
+public abstract SelectableChannel configureBlocking(boolean block)throws IOException;
+public abstract boolean isBlocking();
+public abstract Object blockingLock();
+~~~
+
+非阻塞I/O于可选择性紧密相连，这也是管理阻塞的API定义在`SelectableChannel`中的原因。
+
+可以调用`configureBlocking()`来设置通道的阻塞模式，通过`isBlocking()`方法判断当前通道的阻塞模式。
+
+`blockingLock()`方法返回一个锁，这个锁是通道内部在执行`configureBlocking()`时使用同步代码块时所使用的锁。
+
+所以如果我们希望在一小段时间内保证通道的阻塞模式不被修改，那么就可以使用`blockingLock()`方法的返回值作为锁，
+
+这样在执行该锁引导的临界区时，通道的阻塞模式不会被修改，因为在这个临界区执行时，`configureBlocking()`对锁的申请不会成功。
+
+### ServerSocketChannel
+
+`ServerSocketChannel`部分API如下：
+
+~~~java
+public static ServerSocketChannel open() throws IOException;
+public abstract ServerSocket socket();
+public abstract ServerSocket accept() throws IOException;
+public final int validOps()
+~~~
+
+
+
+
+
+
+
+
 
 
 
