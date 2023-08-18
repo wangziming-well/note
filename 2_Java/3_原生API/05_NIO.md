@@ -688,8 +688,23 @@ public abstract Object blockingLock();
 ~~~java
 public static ServerSocketChannel open() throws IOException;
 public abstract ServerSocket socket();
+public final ServerSocketChannel bind(SocketAddress local);
+public abstract ServerSocketChannel bind(SocketAddress local, int backlog);
 public abstract ServerSocket accept() throws IOException;
 public final int validOps()
+
+~~~
+
+`ServerSocketChannel`是一个基于通道的socket监听器。和`java.net.ServerSocket`执行相同的基本任务，不过它增加了通道语义，能在非阻塞模式下运行。
+
+用静态的`open()`方法可以创建一个新的`ServerSocketChannel`对象，其对应一个未绑定的`ServerSocket`对象。可以通过`socket()`方法获取通道对应的`ServerSOcket`
+
+由于`ServerSocketChannel`没有`bind()`方法，因此需要取出对应的socket并将其绑定到一个端口以开始监听连接：
+
+~~~Java
+ServerSocketChannel ssc = ServerSocketChannel.open();
+ServerSocket serverSocket = ssc.socket();
+serverSocket.bind(new InetSocketAddress(8808));
 ~~~
 
 
