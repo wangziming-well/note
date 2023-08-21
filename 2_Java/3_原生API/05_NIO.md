@@ -754,17 +754,105 @@ public abstract SocketAddress getRemoteAddress() throws IOException;
 
 直接创建的`Socket`对象不会关联`SocketChannel`对象，它们的`getChannel()`方法只返回null
 
+在阻塞模式和非阻塞模式下`connect()`有不同的行为：
 
+* 阻塞模式下：和`Socket`的连接行为相同，此方法的调用将阻塞，直到建立连接或发生 IO 错误
+* 非阻塞模式下：此方法将启动非阻塞连接操作。
+  * 如果立即建立连接，则此方法返回 true。
+  * 如果没有立即建立连接，此方法返回 false，此时socket通道将变为可连接状态，稍后必须通过调用 `finishConnect() `方法完成连接操作
 
+`finishConnect()`用于在非阻塞模式下，调用了`connect()`方法返回false，socket通道变为可连接状态后调用。调用该方法可能出现以下情况：
 
+* 如果`connect()`方法尚未被调用，那么将抛出一个`NoConnectionPendingException`异常
+* 如果此通道处于非阻塞模式，且建立连接的过程正在进行，此方法立即返回 false。
+* 如果此通道处于阻塞模式(在非阻塞模式下调用`connect()`后，socket通道又被切换回了阻塞模式)，则此方法将阻塞，直到连接完成或失败，并且始终返回 true 或引发描述失败的已检查异常
+* 若连接建立过程已经完成。但`SocketChannel`内部状态仍然为连接中，那么该方法将更新内部状态为已连接，并返回true。
 
+* 如果连接已经建立，将立即返回 true。
 
+如果socket通道打开并连接时，`isConnected()`返回true
 
+如果socket通道还在连接中，`isConnectionPending()`返回true，即当且仅当连接操作已在此通道上启动但尚未通过调用 finishConnect 方法完成时，才为 true
 
+示例代码：
 
+~~~Java
+SocketChannel channel = SocketChannel.open();
+channel.configureBlocking(false);
+channel.connect(new InetSocketAddress("www.baidu.com", 80));
+while (!channel.finishConnect()) {
+    //连接未建立
+}
+//连接已建立
+channel.write(ByteBuffer.wrap("你好".getBytes()));
+channel.close();
+~~~
 
+### DatagramChannel
 
+`DatargramChannel`对应`java.net`中的`DatagramSocket`,实现无连接协议UDP
 
+~~~java
+public static DatagramChannel open();
+public static DatagramChannel open(ProtocolFamily family);
+public abstract DatagramChannel bind(SocketAddress local);
+public abstract DatagramChannel connect(SocketAddress remote);
+public abstract DatagramChannel disconnect() throws IOException;
+public abstract SocketAddress getRemoteAddress() throws IOException;
+public abstract SocketAddress getLocalAddress() throws IOException;
+public final int validOps() ;
+public abstract SocketAddress receive(ByteBuffer dst);
+public abstract int send(ByteBuffer src, SocketAddress target);
+~~~
+
+提供的api方法与`DatagramSocket`类似,但是注意其`send()/receive()`方法的底层实现仍是`write()/read()`
+
+要使用`read()/write()`方法，该`DatagramChannel`必须指定了远程连接地址。
+
+在使用`read()/receive()`时，如果提供的 ByteBuffer 没有足够的剩余空间来存放正在接收的数据包， 没有被填充的字节都会被悄悄地丢弃。
+
+如果处于阻塞模式，`receive()`的行为和`DatagramSocket`类似，如果当前socket未收到数据包，将阻塞直至收到数据包或者异常。
+
+如果处于非阻塞模式,`receive()`方法将返回0，或者buffer的字节数。
+
+`DatagramChannel`的`connnet()`语义和`DatargramSocket`的同名方法语义类似，都是将对话限制在双方，而不是建立实际的连接。处于已连接状态的`DatargramChannel`将忽略非指定地址以外的地址发送的数据包，并且发送数据包时的地址也必须是指定地址。
+
+示例：
+
+服务端
+
+~~~java
+DatagramChannel channel = DatagramChannel.open();
+channel.configureBlocking(false);
+channel.bind(new InetSocketAddress(6666));
+System.out.println("Listening on port 6666 for time requests");
+ByteBuffer buffer = ByteBuffer.wrap("好的。".getBytes());
+ByteBuffer receiveBuf = ByteBuffer.allocate(16);
+while (true) {
+    SocketAddress sa = channel.receive(receiveBuf);
+    if (sa == null) {
+        Thread.sleep(1000);
+        continue;
+    }
+    System.out.println("收到來自" + sa+"的信息:"+new String(receiveBuf.array(),0,receiveBuf.position(), StandardCharsets.UTF_8));
+    receiveBuf.clear();
+    channel.send(buffer, sa);
+    buffer.rewind();
+}
+~~~
+
+客户端：
+
+~~~Java
+DatagramChannel channel = DatagramChannel.open();
+channel.connect(new InetSocketAddress("localhost",6666));
+channel.write(ByteBuffer.wrap("请求".getBytes()));
+ByteBuffer buffer = ByteBuffer.allocate(16);
+int read = channel.read(buffer);
+System.out.println("received:"+ new String(buffer.array(),0,read, StandardCharsets.UTF_8));
+~~~
+
+## 管道
 
 
 
