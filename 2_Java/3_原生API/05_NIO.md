@@ -690,22 +690,75 @@ public static ServerSocketChannel open() throws IOException;
 public abstract ServerSocket socket();
 public final ServerSocketChannel bind(SocketAddress local);
 public abstract ServerSocketChannel bind(SocketAddress local, int backlog);
-public abstract ServerSocket accept() throws IOException;
+public abstract SocketChannel accept();
 public final int validOps()
 
 ~~~
 
 `ServerSocketChannel`是一个基于通道的socket监听器。和`java.net.ServerSocket`执行相同的基本任务，不过它增加了通道语义，能在非阻塞模式下运行。
 
-用静态的`open()`方法可以创建一个新的`ServerSocketChannel`对象，其对应一个未绑定的`ServerSocket`对象。可以通过`socket()`方法获取通道对应的`ServerSOcket`
+用静态的`open()`方法可以创建一个新的`ServerSocketChannel`对象，其对应一个未绑定的`ServerSocket`对象。可以通过`socket()`方法获取通道对应的`ServerSocket`
 
-由于`ServerSocketChannel`没有`bind()`方法，因此需要取出对应的socket并将其绑定到一个端口以开始监听连接：
+`socket()`方法返回这个通道对应的`ServerSocket`实例
 
-~~~Java
+可以直接使用`bind()`方法将管道对应的`ServerSocket`绑定到指定端口也可以取出对应的socket并将其绑定到一个端口以开始监听连接
+
+`accept()`方法和`ServerSocket`的同名方法不同，它返回的是一个socket管道，并且这个方法可以在非阻塞模式下运行，此时，如果没有传入连接在等待，它会立即返回null
+
+下面是一个非阻塞模式的`accept()`的使用模板：
+
+~~~java
+ByteBuffer buffer = ByteBuffer.wrap("收到信息".getBytes());
 ServerSocketChannel ssc = ServerSocketChannel.open();
-ServerSocket serverSocket = ssc.socket();
-serverSocket.bind(new InetSocketAddress(8808));
+ssc.socket().bind(new InetSocketAddress(6666));
+ssc.configureBlocking(false);
+while (true) {
+    System.out.println("等待连接");
+    SocketChannel sc = ssc.accept();
+    if (sc == null) {
+        Thread.sleep(2000);
+    } else {
+        System.out.println("收到连接请求:" + sc.getRemoteAddress());
+        buffer.rewind();
+        sc.write(buffer);
+        sc.close();
+    }
+}
 ~~~
+
+`validOps() `配合选择器使用
+
+### SocketChannel
+
+`SocketChannel`提供类似`Socket`的服务。每个 `SocketChannel `对象创建时都是同一个对等的` java.net.Socket `对象串联的。
+
+除了管道通用的`read/write`方法外，它还提供了于`Socket`方法类似的API：
+
+~~~java
+public static SocketChannel open();
+public static SocketChannel open(SocketAddress remote);
+public final int validOps();
+public abstract SocketChannel bind(SocketAddress local);
+public abstract <T> SocketChannel setOption(SocketOption<T> name, T value);
+public abstract SocketChannel shutdownInput() throws IOException;
+public abstract SocketChannel shutdownOutput() throws IOException;
+public abstract Socket socket();
+public abstract boolean isConnected();
+public abstract boolean isConnectionPending();
+public abstract boolean connect(SocketAddress remote) throws IOException;
+public abstract boolean finishConnect() throws IOException;
+public abstract SocketAddress getRemoteAddress() throws IOException;
+~~~
+
+静态的`open()`方法可以创建一个新的`SocketChannel`对象，在新创建的`SocketChannel`上调用`socket()`方法能够返回它对应的`Socket`对象；在该`Socket`上调用`getChannel()`方法则能返回其对应的`SocketChannel`。
+
+直接创建的`Socket`对象不会关联`SocketChannel`对象，它们的`getChannel()`方法只返回null
+
+
+
+
+
+
 
 
 
