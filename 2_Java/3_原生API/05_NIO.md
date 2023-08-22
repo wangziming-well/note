@@ -854,6 +854,214 @@ System.out.println("received:"+ new String(buffer.array(),0,read, StandardCharse
 
 ## 管道
 
+`java.nio.channels.Pipe`提供传统io中类似`PipedInputStream/PipedOutputstream`的功能，提供连接两个channel的功能。其定义如下：
+
+~~~java
+public abstract class Pipe {
+    public final int validOps()
+    public abstract SourceChannel source();
+    public abstract SinkChannel sink();
+    public static Pipe open();
+    public static abstract class SourceChannel extends AbstractSelectableChannel implements ReadableByteChannel, ScatteringByteChannel;
+    public static abstract class SinkChannel extends AbstractSelectableChannel implements WritableByteChannel, GatheringByteChannel;
+}
+~~~
+
+通过调用`open()`方法创建其实例
+
+`Pipe`类定义了两个内部类来实现管路分别是：`Piped.SourceChannel`(负责读的一端),和`Pipe.SinkChannel`(负责写的一端)
+
+这两个通道实例在`Piped`对象创建的同时被创建，可以通过其`source()`和`sink()`方法来获取。
+
+`Pipe`的source通道和sink通道提供类似`PipedInputStream`和`PipedOutputStream`所提供的功能，不过它们有全部的通道语义。
+
+`Pipe`用来在同一JVM内部传输数据。使用如下：
+
+~~~java
+public class PipeChannelDemo {
+    public static void main(String[] args) throws IOException {
+        Pipe pipe = Pipe.open();
+        new Thread(() -> read(pipe.source())).start();
+        new Thread(() -> write(pipe.sink())).start();
+    }
+
+    public static void write(WritableByteChannel out){
+        ReadableByteChannel in = Channels.newChannel(System.in);
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        try(in;out) {
+            while (in.read(buffer) > -1){
+                buffer.flip();
+                out.write(buffer);
+                buffer.clear();
+            }
+        } catch (IOException e){
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    public static void read(ReadableByteChannel in) {
+        WritableByteChannel out = Channels.newChannel(System.out);
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        try (in;out){
+            while (in.read(buffer) > -1){
+                buffer.flip();
+                out.write(buffer);
+                buffer.clear();
+            }
+        } catch (IOException e){
+            throw new RuntimeException(e);
+        }
+    }
+}
+~~~
+
+可以在不同线程间使用以实现线程间的数据传输
+
+## Channels
+
+`java.nio.channels.Channels`工具类定义了几个静态的工厂方法以使通道可以更加容易地同流和读写器互联：
+
+~~~java
+public static InputStream newInputStream(ReadableByteChannel ch);
+public static OutputStream newOutputStream(WritableByteChannel ch);
+public static InputStream newInputStream(AsynchronousByteChannel ch);
+public static OutputStream newOutputStream(AsynchronousByteChannel ch);
+public static ReadableByteChannel newChannel(InputStream in);
+public static WritableByteChannel newChannel(OutputStream out);
+public static Reader newReader(ReadableByteChannel ch, Charset charset);
+public static Writer newWriter(WritableByteChannel ch, Charset charset);
+~~~
+
+# 选择器
+
+选择器能够高效管理非阻塞模式的通道。选择器提供选择执行已经就绪的任务的能力，这使单线程能够有效地同时管理多个I/O通道
+
+选择器涉及三个主要的类：`Selector`、`SelectableChannel`、`SelectionKey`，它们会同时参与到整个过程中。
+
+使用选择器首先需要创建一个或者多个`SelectableChannel`注册到`Selector`对象中，一个表示通道和选择器的键`SelectionKey`将被返回。`SelectionKey`将记录通道和选择器的关联关系。
+
+当调用`Selector.select()`方法时，相关的`SelectionKey`状态将被更新，用来检查所有被注册到该选择器的通道。
+
+然后可以通过相关方法获取`SelectionKey`集合，通过遍历这些键，可以选择出从上次调用`select()`方法开始到现在，已经就绪的通道。
+
+**`Selector`:**选择器类管理着一个被注册的通道集合的信息和它们的就绪状态。
+
+**`SelectableChannel`:**提供了实现通道的可选择性所需要的方法。它时所有支持就绪检查的通道类的父类。
+
+**`SelectionKey`:**封装了特定的通道和特定的选择器的注册关系。
+
+一个使用Selector注册通道并进行就绪判断的实例如下：
+
+~~~java
+SelectableChannel channel1 = ServerSocketChannel.open().bind(new InetSocketAddress("localhost", 3366)).configureBlocking(false);
+SelectableChannel channel2 = ServerSocketChannel.open().bind(new InetSocketAddress("localhost", 3367)).configureBlocking(false);
+SelectableChannel channel3 = ServerSocketChannel.open().bind(new InetSocketAddress("localhost", 3368)).configureBlocking(false);
+Selector selector = Selector.open();
+channel1.register(selector, SelectionKey.OP_ACCEPT);
+channel2.register(selector,SelectionKey.OP_ACCEPT);
+channel3.register(selector,SelectionKey.OP_ACCEPT);
+int select = selector.select(10000);//等待10s，让通道就绪
+System.out.println(select);
+~~~
+
+## SelectableChannel
+
+~~~java
+public abstract SelectorProvider provider();
+public abstract int validOps();
+public abstract boolean isRegistered();
+public abstract SelectionKey keyFor(Selector sel);
+public abstract SelectionKey register(Selector sel, int ops, Object att);
+public final SelectionKey register(Selector sel, int ops);
+public abstract SelectableChannel configureBlocking(boolean block);
+public abstract boolean isBlocking();
+public abstract Object blockingLock();
+~~~
+
+`register()`位于`SelectableChannel`类，尽管通道实际上是被注册到选择器上的。并产生一个`SelectionKey`它的参数说明：
+
+* 一个`Selector`对象，表示想要注册到的选择器
+* att:可以传递对象引用，在新生成的`SelectionKey`的`attachment()`方法将返回该参数。
+
+* ops整数参数表示选择器所关心的通道操作。这是一个表示选择器在检查通道就绪状态时需要关系的操作的比特掩码。特定的操作比特值在`SelectionKey`中有定义为静态字段，有四种可选操作：读、写、连接(connect)和接收(accept)
+
+一个可选的通道并不支持所有的操作，比如`SocketChannel`不支持accept。可以通过调用`validOps()`方法获取当前通道支持的操作集合。
+
+一个通道可以注册到多个选择器上，可以调用`isRegistered()`来检查一个通道是否被注册到任何一个选择器上。
+
+任何一个通道和选择器的注册关系都被封装在一个`SelectionKey`对象中，`keyFor()`方法将返回当前通道于指定的选择器相关的`SelectionKey`。
+
+## SelectionKey
+
+~~~java
+public static final int OP_READ = 1 << 0;
+public static final int OP_WRITE = 1 << 2;
+public static final int OP_CONNECT = 1 << 3;
+public static final int OP_ACCEPT = 1 << 4;
+public abstract SelectableChannel channel();
+public abstract Selector selector();
+public abstract boolean isValid();
+public abstract void cancel();
+public abstract int interestOps();
+public abstract SelectionKey interestOps(int ops);
+public abstract int readyOps();
+public final boolean isReadable();
+public final boolean isWritable();
+public final boolean isConnectable();
+public final boolean isAcceptable();
+public final Object attach(Object ob);
+public final Object attachment();
+~~~
+
+一个`SelectionKey`实例表示一个特定的通道对象和一个特定的选择器对象之间的注册关系。`channel()`返回于该键相关的`SelectableChannel`对象，而`selector()`则返回相关的Selector对象。
+
+`SelectionKey`对象标识了一种特定的注册关系。可以调用你`cancel()`方法来结束这种注册关系。当键被取消时，它将被放到相关的选贼强的已取消的键的集合中。注册不会立即被取消，但键会立即失效。
+
+可以使用`isValid()`方法检测当前键是否仍然表示其注册关系。
+
+当通道关闭时，所有相关的键会自动取消。当选择器关闭时，所有被注册到该选择器的通道都会被注销，并且相关的键会立即无效化。
+
+一个SelectionKey对象包含两个以整数形式进行编码的比特掩码：一个用于指示通道/选择器组合体所关系的操作(interest集合)，另一个表示通道准备准备好要执行的操作(ready集合)，其中ready集合时interest集合的子集，因为在这个注册关系中，选择器只关系关注操作的就绪情况。
+
+当前`interest`集合可以通过`interestOps()`方法来获取。最初，这是通道被注册时传进来的值。可以调用`interestOps(int)`方法来改变这个集合。但是不能在一个通道上注册一个它不支持的操作。
+
+ready集合表示了interest集合中从上次调用`Selector.select()`以来已经就绪的那些操作。可以通过调用`readyOps()`来获取相关的通道的已经就绪的操作。`readyOps()`方法只是一个提示，不是保证
+
+还可以单独调用`isReadable()/isWritable()/isConnectable()/isAcceptable()`方法来测试那些操作已经就绪。
+
+`attach()/attachment`允许在`SelectionKey`上放置一个"附件",并在后面获取它。这是一个允许将任意对象于`SelectionKey`关联的方法。可以关联任何有用的对象，如业务对象，会话句柄、其他通道等。
+
+## Selector
+
+~~~java
+public static Selector open() throws IOException
+public abstract Set<SelectionKey> keys();
+public abstract Set<SelectionKey> selectedKeys();
+public abstract int selectNow() throws IOException;
+public abstract int select(long timeout)throws IOException;
+public abstract int select() throws IOException;
+public abstract Selector wakeup();
+public abstract void close() throws IOException;
+public abstract boolean isOpen();
+~~~
+
+一个`Selector`对象内部维护三个集合：
+
+* 已注册的键的集合(Registered Key Set)：与选择器关联的已经注册的键的集合。并不是注册过的键都是有效的。可以通过`keys()`方法访问。获取的集合不允许修改。
+* 已选择的键的集合(Selected Key Set)：已注册的键的集合的子集。这个集合的每个成员都是相关的通道被选择器(在前一个select操作中)判断为interest操作中有已经就绪的操作。可以通过`selectedKeys()`方法获取。获取的集合只能移出元素，不能添加元素。
+* 已取消的键的集合(Canelled Key Set)：已注册的键的集合的子集。这个集合暂存了`cancel()`方法被调用过的键(这个键已经被无效化)，但它们还没有被注销。该集合无法直接访问。
+
+Selecotr
+
+
+
+
+
+
+
+
+
 
 
 
