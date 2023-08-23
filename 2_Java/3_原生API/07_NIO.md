@@ -8,7 +8,13 @@
 
 所以JDK1.4的`java.nio`包中引入新的Java I/O类库。NIO使用的I/O模型与操作系统I/O更接近，使用连续的大块缓冲区作为数据传输的载体。这样NIO就能充分发挥操作系统I/O的性能。
 
-todo：简述Buffer 、Channel、Selector之间的作用和关系
+Java的NIO体系主要有三个主体：`Buffer`、`Channel`、`Selector`
+
+* `Buffer`缓冲区是数据的载体的封装，使得nio能够按份传递数据，提高数据传输的效率
+
+* `Channel`是对数据传输操作的抽象，相比于传统I/O，它还提供了非阻塞式的I/O的功能
+
+* `Selector`实现了对非阻塞I/O的多路复用，可以大大提高I/O系统的吞吐率和性能。
 
 # Buffer
 
@@ -1052,24 +1058,108 @@ public abstract boolean isOpen();
 * 已选择的键的集合(Selected Key Set)：已注册的键的集合的子集。这个集合的每个成员都是相关的通道被选择器(在前一个select操作中)判断为interest操作中有已经就绪的操作。可以通过`selectedKeys()`方法获取。获取的集合只能移出元素，不能添加元素。
 * 已取消的键的集合(Canelled Key Set)：已注册的键的集合的子集。这个集合暂存了`cancel()`方法被调用过的键(这个键已经被无效化)，但它们还没有被注销。该集合无法直接访问。
 
-Selecotr
+### 选择过程
+
+`Selecotr`的核心方法选择过程，选择操作时当三种形式的`select()`中的任意一种被调用时，由选择器执行的。将执行下面步骤：
+
+* 第一步：已取消的键的集合将会被检查。如果它是非空的，每个已取消的键的集合中的键将从另外两个集合中移除，取消该键关联的通道和选择器之间的注册关系。此时如果通道是关闭的，并且没有别注册，将注销该通道。 这个步骤结束后，已取消的键的集合将是空的
+* 第二步：遍历已注册的键的集合中的键，检查键的interest集合指示的对应通道操作的就绪状态。
+  * 如果没有通道就绪，线程可能阻塞，可以设置一个阻塞超时值。
+  * 如果有通道的interest操作就绪，那么对于这样的通道
+    * 如果该通道对应的键还没有处于已选择的键的集合中，那么将重新设置键的ready集合对应的比特掩码。
+    * 如果该通道对应的键已经在已选择的键的集合中了，那么键的ready集合将被更新。所有之前已经不再是就绪状态的操作表示的比特位不会被清除。事实上，所有的的比特位都不会被清理。一旦键被放置于选择器的已选择的键的集合中，它的ready集合将是累积的。比特位只会被设置，不会被清理。
+
+* 第三步：重复第一步。因为第二步可能会持续很长时间(特别是线程在休眠时),这样即使在第二步时，又有新的键被取消(`SelectionKey.cancel()`),这些键在`select()`方法结束前，仍然被检查到。
+
+* 第四步：`select()`操作的返回的值是ready集合在第二步中被修改的键的数量，而不是已选择的键的集合中的通道的总数。
+
+  返回值不是已准备好的通道的总数，而是从上一次`select()`调用之后进入就绪状态的通道的总数。
+
+三种形式的`select()`方法区别如下：
+
+* `select()`如果通道一直没有就绪的，就会一直阻塞下去
+* `select(int)`可以为阻塞设置一个超时时间
+* `selectNow()`完全不阻塞，如果通道就绪就直接返回0
+
+### 停止选择过程
+
+可以调用下面方法唤醒在`select()`操作中休眠的线程：
+
+* `wakeup()`使选择器上的第一个还没有返回的选择操作立即返回。如果当前没有在进行中的选择，那么下一次对 select( )方法的一种形式的调用将立即返回。  
+
+  如果只想唤醒一个睡眠中的线程，而使得后续的选择继续正常地进行。您可以通过在调用 wakeup( )方法后调用 selectNow( )方法来绕过这个问题。  
+
+* `close()`方法：内部调用了一次`wakeup()`方法，并且与选择器相关的键都将被取消，如果与选择器相关的通道是关闭的，且没有被注册的，那么通道将被注销。
+
+* 调用`Thread.interrupt()`:如果`select()`方法收到中断请求，将捕获`InterruptedException`异常并调用`wakeup()`方法
+
+### 使用选择器
+
+使用selector用单线程实现一个简单的服务器。
+
+~~~java
+public class SelectSockets {
+    public static void main(String[] args) throws IOException {
+        ServerSocketChannel channel = ServerSocketChannel.open();
+        Selector selector = Selector.open();
+        channel.bind(new InetSocketAddress("localhost", 6666));
+        channel.configureBlocking(false);
+        channel.register(selector, SelectionKey.OP_ACCEPT);
+        while (true) {
+            int select = selector.select();
+            if (select == 0)
+                continue;
+            Iterator<SelectionKey> iter = selector.selectedKeys().iterator();
+            while (iter.hasNext()){
+                SelectionKey key = iter.next();
+                if (key.isAcceptable()){
+                    ServerSocketChannel server =(ServerSocketChannel) key.channel();
+                    SocketChannel accept = server.accept();
+                    registerChannel(selector,accept,SelectionKey.OP_READ);
+                    sendMessage(accept);
+                }
+                if (key.isReadable())
+                    readDataFromRemoteSocket(key);
+                iter.remove();
+            }
+        }
+
+    }
+    
+    private static final WritableByteChannel printChannel = Channels.newChannel(System.out);
+
+    private static void readDataFromRemoteSocket(SelectionKey key) throws IOException {
+        SocketChannel channel =(SocketChannel) key.channel();
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        int len;
+        while ((len = channel.read(buffer)) != -1){
+            buffer.flip();
+            while (buffer.hasRemaining())
+                printChannel.write(buffer);
+            buffer.clear();
+        }
+    }
+
+    private static void sendMessage(SocketChannel accept) throws IOException {
+        accept.write(ByteBuffer.wrap("你好!".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private static void registerChannel(Selector selector, SelectableChannel channel, int ops) throws IOException {
+        if (channel == null)
+            return;
+        channel.configureBlocking(false);
+        channel.register(selector,ops);
+    }
+}
+~~~
+
+### 并发处理
+
+Selector是线程安全的，但是`Selector.selectedKeys()`获取的已选择的键的集合并不是线程安全的。在使用该集合的`Iterator`访问元素时，如果有其他线程同时操作该集合，那么会快速失败，抛出`ConcurrentModificationException  `异常，所以在访问键集合时，可以使用同步方法保证一次只有一个线程在访问。
+
+如果对就绪的管道的处理响应时间比较长，那么可以考虑使用线程池异步执行响应任务。使用一个线程持有选择器监控就绪状态，对于就绪状态管道的处理，则交给线程池的工作线程。
+
+# 字符集
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Path和Files
-
-todo
