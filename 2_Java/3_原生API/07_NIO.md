@@ -1161,5 +1161,54 @@ Selector是线程安全的，但是`Selector.selectedKeys()`获取的已选择�
 
 # 字符集
 
+Java应用程序需要处理多种语言以及组成这些语言的多个字符。与字符相关的有如下概念:
 
+* Character set 字符集：字符的集合，带有特殊语义的符号。
+* Coded Character Set 编码字符集：与数值有映射关系的字符的集合。
+* Character Encoding Scheme字符编码方案：如何把字符编码的序列表达为字节序列，是字符和数值的具体映射关系
+
+`java.nio.charset`包组成的类实现了处理字符集编码的解决方式。
+
+常见的编码字符集有：ASCII  、ISO-8859-1、UTF-8、UTF-16、UTF-16BE、UTF-16BE
+
+## Charset
+
+~~~java
+public static boolean isSupported (String charsetName);
+public static Charset forName (String charsetName);
+public static SortedMap<String,Charset> availableCharsets()
+public static Charset defaultCharset();
+public final String name();
+public final Set aliases();
+public String displayName();
+public String displayName (Locale locale);
+public final boolean isRegistered();
+public boolean canEncode();
+public abstract CharsetEncoder newEncoder();
+public final ByteBuffer encode (CharBuffer cb);
+public final ByteBuffer encode (String str);
+public abstract CharsetDecoder newDecoder();
+public final CharBuffer decode (ByteBuffer bb);
+public abstract boolean contains (Charset cs);
+public final boolean equals (Object ob);
+public final int compareTo (Object ob);
+public final int hashCode();
+public final String toString();
+~~~
+
+Charset类封装特定字符集的信息。通过静态方法`forName()`获取具体实例。
+
+所有的`Charset`方法都是线程安全的。
+
+可以调用`isSupported()`方法来确定指定的字符集是否可用
+
+一个字符集可以有多个名称，通常它有一个规范名称但也可能有多个别名。规范名和别名都可以通过`forName()`和`isSupported()`进行使用
+
+`availableCharsets()`返回在JVM中当前有效的字符集的SortedMap。调用它时，它会实例化所有已知的Charset对象。
+
+`defaultCharset()`返回JVM默认的字符集
+
+`name()`方法返回当前字符集的规范名称，`aliases()`返回其别名的集合
+
+`displayName()`返回指定Locale参数的本地化名称，无参版本返回默认的本地化名称。这两个方法默认返回规范名称。需要实现类重写方法。java自带的字符集目前没有实现类重写该方法。
 
