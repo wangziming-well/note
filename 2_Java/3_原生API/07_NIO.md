@@ -1212,3 +1212,97 @@ Charset类封装特定字符集的信息。通过静态方法`forName()`获取�
 
 `displayName()`返回指定Locale参数的本地化名称，无参版本返回默认的本地化名称。这两个方法默认返回规范名称。需要实现类重写方法。java自带的字符集目前没有实现类重写该方法。
 
+`isRegistered()`告知此字符集是否已在 IANA 字符集注册表中注册
+
+`contains()`方法判断当前字符集是否包含指定的字符集
+
+字符集与字节序列之间有映射关系。通过编码将字符转换为字节，通过解码将字节转换为字符
+
+`canEncode()`指示当前字符集是否支持解码，如果支持，则可以调用一下方法：`newEncoder()`、`encode`、`decode()`、`newDecoder()`,可以访问字符集对应的编码器和解码器
+
+## CharsetEncoder
+
+字符集编码器将字符转换为字节序列
+
+~~~java
+public final Charset charset();
+public final byte[] replacement();
+public final CharsetEncoder replaceWith(byte[] newReplacement);
+public boolean isLegalReplacement(byte[] repl);
+public CodingErrorAction malformedInputAction();
+public final CharsetEncoder onMalformedInput(CodingErrorAction newAction);
+public CodingErrorAction unmappableCharacterAction();
+public final CharsetEncoder onUnmappableCharacter(CodingErrorAction newAction);
+public final float averageBytesPerChar();
+public final float maxBytesPerChar();
+public final CoderResult encode(CharBuffer in, ByteBuffer out, boolean endOfInput);
+public final CoderResult flush(ByteBuffer out);
+public final CharsetEncoder reset();
+public final ByteBuffer encode(CharBuffer in);
+public boolean canEncode(char c);
+public boolean canEncode(CharSequence cs);
+~~~
+
+每个编码器都和一个Charset对象关联，`charset()`方法返回关联的字符集对象
+
+`averageBytesPerChar()`返回表示编码集合的字符所需的平均字节数量
+
+`maxBytesPerChar()`返回表示在集合中编码单字符所需要的最大字节数
+
+编码器是一个状态编码引擎。它不是线程安全的，不应该在线程中共享。调用`encode(CharBuffer)`时编码器的工作过程如下：
+
+* 通过调用`reset()`犯法复位编码器状态，让编码器引擎准备开始产生编码字节流。
+* 不调用或者多次调用`encode(CharBuffer, ByteBuffer,boolean )`为编码器提供字符。给定的`CharBuffer`将消耗字符，而编码字节序列将被添加到提供的ByteBuffer上
+* 调用`flush()`方法来完成未完成的编码并输出所有剩下的字节。
+
+当消耗了所有的输入时，当输出`ByteBuffer`为满时，或者当探测到编码错误是，三个参数形式的`encode(CharBuffer, ByteBuffer,boolean)`方法返回，将返回`CoderResult`对象，来表示发生的情况。结果对象可表示下列结果条件之一：
+
+* `Underflow`下溢：正常情况，表示需要更多的输出。或者是输入`CharBuffer`内部不足
+* `OverFlow`上溢：表示编码器充满了输出`ByteBuffer`并且需要产生更多的编码输出。
+* `Malformed Input`有缺陷的输入：输入中有不是有效的·Unicode字符
+* `Unmappable Character`无映射字符：表示编码器不能映射字符或者字符的序列到字节上
+
+可以用`canEncode()`要输入的字符是否可以被该编码器编码。
+
+`encode()`方法返回的`CoderResult`有两个是表示错误的返回：`malformed`和`unmappable`。可以通过`onMalformedInput()`和`onUnmappableCharacter()`设置编码错误发生时，编码器采取的行为
+
+错误处理行为封装为`CodingErrorAction`，它定义了三个公共域：
+
+* REPORT：报告，表示编码错误应该通过返回CoderResult对象报告
+* IGNORE：忽略，表示应忽略编码错误并且如果位置不对的话任何错误的输入都应中止
+* REPLACE:替换，通过终止错误的输入并针对该`CharsetEncoder`定义的当前都替换字节序列处理编码错误。
+
+替换行为中提到的替换字节序列通过`replaceWith(byte[])`设置，设置可能不合法，可以调用`isLefalReplacement()`方法判断要替换的字节序列是否合法。
+
+## CharsetDecoder
+
+字符集解码器和编码器的作用相反，将字节编码转换为字符。它同样是有状态的，线程不安全的。
+
+~~~java
+public final Charset charset();
+public final String replacement();
+public final CharsetDecoder replaceWith(String newReplacement);
+public CodingErrorAction malformedInputAction();
+public final CharsetDecoder onMalformedInput(CodingErrorAction newAction);
+public CodingErrorAction unmappableCharacterAction();
+public final CharsetDecoder onUnmappableCharacter(CodingErrorAction newAction);
+public final float averageCharsPerByte();
+public final float maxCharsPerByte();
+public final CoderResult decode(ByteBuffer in, CharBuffer out,
+                                    boolean endOfInput);
+public final CoderResult flush(CharBuffer out) ;
+public final CharsetDecoder reset();
+public final CharBuffer decode(ByteBuffer in);
+public boolean isAutoDetecting();
+public boolean isCharsetDetected();
+public Charset detectedCharset() ;
+~~~
+
+`CharsetDecoder`的API几乎和`CharsetEncoder`对应。但也有其独特的方法。
+
+`isAutoDetecting()`指示这个解码器是否能够自检测编码序列使用的编码方法，如果这个方法返回出，那么最后两个方法是有意义的。
+
+如果解码器能够从输入字节序列中读取足够的字节来确定使用的编码类型，那么`isCharsetDetected()`返回true
+
+如果`isCharsetDetected()`返回ture，那么通过调用`DetectedCharset`可以获取对应的字符集对象。
+
