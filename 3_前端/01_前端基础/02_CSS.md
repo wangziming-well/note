@@ -81,7 +81,7 @@
 | `[attribute|=value]` | 选取属性值以指定**词**开头的元素~[1]~ |
 | `[attribute^=value]` | 选取属性值以指定值开头的元素          |
 | `[attribute$=value]` | 选取属性值以指定值结尾的元素          |
-| `[attribute*value]`  | 选取属性值包含指定值的元素            |
+| `[attribute*=value]` | 选取属性值包含指定值的元素            |
 
 **注1：**值必须是完整或独立的单词
 
