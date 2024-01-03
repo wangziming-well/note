@@ -195,11 +195,12 @@ HTML是用来描述网页的语言
     * 属性width、height控制表格大小
     * 属性frame控制表格样式：box、above、below、hsides、vsides
 * \<tr>标签表示表格的行
-    * 定义属性colspan来跨列
-* \<th>标签表示表格头
+    * \<th>标签表示表格头
+    
     * 可以作为单元格
 * \<td>标签表示表格单元
     * 定义属性colspan来跨行
+    * 定义属性rowspan来跨列
     * 属性bgcolor来控制单元格背景颜色
     * 属性background来控制单元格背景图片
     * 属性aligh控制单元格中内容的对齐方式left、right、center
