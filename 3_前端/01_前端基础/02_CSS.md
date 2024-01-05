@@ -306,7 +306,6 @@ background-repeat属性值为no-repeat时，可以设置backgroud-position属性
     <p style="border-style:none;">无边框</p>
     <p style="border-style:hiden;">隐藏边框</p>
     <p style="border-style:dotted dashed solid double;">混合边框</p>
-
 ## 边框宽度
 
 `border-width`属性指定四个边框的宽度
@@ -328,7 +327,6 @@ background-repeat属性值为no-repeat时，可以设置backgroud-position属性
     <p style="border:solid thick">thick</p>
     <p style="border:solid 1cm">1cm</p>
     <p style="border-style:solid;border-width:thin medium thick 1cm ">混合长度</p>
-
 ## 边框颜色
 
 `border-color`属性用于设置四个边框的颜色。
