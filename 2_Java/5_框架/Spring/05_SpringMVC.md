@@ -2363,7 +2363,7 @@ function Uint8ArrayToString(fileData){
 `SseEmitter `(`ResponseBodyEmitter`的子类)提供了对服务器发送事件的支持，其中从服务器发送的事件按照W3C SSE(Server-Sent Events)规范格式化。
 
 ~~~java
-@GetMapping("/demo3")
+@GetMapping("/demo4")
 public SseEmitter demo4(){
     SseEmitter emitter = new SseEmitter();
     EmitterThread thread = new EmitterThread(emitter);
