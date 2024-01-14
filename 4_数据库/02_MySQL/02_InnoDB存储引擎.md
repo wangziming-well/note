@@ -203,9 +203,77 @@ Master Thread 会根据数据库运行状态在loop 、background loop 、flush 
 * 在合并插入缓冲时，合并插入缓冲的数量是innodb_io_capacity的5%
 * 在从缓冲区刷新脏页时，刷新的脏页数量为innodb_io_capacity
 
+如果用户使用了SSD类的磁盘，或者其他措施，让存储设备拥有了更高的IO速度时，可以将innodb_io_capacity值调的更高。
 
+还有innodb_max_dirty_pages_pct的默认值的问题，在InnDB1.0.x之前，该值为90，这个值太大了。所以在这之后，将默认值改为了75
 
+InnoDB1.0.x版本带来了另一个参数`innodb_adaptive_flushing`自适应刷新，该值影响每秒刷新脏页的数量。原来的刷新规则是：脏页在缓冲池所占的比例小于`innodb_max_dirty_pages_pct`时，不刷新脏页；大于`innodb_max_dirty_pages_pct`时，刷新100个脏页。
 
+随着`innodb_adaptive_flushing`的引入，InnoDB会通过一个名为`buf_flush_get_desired_flush_rate`的函数来判断需要刷新脏页的合适的数量，这个函数通过判断redo log的速度来决定最合适的刷新脏页数量。
+
+还有一个改变是：之前每次进行full purge操作时，最多回收20个Undo页，从InnoDB1.0.x开始，引入参数`innodb_purge_batch_size`，来控制full purge操作时回收的Undo页数量，默认值为20
+
+## InnoDB1.2.x版本
+
+InnoDB1.2.x版本对Master Thread 进行了优化，
+
+会判断当前Innodb是否空闲
+
+* 如果空闲，则执行之前版本中10s一次的操作
+* 如果不空闲，则执行之前版本中1s一次的操作
+
+并且对于刷新脏页的操作，从Master Thread 线程分离到了一个单独的Page Cleaner Thread，从而减轻了Master Thread 的工作，进一步提高了系统的并发性。
+
+# InnoDB关键特性
+
+InnoDB存储引擎的关键特性包括：
+
+* 插入缓冲
+* 两次写
+* 自适应哈希索引
+* 异步IO
+* 刷新相邻页
+
+## 插入缓冲
+
+### Insert Buffer
+
+在介绍插入缓冲前，我们需要了解索引在插入中的一个问题。如果一个表只有一个顺序主键索引，那么在插入行时，对聚集索引的插入也是顺序的，不需要磁盘的随机读取。
+
+但是，通常一张表上不止有一个聚集索引，而是有多个非聚集索引的辅助索引。在这种情况下，插入行时，对顺序主键的插入仍然是顺序的，不需要磁盘的随机读取。但是对于非聚集索引的叶子节点的插入就不再是顺序的，需要离散的访问非聚集索引页，由于随机读取存在而导致插入操作的新能下降。这是因为B+树的特性决定的非聚集索引插入的离散性。
+
+为此，InnoDB设计了Insert Buffer，对于非聚集索引的插入或更新操作，不是每一次直接插入到索引页，而是先判断插入的非聚集索引页是否在缓冲池中，若在，则直接插入；否则，就先放在一个Insert Buffer对象，在后续的某个时间再将Insert Buffer和辅助索引页子节点进行merge合并操作。也就是将多个对辅助索引的更新积攒下来，一次性更新，这大大提高了对非聚集索引插入的性能。
+
+Insert Buffer的使用需要同时满足一下两个条件：
+
+* 索引是辅助索引
+* 索引不是唯一的
+
+同时满足这两个条件时，InnoDB就会使用Insert Buffer。辅助索引不能是唯一的，因为在插入缓冲时，数据库不会去查找索引页来判断插入的记录的唯一性，如果查了优惠发生离散读取，从而导致Insert Buffer失去意义。
+
+目前Insert Buffer存在一个问题，在写密集的情况下，插入缓冲会占用过多的缓冲池内存，可以通过`ibuf_pool_size_per_max_size`开控制，比如设为3，则插入缓存最多就只能占整个缓冲池的1/3
+
+### Change Buffer
+
+InnoDB从1.0.x版本开始引入了Change Buffer ，可以将其视为Insert Buffer 的升级。从这个版本开始InnoDB可以对DML操作——Insert，Delete，Update都进行缓冲，它们分别是Insert Buffer 、Delete Buffer、Purge Buffer。
+
+和之前的Insert Buffer一样，Change Buffer适用于非唯一的辅助索引。
+
+InnoDB引擎提供了参数`innodb_change_buffering`用来开启各种Buffer的选项。该参数的可选值为：
+
+inserts、deletes、purges、changes、all、null；其中changes表示开启insets和deletes
+
+从InnoDB1.2.x版本开始，可以通过参数innodb_change_buffer_max_size来控制Change Buffer 最大使用内存的数量，默认值为25，表示最多使用25%的缓冲池内存空间，该参数最大有效值为50%
+
+## 两次写
+
+doublewrite两次写提高了InnoDB数据页的可靠性。
+
+数据库IO是以页为单位的，即最小单位为16k，但文件系统一次IO的最小单位是4k。这就可能出现这样的情况，在在数据库向磁盘写入页时，在写入4k后，剩余部分还没有时发生故障。这样该页就只覆盖了一部分，导致了页的损坏，对应数据丢失。这种现象称为页断裂。此时无法通过redo log进行恢复，因为redo log 记录的是对页的物理修改，如果页本身已经损坏，那么redo log也无能为力了。
+
+而double write 就是用来解决页断裂的。其体系架构如图:
+
+![doubleWrite体系结构图](https://gitee.com/wangziming707/note-pic/raw/master/img/doubleWrite%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84%E5%9B%BE.jpg)
 
 
 
