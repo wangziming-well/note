@@ -153,7 +153,7 @@ InnoDB的主要工作都是在单独线程Master Thread 中完成了，现在我
 Master Thread具有最高的线程优先级。内部由多个循环组成：
 
 * loop 主循环
-* backgroup loop 后台循环
+* background loop 后台循环
 * flush loop 刷新循环
 * suspend loop 暂停循环
 
@@ -244,6 +244,8 @@ InnoDB存储引擎的关键特性包括：
 
 为此，InnoDB设计了Insert Buffer，对于非聚集索引的插入或更新操作，不是每一次直接插入到索引页，而是先判断插入的非聚集索引页是否在缓冲池中，若在，则直接插入；否则，就先放在一个Insert Buffer对象，在后续的某个时间再将Insert Buffer和辅助索引页子节点进行merge合并操作。也就是将多个对辅助索引的更新积攒下来，一次性更新，这大大提高了对非聚集索引插入的性能。
 
+需要特别注意，Insert Buffer 对象存储在磁盘中，而不是内存中。缓冲池的Insert Buffer是对磁盘的缓冲。
+
 Insert Buffer的使用需要同时满足一下两个条件：
 
 * 索引是辅助索引
@@ -275,9 +277,85 @@ doublewrite两次写提高了InnoDB数据页的可靠性。
 
 ![doubleWrite体系结构图](https://gitee.com/wangziming707/note-pic/raw/master/img/doubleWrite%E4%BD%93%E7%B3%BB%E7%BB%93%E6%9E%84%E5%9B%BE.jpg)
 
+doublewrite由两部分组成，一部分是内存中的doublewrite buffer ，大小为2MB，另一部分是物理磁盘上共享表空间中连续的128个页，即两个区，大小同样是2MB。在刷新脏页时，它的工作流程如下：
 
+* 首先而是会通过memcpy函数将脏页先复制到内存中的doublewirte buffer
 
+* 然后通过doublewrite buffer再分两次，每次1MB顺序写入共享表空间中的物理磁盘上。因为doublewrite页是连续的，所以这个过程是顺序写入的，开销不是很大。
 
+* 然后，再将doublewrite buffer中的页写入各个表空间文件中，此时的写入是离散的。
+
+这样如果在将页写入磁盘的过程中发生了故障，在恢复过程中，InnoDB可以从共享表空间的doublewrite中找到一个该页的一个副本，将其复制到表空间文件，再应用重做日志。
+
+参数`skip_innodb_doublewrite`可以禁用doublewrite功能，此时可能会发生写失效的问题。如果是在数据库集群中，可以将从库的doublewrite功能关闭。但是主库在任何时候都必须开启doublewrite
+
+## 自适应哈希索引
+
+哈希表的查找时间复杂度通常为`O(1)`，即一次查找就能定位数据，而B+树的查找次数取决于B+树的高度。
+
+InnoDB会监控对表上各索引页的查询。如果观察到建立哈希索引可以带来速度提示，则建立哈希索引，称为自适应哈希索引(Adaptive Hash Index AHI)
+
+AHI是通过缓冲池中的B+树页构造而来，因此建立的速度很快，而且不用对整张表构建哈希索引。InnoDB会根据访问的频率和模式来自动地位某些热点页建立哈希索引。
+
+AHI建立自动建立哈希索引的条件如下：
+
+* 对这个页的连续访问模式是一样时，即查询条件相同时
+* 以该模式访问了100次
+* 页通过该模式访问了N次，其中N=页中记录/16
+
+可以通过参数`innodb_adaptive_hash_index`来控制特性的开关
+
+## 异步IO
+
+为了提高磁盘操作性能，当前的数据库系统都采用异步IO (Asynchronous IO，AIO)的方式来处理磁盘操作，InnoDB同样如此。
+
+于AIO对应的是 Sync IO，即每进行一次IO操作，需要等待次操作结束才能继续接下来的操作。
+
+在同步IO下，如果用户发出的是一条索引扫描的擦好像，那么这条SQL查询语句可能需要扫描多个索引页，即进行多次的IO。每扫描一个页并等待其完成后再进行下一次扫描，这是没必要的。用户可以再发出一个IO请求后立即再发出另一个IO请求，当全部IO请求发送完毕后，等待所有IO操作的完成，这就是AIO。
+
+AIO的另一个优点就是可以进行IO Merge操作，当判断出用户发出的多个IO访问的区域是连续时，可以将这多个IO合并成一个IO。
+
+在InnoDB1.1.x之前，AIO是通过InnoDB中的代码来实现的。而从InnoDB1.1.x开始，提供了内核级别AIO的支持，即Native AIO。
+
+参数innodb_use_native_aio用来控制是否开启Native AIO，在Liunx操作系统下，默认值为ON。
+
+在InnoDB中，脏页的刷新，磁盘的写入操作全部由AIO来完成。
+
+## 刷新邻接页
+
+InnoDB提供了Flush Neighbor Page(刷新邻接页)的特性。其工作原理是：当刷新一个脏页时，InnoDB会检测该页所在区的所有页，如果是脏页，那么久一起进行刷新。这样做就可以通过AIO将多个IO写入操作合并为一个IO操作，所以这种特性在传统机械硬盘下有着显著的优势。但是需要考虑下面两个问题：
+
+* 是不是可能将不怎么脏的页进行了写入，而该页之后又会很快变成脏页
+* 固态硬盘有这较高的IOPS，是否还需要这个特性
+
+所以InnoDB存储引擎从1.2.x版本开始提供了参数`innodb_flush_neighbors`用以控制是否开启该特性。
+
+对于传统机械硬盘建议启用该特性，而对于固态硬盘建议将该参数设置为0，即关闭此特性。
+
+# 启动、关闭和恢复
+
+InnoDB是MySQL数据库的存储引擎之一，因此InnoDB存储引擎的启动和关闭，就是指MySQL实例的启动/关闭过程中对InnoDB的处理过程。
+
+在关闭时，参数`innodb_fast_shutdown`影响Innodb的行为。该参数可取值为0，1，2。默认值为1
+
+* 0：表示在MySQL数据库关闭时，InnoDB需要完成所有的full purge和merge insert buffer，并且将所有脏页刷新回磁盘。这需要一些时间，有时甚至需要
+* 1：默认值，表示不需要完成上述的full purge和merge insert buffer操作，但是缓冲池中的一些脏页还是会刷新回磁盘
+* 2：表示不完成full purge 操作和merge操作，也不将缓冲池中的数据脏页写回磁盘，而是将日志都写入日志文件。这样不会有任何事务丢失，但是下次MySQL启动时，会进行恢复操作
+
+如果用了kill命令关闭数据库，或者在MySQL运行中重启了服务器，或者关闭服务器时innodb_fast_shutdown设置为2，下次MySQL启动时会对InnoDB的表进行恢复操作
+
+参数`innodb_force_recovery`影响整个InnoDB恢复的情况。该参数默认值为0，代表当发生需要恢复时，进行所有的恢复擦偶哦，当不能进行有效恢复时，如数据页发生了corruption，MySQL可能会发生宕机(crash)，并把错误写入错误日志中去。
+
+但是，在某些情况下可能并不需要进行完整的恢复操作，因为用户知道怎么进行恢复。比如在对一个表进行alter table 操作时发生了意外，数据库重启时对InnoDB表进行回滚操作，对于一个大表可能需要很长时间，甚至几个小时。这个时候用户可以自行进行恢复，比如把这个表删除，从备份中导入数据到表，这些操作速度要远远快于回滚操作。
+
+参数innodb_force_recovery还可以设置6个非0值。大的数字包含了前面所有小数字的影响：
+
+* 1:忽略检查到的corrupt页
+* 2：阻止Master Thread线程的运行，如Master Thread 线程需要进行full purge操作，这会导致crash
+* 3：不进行事务的回滚操作
+* 4：不进行插入缓冲的合并操作
+* 5：不查看 undo Log，InnoDB会将未提交的事务视为已提交
+* 6：不进行前滚操作
 
 
 
