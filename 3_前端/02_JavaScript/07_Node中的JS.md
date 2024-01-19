@@ -247,5 +247,52 @@ Node支持4种基本流：
 * 双工流(duplex),把可读流和可写流组合成一个对象。
 * 转换流(transform):转换流也是可读和可写的，但是和双工流有一个重要区别：写入转换流的数据在同一个流会变成可读的(通常是某种转换后的形式)
 
+可读流必须从某个地方读取数据，而可写流必须把数据写到某个地方。因此每个流都有两端：输入端和输出端。
+
+流的实现种总会包含一个内部缓冲区，用于保存已经写入但尚未读取的数据。缓冲有助于保证在读取时有数据，而在写入有空间。但这两点都无法绝对保证。这种情况下，读取端或写入段就必须等待。
+
+在基于线程并发的编程环境，流API通常存在阻塞调用(例如java 的Stream API)。但在基于事件的并发模型种，阻塞调用就没有意义了，所以Node的流API是基于事件和回调的。
+
+## 管道
+
+有时候，我们需要把从流中读取的数据写入另一个流。可以通过`pipe()`方法将两个流连接为管道来实现。例如：
+
+~~~js
+const fs = require("fs");
+function pipeFileToSocket(filename,socket){
+    fs.createReadStream(filename).pipe(socket)
+}
+~~~
+
+转换流特别适合于管道一起使用，可以创建多个流的传输管道。下面示例实现了文件压缩：
+
+~~~js
+const fs = require("fs");
+const zlib = require("zlib");
 
 
+function gzip(filename,callback){
+    let source = fs.createReadStream(filename);
+    let destination = fs.createWriteStream(filename+".gz");
+    let gzipper = zlib.createGzip();
+    source.on("error",callback)
+        .pipe(gzipper)
+        .pipe(destination)
+        .on("error",callback)
+        .on("finish",callback);
+}
+
+
+gzip("./picture.png",err =>{
+    if (err)
+        console.error(err.stack)
+    else
+        console.log("压缩完成")
+})
+~~~
+
+## 自定义Transform流
+
+有时候我们需要对流的数据做自定义的处理，我们可以读取流，处理完后再写入流。但页可以实现自己的Transform流来完成相应的处理
+
+例如，下面函数类似于Unix 的grep命令：
