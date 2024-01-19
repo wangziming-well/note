@@ -223,11 +223,52 @@ redo log 用来保证事务的原子性和数据的完整性：InnoDB的事务�
 
 在日志组中的每个redo log文件的大小一致，并以循环写入的方式运行：InnoDB先写redo log文件1，写满后会切换到redo log文件2，文件2也被写满后，会再切回到redo log 文件1中。
 
+下面参数影响重做日志文件的属性：
 
+**`innodb_log_file_size`**
 
+该参数指定redo log 文件大小，在InnoDB1.2.x版本之前，redo log大小不等大于等于4GB，1.2.x版本将该限制扩大为了512G。
 
+redo log 文件不能设置的太大，否则恢复时可能需要很长时间；但是也不能设置得太小，否则可能导致一个事务的日志需要多次切换redo log文件。也可能导致频繁发生async checkpoint，导致性能抖动。
 
+**`innodb_log_files_in_group`**
 
+指定日志文件组种重做日志文件的数量，默认为2
+
+**`innodb_mirrored_log_groups`**
+
+指定日志镜像文件组的数量，默认为1，表示只有一个日志文件组，没有高可用。
+
+如果磁盘本身已经做了高可用方案，如RAID磁盘阵列，那么可以不开启这个功能。
+
+**`Innodb_log_group_home_dir`**
+
+指定日志文件组所在路径，默认为`./`，表示在数据库的data目录下。
+
+#### redo log 结构
+
+在InnoDB种，不同的操作有着不同的redo log格式，到InnoDB1.2.x为止，共定义了51种redo log 类型。这些类型都有着基本的格式，下面显示了redo log 条目的结构：
+
+![redologEntryStructure](https://gitee.com/wangziming707/note-pic/raw/master/img/redologEntryStructure.png)
+
+可以看到redo log条目由4部分组成：
+
+* redo_log_type 占一字节，表示redo log的类型
+* space表示表空间ID，采用压缩的方式存储，占用的空间可能小于4字节
+* page_no，表示页的偏移量，同样采用压缩的方式
+* redo_log_body表示每个redo log条目的数据部分，恢复时需要调用相应的函数进行解析
+
+我们已经知道了redo log文件的操作不是直接写，而是先写入一个 redo log buffer 种，然后按照一定的触发条件顺序写入日志文件。
+
+这一定的触发条件第一个是主线程每秒都会将redo logb 缓冲刷入磁盘，不论事务是否由提交。
+
+而另一个触发条件是由参数`innodb_flush_log_at_trx_commit`控制，表示在提交时，处理redo log的方式，参数有以下值：
+
+* 0:提交事务时，不冲刷redo log buffer
+* 1：在执行commit前同步冲刷redo log buffer，即执行commit时，必定冲刷了缓冲
+* 2：在执行commit时，异步执行冲刷redo log buffer的操作，也就是执行commit时，不保证已经写入了redo log文件，只是有这个动作发生。
+
+为了保证事务的持久性，必须将`innodb_flush_log_at_trx_commit`参数设置为1
 
 # 其他文件
 
@@ -246,3 +287,4 @@ redo log 用来保证事务的原子性和数据的完整性：InnoDB的事务�
 MySQL数据的存储是根据表进行的，每个表都有与之对应的文件。不论表采用何种存储引擎，MySQL都有一个frm后缀的文件，这个文件记录了该表的表结构定义。注意，创建的视图也有对应的frm文件
 
 这些frm文件通常位于数据库目录的data文件夹下。
+
