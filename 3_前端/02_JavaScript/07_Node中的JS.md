@@ -296,3 +296,87 @@ gzip("./picture.png",err =>{
 有时候我们需要对流的数据做自定义的处理，我们可以读取流，处理完后再写入流。但页可以实现自己的Transform流来完成相应的处理
 
 例如，下面函数类似于Unix 的grep命令：
+
+~~~js
+const stream = require("stream");
+
+class GrepStream extends stream.Transform {
+    constructor(pattern) {
+        super({decodeStrings:false}); //不把字符串转换回缓冲区
+        this.pattern = pattern; // 要匹配的正则表达式
+        this.incompleteLine =  ""; //最后一个数据块的剩余数据
+    }
+    //当一个字符串准备好可以转换时会调用这个方法，它应该把转换后的数据传给指定的回调函数
+    _transform(chunk,encoding,callback){
+        //这个方法期待一个字符流
+        if (typeof chunk !== "string" ){
+            callback(new Error("Expected a string but got a buffer"))
+            return;
+        }
+        //把chunk添加到之前不完整的行，并将所有内容按换行符分隔为数组
+        let lines = (this.incompleteLine + chunk).split("\n");
+        //数组的最后一个元素是新的不玩增行
+        this.incompleteLine = lines.pop();
+        //过滤筛选匹配的行
+        let output = lines.filter(l => this.pattern.test(l)).join("\n");
+        //如果有匹配，在最后加上一个换行符
+        if (output)
+            output += "\n";
+
+        callback(null,output);
+    }
+    //这个方法在流关闭前会被调用，在方法里可以把最后的数据写出
+    _flush(callback){
+        if (this.pattern.test(this.incompleteLine))
+            callback(null,this.incompleteLine + "\n")
+    }
+}
+
+let pattern = /^\s*?\d*?\s*?$/g;
+process.stdin
+    .setEncoding('utf8')
+    .pipe(new GrepStream(pattern))
+    .pipe(process.stdout)
+    .on("error",() => process.exit());
+~~~
+
+## 异步迭代
+
+在Node12及以后，可读流是异步迭代器，所以可以在async函数中使用`for/await`循环从流中读取字符串或者Buffer块，我们用这种方式来重写上面的grep程序：
+
+~~~js
+async function grep(source , destination, pattern , encoding="utf-8"){
+    source.setEncoding(encoding);
+
+    destination.on("error" ,err => process.exit());
+    let incompleteLine = "";
+    for await(let chunk of source){
+        let lines = (incompleteLine + chunk).split("\n");
+        incompleteLine = lines.pop();
+        for(let line of lines){
+            if (pattern.test(line))
+                destination.write(line + "\n",encoding);
+        }
+
+    }
+    if (pattern.test(incompleteLine))
+        destination.write(incompleteLine + "\n",encoding);
+}
+
+
+let pattern = /^\s*?\d*?\s*?$/g;
+grep(process.stdin,process.stdout,pattern)
+    .catch(err => {
+        console.error(err);
+        process.exit();
+    })
+~~~
+
+## 写入流及背压处理
+
+
+
+
+
+
+
