@@ -374,9 +374,131 @@ grep(process.stdin,process.stdout,pattern)
 
 ## 写入流及背压处理
 
+一个写入流有方法`write()`，这个方法以一个缓冲区或字符串作为第一个参数。
 
+如果传入一个缓冲区，则该缓冲区的字节会被直接写入。
 
+如果传入了一个字符串，则字符串在被写入前会被编码成字节缓冲区。编码格式通过第二个字符串参数指定。
 
+可写流有默认编码，在给`write()`方法只传一个字符串参数时使用。这个默认编码通常是`utf8`，但可以通过`setDefaultEncoding()`方法显示地设置。
 
+`write()`可选地接收一个回调函数作为第三个参数。这个回调会在数据已经实际写入，不再 存在于可写流内部的缓冲区时被调用。
 
+`write()`返回一个布尔值，在调用时，如果内部缓冲区未满，则返回true，如果已满或太满，则返回false。这个返回值是建议性的，可以忽略。
+
+`write()`方法返回false值是一种背压(backpressure)的表现。背压是一种消息，表示你向流中写入数据的速度超过了它的处理能力。对这种背压的正确反应是停止调用`write()`，直到流发出`drain`（耗尽）事件，表示缓冲区又有空间了。
+
+手工处理背压要面临一些问题，因为可能的情况很多，很难编写通用的算法。所以我们通常使用`pipe()`方法，这个方法会自动处理背压。
+
+## 通过事件读取流
+
+Node可读流有两种模式，每种模式都有自己的API。如果不使用管道或异步迭代处理可读流，那么就需要用这两种基于事件的API中的一种来处理流。注意不能两种API混用
+
+### 流动模式
+
+在流动模式(flowing mode)下，当可读数据到达时，会立即以`data`事件的形式发送。所以在这种模式下读取流，只需要为data事件注册一个事件处理程序。
+
+新创建的流并非一开始旧处于流动模式，注册`data`事件处理程序会把流切换到流动模式。这意味着流在注册data事件监听器前不会发送`data`事件。
+
+如果使用流动模式从一个可读流读取数据、处理数据，然后再把数据写入要给可写流，那么可能需要处理可写流的背压。
+
+如果此时发送背压，可以调用可读流的`pause()`方法暂时停止`data`事件。然后，当从可写流接收到“耗尽”事件时，可以调用可读流的`resume()`方法，再次启动`data`事件。
+
+处于流动模式的流会在到达流末尾时发出一个`end`事件。如果错误发送，会发出一个`error`事件。
+
+接下来演示一个用流动模式实现的文件复制函数：
+
+~~~js
+const fs = require("fs");
+
+function copyFile(sourceFilename,destinationFilename,callback){
+    let input = fs.createReadStream(sourceFilename);
+    let output = fs.createWriteStream(destinationFilename);
+    //注册data事件，将可读流中的内容写入到可写流中
+    input.on("data",chunk => {
+        let hasRoom = output.write(chunk);
+        //如果可写流已满，则暂停可读流的读取
+        if (!hasRoom)
+            input.pause();
+    })
+    //可读流读取完毕时，同时关闭可写流
+    input.on("end",()=>{
+        output.end();
+    })
+    //可读流发生错误时，调用回调并退出程序
+    input.on("error",err =>{
+        callback(err);
+        process.exit();
+    })
+    //可写流有空间时，通知可读流继续发送data事件
+    output.on("drain",()=>{
+        input.resume();
+    })
+    //可写流发送错误时，调用回调并退出程序
+    output.on("error",err => {
+        callback(err);
+        process.exit();
+    })
+    //可写流结束是，调用回调并退出
+    output.on("finish",()=>{
+        callback(null);
+    })
+
+}
+
+copyFile("./picture.png","./picture-copy.png",err =>{
+        if (err)
+            console.error(err);
+        else
+            console.log("done.")
+    })
+~~~
+
+### 暂停模式
+
+可读流的另一种模式是暂停模式，这个模式是流开始时所处的模式。
+
+如果不注册`data`事件，也不调用`pipe()`方法，那么可读流就一直处于暂停模式。
+
+在暂停模式下，需要显示调用`read()`方法从流中拉取数据。这个方法不是阻塞方法，如果流中没有可读数据，它就返回null。
+
+暂停模式也是基于事件的，可读流会在暂停模式下发送`readable`事件，表示流中有可读数据。此时，可以调用`read()`方法读取该数据，并且需要在循环中反复调用`read()`直到它返回null，这样才能完全耗尽流中的缓冲区，从而在将来再次触发新的`readable`事件。
+
+如果只调用了一次`read()`方法，导致缓冲区中仍有数据，那么之后就不会收到`readable`事件，程序就可能被挂起
+
+处于暂停模式的流也会发送`end`和`error`事件。
+
+如果是从一个可读流读数据，处理数据后写入可写流，那么暂停模式并非好的选择。为了正确处理背压，我们只希望在输入流可读且输出流未满时读取数据。而在暂停模式中，因为要保证循环调用`read()`方法直到返回null，要同时达到这两个目标处理起来很麻烦。
+
+下面示例演示了使用暂停模式为指定文件的内容计算SHA26散列值。
+
+~~~js
+const fs = require("fs");
+const crypto = require("crypto");
+
+function sha256(filename,callback){
+    let input = fs.createReadStream(filename);
+    let hasher = crypto.createHash("sha256");
+
+    input.on("readable",() =>{
+        let chunk;
+        while (chunk = input.read())
+        hasher.update(chunk);
+    })
+
+    input.on("end",() =>{
+        let hash = hasher.digest("hex");
+        callback(null,hash);
+    })
+
+    input.on("error",callback);
+}
+
+sha256("./picture.png",(err,hash) =>{
+    if (err)
+        console.error(err);
+    else
+        console.log(hash)
+})
+~~~
 
