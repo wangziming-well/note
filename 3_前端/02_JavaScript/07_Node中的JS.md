@@ -502,3 +502,70 @@ sha256("./picture.png",(err,hash) =>{
 })
 ~~~
 
+# 全局Process对象
+
+全局Process对象有很多有用的属性和函数，通常与当前运行的Node进程的状态有关。我们介绍一些常用的：
+
+~~~js
+process.argv //包含命令行参数的数组
+process.arch //cpu架构：如x64
+process.cwd() //返回当前工作目录
+process.chdir() //设置当前工作目录
+process.cpuUsage() //报告cpu使用情况
+process.env //环境变量对象
+process.execPath //Node可执行文件的绝对路径
+process.exit() //终止当前程序
+process.exitCode //程序退出时报告的整数编码
+process.getuid() //返回当前用户的Unix用户ID
+process.hrtime.bigint() //返回纳秒级时间戳
+process.kill() //向另一个进程发送信息
+process.memoryUsage() //返回一个包含内存占用细节的对象
+process.nextTick() //类似于setImmediate(),立即调用一个函数
+process.pid //当前进程的进程ID
+process.ppid //父进程ID
+process.platform // 操作系统，如Linux、Win32等
+process.resourceUsage() // 返回包含资源占用细节的对象
+process.setuid() //通过ID或名字设置当前用户
+process.title // 出现在ps列表中的进程名
+process.uptime() // 返回Node正常运行的时间
+process.version //Node的版本字符串
+process.versions // Node依赖库的版本字符串
+~~~
+
+os模块提供了与process类似的Node所在计算机和操作系统的细节。
+
+~~~js
+const os = require("os");
+os.arch(); //cpu架构：如x64
+os.constants //一些系统相关的有用的常量
+os.cpus() //关于cpu核心的数据
+os.endianness() // CPU的原生字节序：BE或则和LE(大端序，小端序)
+os.EOL // 操作系统原生的行终止符: \n 或者 \r\n
+os.freemem() //自由RAM数量(字节)
+os.getPriority() //进程优先级
+os.homedir() // 当前用户的主目录
+os.hostname() // 当前计算机的主机名
+os.loadavg() // 返回1、5、15分钟的平均负载
+os.networkInterfaces() // 可用网络连接的细节
+os.platform() //操作系统如Linux
+os.release() // 操作系统的版本号
+os.setPriority() //尝试设置进程的优先级
+os.tmpdir() //默认的临时目录
+os.totalmem() // 返回RAM的总数(字节)
+os.type() // 返回操作系统
+os.uptime() // 返回系统正常运行的时间(s)
+os.userInfo() //返回当前用户的信息对象
+~~~
+
+# 操作文件
+
+Node的fs模块是用于操作文件和目录的综合性API。path模块是fs模块的补充，定义了操作文件和目录名的常用函数。
+
+fs模块定义了大量API，主要因为每种基本操作都有很多变体。很多函数都是非阻塞的、基于回调的、异步的。不过，通常这样的函数都会有一个同步阻塞的变体。如`fs.readFile()`和`fs.readFileSync()`。在Node10之后，很多这样的函数还会有一个基于期约的异步变体，如`fs.promise.readFile()`
+
+多数fs中的函数都以一个字符串作为第一个参数，用于指定要操作的文件的路径。但是其中某些函数也有变体支持一个整数“文件描述符”而非字符串路径作为第一个参数。这样的变体会以字母`f`开头。例如`fs.truncate()`和`fs.ftruncate()`
+
+fs模块中还有少量函数有名字前面加`l`的变体，这个变体与基本函数类似，但不会跟踪文件系统中的符号链接，而是直接操作符号链接本身。
+
+## 路径、文件描述符和FileHandle
+
