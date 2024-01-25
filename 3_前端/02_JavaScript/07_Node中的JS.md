@@ -569,3 +569,333 @@ fs模块中还有少量函数有名字前面加`l`的变体，这个变体与基
 
 ## 路径、文件描述符和FileHandle
 
+文件通常时通过路径来指定的，也就是文件本身的名字再加上文件所在的目录层次
+
+* 绝对路径是从文件系统的根目录开始的
+* 相对路径是相对于其他某个路径(通常是当前工作路径)才有意义
+
+不同操作系统使用不同的字符来分隔目录名，另外`../`父目录部分也需要特殊处理。
+
+Node的path模块和一些Node特性可以帮助我们处理路径：
+
+~~~js
+//一些重要路径
+process.cwd() //当前工作目录的绝对路径
+__filename //保存当前代码的文件的绝对路径
+__dirname //保存__filename的目录的绝对路径
+os.homedir() // 用户的主目录
+
+const path = require("path");
+
+path.sep //路径分隔符 /或者 \ ，取决于操作系统
+//提供了简单的解析函数
+let p = "src/pkg/test.js"
+path.basename(p) // test.js
+path.extname(p) // .js
+path.dirname(p) // src/pkg
+path.basename(path.dirname(p)) //pkg
+path.dirname(path.dirname(p)) // src
+
+//清理路径、规范化路径
+path.normalize("a/b/c/../d") // a/b/d/ :去掉../
+path.normalize("a/./b") // a/b : 去掉 ./
+path.normalize("//a//b//") // /a/b/ :去掉重复的/
+
+//组合路径片段，添加分隔符，并规范化
+path.join("src","pkg","t.js") // src/pkg/t.js
+
+//由多个路径片段，返回一个绝对路径，从最后一个参数开始，反向处理，直到构建起绝对路径或者相对于process.cwd()解析得到绝对路径
+path.resolve() // process.cwd()
+path.resolve("t.js") // path.join(process.cwd(),"t.js")
+path.resolve("/tmp","t.js") // /tmp/t.js
+path.resolve("/a","/b","t.js") // /b/t.js
+~~~
+
+除了文件名，很多fs函数接收文件描述符。文件描述符是操作系统级的整数引用，可以用来访问文件。
+
+调用`fs.pen()/fs.openSync()`可以的大宋一个指定文件的文件描述符。进程依次只能打开有限个数的文件，所以再操作完成后，一定要在文件描述符上调用`fs.close()`
+
+最后，`fs.promises`定义的基于期约的API中，与`fs.open()`对应的是`fs.promises.open()`，它返回一个期约，解决为一个`FileHandle`对象。
+
+## 读文件
+
+可以通过流来处理文件内容，也可以通过低级API来一次性读取文件的内容。
+
+如果要打开的文件很小，或者内存的占用或性能并非首要考虑因素，可以通过一次调用读取文件的全部内容。
+
+~~~js
+const fs = require("fs");
+//同步读取文件
+let buffer = fs.readFileSync("picture.png");
+let text = fs.readFileSync("package.json","utf8");
+//异步读取文件
+fs.readFile("picture.png",(err ,buffer) =>{
+    if (err)
+        ; //处理错误
+    else
+        ;//处理文件字节
+})
+//基于期约的异步读取
+fs.promises
+    .readFile("package.json","utf-8")
+    .then(processFileText)
+    .catch(handleReadError);
+//或者在async函数中使用await和期约API
+async function processText(filename,encoding){
+    let text = await fs.promises.readFile(filename,encoding);
+    //处理文本
+}
+~~~
+
+如果可以顺序处理文件内容，同时不需要把文件内容全部放到内存中，那么可以使用流
+
+可以直接使用流和`pipe()`方法将一个文件内容输出到其他流中：
+~~~js
+function printFile(filename,encoding){
+    fs.createReadStream(filename,encoding).pipe(process.stdout);
+}
+~~~
+
+如果需要更精细的控制，可以打开文件或者文件描述符，然后再使用`fs.read()/fs.readSync()/fs.promises.read()`从文件中指定的来源将指定数量的字节读取到指定目标位置的指定缓冲区：
+
+~~~js
+const fs = require("fs");
+
+fs.open("picture.png",(err,fd) =>{
+    if (err){
+        //报告错误
+        return;
+    }
+
+    try{
+        fs.read(fd,Buffer.alloc(400),0,400,20,(err,n,b) =>{
+            //err是错误
+            //n是实际读取的字节数
+            //b是读入字节的缓冲区
+        })
+    } finally {
+        fs.close(fd); //关闭文件描述符
+    }
+
+})
+~~~
+
+如果要从文件中读取多个数据块，那么基于回调的`read()`API使用起来会很繁琐，此时我们可以使用同步API或者基于期约的API来读取：
+
+~~~js
+const fs = require("fs");
+
+function readData(filename){
+    let fd = fs.openSync(filename);
+    try {
+        let header = Buffer.alloc(12);
+        fs.readSync(fd,header,0,12,0);
+        let magic = header.readInt32LE(0);
+        if (magic !== 0xDADAFEED)
+            throw  new Error("File id of wrong type")
+        let offset = header.readInt32LE(4);
+        let length = header.readInt32LE(8);
+        let data = Buffer.alloc(length);
+
+        fs.readSync(fd,data,0,length,offset);
+        return data;
+
+    } finally {
+        fs.closeSync(fd);
+    }
+}
+~~~
+
+## 写文件
+
+Node中写文件和读文件类型，但也有不同之处，如通过写入一个不存在的文件名可以创建一个新文件。
+
+和读文件一样，Node中有三种写文件的基本方式，如果需要一次性写入，可以调用`fs.writeFile()`、`fs.writeFileSync()`和`fs.promises.writeFile()`一次性写入全部内容：
+
+~~~js
+fs.writeFileSync(path.resolve(__dirname,"settings.json"),JSON.stringify(settings),'utf-8');
+~~~
+
+相干函数`fs.appendFile()/appendFileSync()/promises.appendFile()`也类似，但是它们会再指定文件存在时，将数据追加到已有数据的末尾，而不是重写已有的文件内容。
+
+如果要写入文件的数据并不全部都在内存中，可以使用可写流：
+
+~~~js
+const fs = require("fs");
+
+let output = fs.createWriteStream("numbers.txt");
+for(let i = 0 ;i<100;i++)
+    output.write(`${i}\n`)
+output.end();
+~~~
+
+如果想要以多个块的形式将数据写入文件，并想精细控制每个块写入文件中的位置。那么可以使用`fs.open()`或其变体来打开文件，然后把生成的文件描述符传给`fs.write()`或`fs.writeSync()`函数。这两个函数对字符串和缓冲区有不同的变体。
+
+* 字符串变体接收一个文件描述符、字符串和文本中写入该字符串的位置
+* 缓冲区变体接收一个文件描述符、缓冲区、偏移量、缓冲区中数据块的长度，以及再文件中写入该数据库字节的位置。
+
+如果要写入一组Buffer对象的树，可以调用一次`fs.writev()/writevSync()`来完成操作。
+
+### 文件模式
+
+在写读文件时，我们使用`fs.open()/openSync()`时之传入了文件名。但在写文件时，我们必须同时传入第二个字符串参数，用于指定打开这个文件描述符的模式。有几个可用的标志字符串：
+
+* `w`:只读
+* `w+`:读写
+* `wx`：只创建新文件，如果指定的文件存在则失败
+* `wx+`：为创建新文件，并且可以读取，如果指定的文件存在则失败
+* `a`:追加模式，原有数据不会被覆盖
+* `a+`追加模式，也允许读取
+
+如果不传第二个参数，则默认使用`r`标志位，即只读。
+
+注意，将这些标志传给其他写入方法同样有效：
+
+~~~js
+fs.writeFileSync("message.log","hello",{flag:"a"});
+~~~
+
+### truncate
+
+可以通过`fs.truncate()`和其变体方法截断文件后面的内容
+
+这几个函数以路径为第一个参数，以一个长度作为第二个参数，将文件修改为指定的长度。如果省略长度，则使用默认值0，结果文件会变空。
+
+如果指定的程度超过了当前文件大小，那么文件会以0字节扩展到新大小。
+
+## 文件操作
+
+### 复制文件
+
+fs定义了文件复制的方法`fs.copyFlie()`。以及它的两个变体。
+
+这几个函数都接收原始文件的名字和副本的名字作为前两个参数。这两个参数可以时字符串、URL或Buffer对象。
+
+它们还接收一个可选的第三个整数参数，用于指定标志，以控制复制操作的细节。
+
+下面是例子：
+
+~~~js
+const fs = require("fs");
+
+fs.copyFileSync("./picture.png","./picture1.png");
+//COPYFILE_EXCL参数表示只在新文件不存在时复制
+fs.copyFile("./picture.png","./picture3.png" ,fs.constants.COPYFILE_EXCL,err=>{
+    //这个回调在复制完成时被调用。如果出错，err将非空
+})
+
+//第三个参数是按位编码的，所以可以使用按位与同时设置多个参数
+//COPYFILE_FICLONE 表示如果系统支持，新的副本将是原始文件的一个写时复制副本 copyOnWrite
+fs.promises.copyFile("./picture.png","./picture2.png",
+    fs.constants.COPYFILE_EXCL| fs.constants.COPYFILE_FICLONE)
+    .then(() => console.log("copy complete"))
+    .catch(err => console.error("copy failed",err))
+~~~
+
+### 移动或重命名文件
+
+`fs.rename()`函数(以及相应的变体)可以移动或重命名文件。调用它要传入当前文件路径和期望的新文件路径。
+
+~~~js
+fs.renameSync("./picture-copy.png","./back/picture.png")
+~~~
+
+注意，新文件路径中的文件夹必须已经存在。
+
+### 创建文件链接
+
+函数`fs.link()`和`fs.symlink()`和其变体与`fs.rename()`有相同的签名，其行为类似于文件复制，但是它们只分别创建硬链接和符号链接。
+
+~~~js
+fs.linkSync("./picture.png","./picture-link.png")
+fs.symlinkSync("./picture.png","./picture-symlink.png")
+~~~
+
+### 删除文件
+
+`fs.unlink()`和其变体方法用来删除文件：
+
+~~~js
+fs.unlinkSync("./picture-link.png")
+~~~
+
+## 文件元数据
+
+`fs.stat()`和其变体方法可以取得指定文件或目录的元数据，例如：
+
+~~~js
+let stats = fs.statSync("./picture.png");
+stats.size //文件大小
+~~~
+
+该方法返回一个`Stats`对象，记录了如文件大小、名称、是否是文件等文件元数据。
+
+`fs.lstat()`和`fs.stat()`类似，只是在指定文件为符号链接时，Node会返回链接本身的元数据，而不会追踪链接。
+
+## 操作目录
+
+在Node中要创建新目录，可以是哟共`fs.mkdir()`和其变体。
+
+第一个参数时要创建的目录的路径，第二个参数是可选的整数，表示新目录的模式，或者也可以传入一个包含可选mode和recursive属性的对象。如果recursive属性为true，这个函数会创建路径中所有不存在的目录：
+
+~~~js
+fs.mkdirSync("dir1/dir2",{recursive:true})
+~~~
+
+`fs.mkdtemp()`及其变体可以创建临时目录，它接收一个传入的路径前缀，然后在后面追加一些随机字符(这对安全很重要),然后以该名字创建一个目录，最后返回这个目录的路径
+
+要删除一个目录，可以使用`fs.rmdir()`和其变体。注意要删除的目录必须是空目录。
+
+~~~js
+let tempDirName
+try {
+    tempDirName = fs.mkdtempSync("./temp");
+    //在这里对临时目录执行一些操作
+} finally {
+    fs.rmdirSync(tempDirName)
+}
+~~~
+
+
+
+fs模块提供两组不同的API用于列出目录的内容：
+
+`fs.readdir()`和其变体一次性读取整个目录，然后返回要给字符串数组或者一个指定了名字和类型的Dirent对象的数组。此时返回的文件名并非完整路径，而是单指文件的本地名。
+
+~~~js
+let tempFiles = fs.readdirSync("../");
+
+fs.promises.readdir("../",{withFileTypes:true})
+    .then(entries =>{
+        entries.filter(entry => entry.isDirectory())
+            .map(entry => entry.name)
+            .forEach(name => console.log(name))
+    }).catch(console.error);
+~~~
+
+如果要列出的目录很多，可以hi哟弄个基于流的`fs.opendir()`和其变体。这个函数返回一个Dir对象，表示指定的目录。
+
+可以使用这个对象的`read()`和`readSync()`方法读取一个`Dirent`对象。如果给`read()`传了回调，那么它会调用这个回调，如果省略了回调，那么它返回一个期约。
+
+使用Dir对象最简单的方式是将其作为异步迭代器，配合`for/await`循环：
+
+~~~js
+const fs = require("fs");
+const path = require("path");
+
+async function listDirectory(dirpath){
+    let dir = await fs.promises.opendir(dirpath);
+
+    for await( let entry of dir){
+        let name = entry.name;
+        if (entry.isDirectory())
+            name += "/";
+        let stats = await fs.promises.stat(path.join(dirpath,name));
+        let size = stats.size;
+        console.log(String(size).padStart(10),name);
+    }
+}
+
+listDirectory("../")
+~~~
+
