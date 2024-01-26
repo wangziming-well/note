@@ -856,8 +856,6 @@ try {
 }
 ~~~
 
-
-
 fs模块提供两组不同的API用于列出目录的内容：
 
 `fs.readdir()`和其变体一次性读取整个目录，然后返回要给字符串数组或者一个指定了名字和类型的Dirent对象的数组。此时返回的文件名并非完整路径，而是单指文件的本地名。
@@ -896,6 +894,6 @@ async function listDirectory(dirpath){
     }
 }
 
-listDirectory("../")
+listDirectory("../");
 ~~~
 
