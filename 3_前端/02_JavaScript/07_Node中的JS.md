@@ -897,3 +897,146 @@ async function listDirectory(dirpath){
 listDirectory("../");
 ~~~
 
+# 网络连接
+
+## HTTP
+
+
+
+Node中的http、https和http2模块是功能完整但相对低级的HTTP协议实现。这些模块定义了实现HTTP客户端和服务器的所有API。我们只用示例演示编写简单的客户端和服务器
+
+发送HTTP GET请求的最简单方式是使用`http.get()`或者`https.get()`。这两个函数的第一个参数是要获取的URL。第二个参数是一个回调，当服务器响应开始到达时这个回调会以一个`IncomeingMessage`对象被调用。调用对象时，HTTP状态和头部已经可以读取，但是响应体还未就绪。IncomingMessage是一个可读流。一个示例如下：
+
+~~~js
+const https = require("https");
+
+https.get("https://www.baidu.com" ,response=>{
+    if (response.statusCode !== 200){
+        console.log("error,Status Code:" + response.statusCode)
+        response.resume(); //防止内存泄漏
+    } else {
+        let body = "";
+        response.setEncoding("utf-8");
+        response.on("data" ,chunk => body += chunk);
+        response.on("end",()=>console.log(body))
+    }
+})
+~~~
+
+更加通用的是`http.request()`和`https.request()`函数。下面演示它的使用方式：
+
+~~~js
+const https = require("https");
+
+let requestOptions = {
+    method: "POST",
+    host: 8080,
+    path: "http://localhost",
+    headers: {
+        "Content-Type": "application/json"
+    }
+}
+let request = https.request(requestOptions);
+
+request.write(JSON.stringify({key:"Hello"}))
+request.end();
+
+request.on("error", console.error);
+request.on("response" , response => {
+    if (response.statusCode !==200){
+        console.log("Error,Status Code:" + response.statusCode);
+        response.resume();
+        return;
+    }
+    let body = "";
+    response.setEncoding("utf-8");
+    response.on("data" ,chunk => body += chunk);
+    response.on("end",()=>console.log(body))
+})
+~~~
+
+除了发送HTTP七个球，Node也允许编写响应这些HTTP请求的服务器。基本流程如下：
+
+* 创建一个Server对象
+* 调用它的`listen()`方法，开始监听指定端口的请求
+* 为`request`事件注册处理程序，读取请求，然后写入响应
+
+下面演示一个简单的HTTP服务器：
+
+~~~js
+const http = require("http");
+let url = require("url");
+let path = require("path");
+let fs = require("fs");
+
+let server = new http.Server();
+server.listen(8080);
+
+server.on("request",(request,response) =>{
+    let endpoint = url.parse(request.url).pathname;
+    if ("/pic" === endpoint){
+        let stream = fs.createReadStream("D:\\Data\\Temporary\\picture.png");
+        stream.once("readable",() =>{
+            response.setHeader("Content-Type","application/octet-stream");
+            response.writeHead(200)
+            stream.pipe(response);
+        })
+        server.on("error",(err) =>{
+            response.setHeader("Content-Type","text/plain; charset=UTF-8");
+            response.writeHead(404);
+            response.end(err.message);
+
+        })
+    } else {
+        response.setHeader("Content-Type","text/plain; charset=UTF-8");
+        response.writeHead(404);
+        response.end("找不到资源");
+    }
+})
+~~~
+
+## Socket
+
+net模块提供网络socket的API。net模块定义了Server和Socket类，
+
+要创建服务器，可以调用`net.createServer()`，然后调用返回的对象的`listen()`方法监听指定端口的连接。Server对象会在客户端连接到该端口时生成`connnect`事件。而传给事件监听器的就是一个Socket对象，这个Socket对象时一个双工流，可以使用它从客户端读取数据和向客户端写入数据。在这个Socket对象删调用`end()`可以断开连接
+
+通过`net.createConnection()`创建客户端，传一个端口号和主机名。返回一个Socket对象，通过这个对象向服务器交换数据。
+
+下面是一个服务端的演示：
+
+~~~js
+const net = require("net");
+
+let server = net.createServer();
+server.listen(6789,() => console.log("Delivering laughs on port 6789"));
+
+server.on("connection",socket => {
+    socket.write("Hello");
+    socket.end();
+})
+~~~
+
+然后是客户端：
+
+~~~js
+const net = require("net");
+
+let socket = net.createConnection(6789,"localhost");
+socket.pipe(process.stdout);
+process.stdin.pipe(socket);
+socket.on("close",() => process.exit());
+~~~
+
+# 子进程
+
+Node中的`child_process`模块定义了一些函数，用于在子进程中运行其他程序。
+
+## `execSync()/execFileSync()`
+
+运行其他程序的最简单方式是使用`child_process.execSync()`。
+
+
+
+
+
