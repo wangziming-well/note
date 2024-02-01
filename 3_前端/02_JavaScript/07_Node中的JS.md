@@ -83,7 +83,7 @@ Node 13 增加了对ES6模块的支持，同样支持基于`require()`的模块(
 * `Node`会将`.mjs`结尾的文件当作ES6模块来加载，假设其中使用了`import`和`export`，并不再提供`require()`函数
 * `Node`会将`.cjs`结尾的文件到左一个CommonJS模块来加载，会提供`require()`函数，如果其中使用了`import`或者`export`声明，则抛出SyntaxError异常
 
-如果没有明确给出`.mjs/.cjs`扩展名文件，Node会在同级目录以及所有包含目录中查找一个名为`package.json`的文件。一旦找到最近的`package.json`文件，Node会检查其中JSON兑现的顶级type属性
+如果没有明确给出`.mjs/.cjs`扩展名文件，Node会在同级目录以及所有包含目录中查找一个名为`package.json`的文件。一旦找到最近的`package.json`文件，Node会检查其中JSON对象的顶级type属性
 
 * 如果type属性值为module，Node会将文件按照ES6模块来加载
 * 如果type属性值为commonjs，那么Node就按照CommonJS模块来加载该文件
@@ -1034,9 +1034,231 @@ Node中的`child_process`模块定义了一些函数，用于在子进程中运�
 
 ## `execSync()/execFileSync()`
 
-运行其他程序的最简单方式是使用`child_process.execSync()`。
+运行其他程序的最简单方式是使用`child_process.execSync()`。这个函数的第一个参数是要运行的命令，它会创建一个子进程，在该进程中运行一个命令行解释器`shell`，并使用该解释器执行传入的命令。命令执行期间会阻塞，直到命令退出。
 
+如果命令中有错误，则`execSync()`会抛出异常。否则，函数将返回该命令写入器标准输出流的任何内容。如果命令向标准错误流写入了任何输出，则该输出只会传给父进程的标准错误流。
 
+默认情况下，这个返回值是一个缓冲区，可以在可选的第二个参数中设置一个编码，从而得到一个字符串。例如：
 
+~~~mysql
+const childProcess = require("child_process");
+const iconv = require('iconv-lite');
+let buffer = childProcess.execSync("ipconfig");
+str = iconv.decode(buffer, 'gbk');
+~~~
 
+因为window平台shell使用gbk编码，但是node.js本身不支持gbk编码。所以这里用了三方库`iconv-lite`来进行编码
+
+直接给`eecSync()`传递命令行字符传可以利用命令行的一些特性：如可以包含多个分号分隔的命令，可以使用文件名通配符、管道和输出重定向。
+
+如果不需要这样的命令行特性，可以使用`child_process.execFileSync()`来避免启动命令行，这个函数直接执行程序，不调用命令行。它的第一个参数传入可执行文件，第二个参数传入命令行参数数组，例如：
+
+~~~js
+let buffer = childProcess.execFileSync("ping",["baidu.com"]);
+let s = iconv.decode(buffer,"gbk");
+~~~
+
+## 子进程选项
+
+`execSync()`和其他很多`child_process`函数都有可选的参数对象，用于指定子进程如何运行，下面列出比较重要的属性(注意，并非所有选线都适用于所有子进程函数)
+
+* `cwd`指定子进程的当前工作目录。默认为`process.cwd()`
+* `env`指定子进程有权访问的 环境标量。默认为`process.env`
+* `input`指定作为子进程标准输入数据的字符串或缓冲区。这个选项只能用于不返回`ChildProcess`对象的同步函数
+* `maxBuffer`指定exec函数可以手机的最大输出字节数(不适用于`spawn()`和`fork()`,它们使用流)。如果子进程产生的输出超过了这俄格值，那么会杀死子进程并以错误退出。
+* `shell`：指定命令行解释器可执行文件的路径或true。
+  * 对正常执行命令行程序的子进程函数，可以指定shell可执行文件以指定使用哪个命令行
+  * 对正常不使用命令行的函数，将这个选项置为true或者指定shell路径可以让其使用命令行
+* `timeout`：指定允许子进程运行的最长毫秒数。如果到了时间没有退出，程序将被杀死并以错误退出(不适用于`spawn()`或f`ork()`)
+
+* `uid`：可以指定哪个用户ID来运行程序。
+
+## `exec()/execFile()`
+
+`execSync()`和`execFileSync()`是同步执行的，它们是`exec()/execFile()`的变体，而后者是异步执行的。
+
+`exec()/execFile()`会立即返回一个`ChildProcess`对象，表示证字啊运行的子进程，并且接受一个错误在先的回调作为最后的参数。这个参数会在子进程退出时被调用。回调被调用时传入三个参数：如果发送了错误，第一个参数就是错误对象，否则第一个参数为null；第二个参数时子进程标准输出流的输出。第三个参数是子进程标准错误流的输出。
+
+其返回的`ChildProcess`对象允许终止子进程，向子进程写入数据。后续我们会详细介绍
+
+如果想要同时执行多个子进程，那么可以使用`exec()`的期约版。这个期约对象会解决为一个包含`stdout`和`stderr`对象的属性。例如：
+
+~~~js
+const childProcess = require("child_process");
+const util = require("util");
+const execP = util.promisify(childProcess.exec);
+
+function parallelExec(commands){
+    let promises = commands.map(command=> execP(command));
+    return Promise.all(promises)
+        .then(outputs => outputs.map(out => out.stdout))
+}
+~~~
+
+## `spawn()`
+
+`child_process.spawn()`函数允许在子进程允许期间流式访问子进程的输出。同时，也允许向子进程写入数据。这意味着可以动态于子进程进行交互。
+
+`spawn()`默认不使用命令行解释器，因此必须像`execFile()`一样传入可执行文件和命令行参数来调用它，并且`spawn()`同样返回一个`ChildProcess`对象，但它不接收回调参数。
+
+这个`spawn()`返回的`ChildProcess`是一个事件发送器(event emitter),可以监听子进程退出时发送的exit事件。这个`ChildProcess`还有三个流属性
+
+* `stdout`和`stderr`是可读流，读取子程序的标准输出和标准错误流。
+* `stdin`属性是可写流，可以将任何数据写入子进程的标准输入。
+
+`ChildProcess`对象也定义了一个pid属性，用于指定子进程的进程ID。它还定义了`kill()`方法，用于终止子进程。
+
+## `fork()`
+
+`child_process.fork()`用于在一个Node子进程中运行一段JS代码。`fork()`和`spawn()`接收相同的参数，但第一个参数应该是JS代码文件的路径，而非可执行二进制文件的路径。
+
+与`spawn()`一样，使用`fork()`创建的子进程可以通过标准输出和输入和父进程通信。此外`fork()`还提供了一种更简单的通信方式。
+
+在使用`fork()`创建子进程后，可以使用它返回的`ChildProcess`对象的`send()`方法向子进程发送一个对象的副本。可以监听这个`ChildProcess`的`message`事件，从子进程中接收消息。
+
+在子进程中运行的代码可以通过`proceess.send()`向父进程发送消息，也可以监听`process`的`message`事件，从父进程接收消息
+
+例如，下面代码用`fork()`创建一个子进程，然后向子进程发送了一条消息并等待子进程回应：
+
+~~~js
+const childProcess = require("child_process");
+let child = childProcess.fork("./child.js");
+
+child.send({x:4,y:3});
+
+child.on("message",message => {
+    console.log(message.hypotenuse);
+    child.disconnect(); //终止父进程和子进程的连接。这样两个进程都可以明确退出
+})
+~~~
+
+然后`child.js`文件中子进程代码如下：
+
+~~~js
+process.on("message" ,message => {
+    //计算，并把结果发给父进程
+    process.send({hypotenuse:Math.hypot(message.x,message.y)})
+})
+~~~
+
+启动子进程的开销巨大，如果子进程不能完成几个大数量级的运算，那么不值得使用`fork()`来开启子进程。
+
+`send()`的第一个参数会被`JSON.stringify()`序列化，而在子进程中会被`JSON.parse()`反序列化。所以传参是对象中的值必须是JSON格式允许的。
+
+`send()`有第二个特殊的参数，通过这个参数可以把`net`模块的`Socket`和`Server`对象转移给子进程。
+
+# 工作线程
+
+我们已经知道了Node的并发模型是单线程的，基于事件的。但是Node10开始支持真正的多线程编程，提供了类似于浏览器Web Workers API的一套API。
+
+Node多线程和Web JS多线程一样，线程之间不共享内存，所以避免了多线程编程中的很多风险和困难。
+
+没有共享内存，JS的工作线程只能通过消息传递来通信。
+
+* 主线程可以调用代表工作线程的`Worker`对象的`postMessage()`方法向工作线程发送消息；通过`Worker`对象的`message`事件接收子线程消息
+* 工作线程可以通过监听全局的`message`事件从父线程接收消息；可以通过自己的`postMessage()`方法向父线程发送消息
+
+在Node中使用工作线程的原因有：
+
+* 更好的利用计算机的多核心能力
+* 将计算分给工作线程，可以更快的响应请求
+* 将阻塞的同步操作转换为异步操作，可以通过工作线程将同步遗留代码转换为异步的
+
+## Worker
+
+工作线程的Node模块叫做`worker_threads`，我们使用`threads`来代指它：
+
+~~~js
+const threads = require("worker_threads");
+~~~
+
+这个模块定义了`Worker`类来表示工作线程，可以使用`threads.Worker()`构造函数创建新线程。下面代码给出示例，并且演示了一个技巧，可以把主线程代码和工作线程代码放在同一个文件中：
+
+~~~js 
+const threads = require("worker_threads");
+
+if (threads.isMainThread){
+    module.exports = function reticulateSplines(splines) {
+        return new Promise((resolve, reject)=>{
+            let reticulator = new threads.Worker(__filename);
+            reticulator.postMessage(splines);
+            reticulator.on("message",resolve);
+            reticulator.on("error",reject)
+        })
+    }
+} else {
+    threads.parentPort.once("message",splines =>{
+        for (let i = 0; i < splines.length; i++) {
+            splines[i] +=1; //这里正常需要进行大量的计算
+        }
+        threads.parentPort.postMessage(splines); //将计算后的结果传递给主线程
+    })
+}
+~~~
+
+然后在其他模块导入这个模块并使用：
+
+~~~js
+const reticulateSplines = require("./demo.js");
+
+reticulateSplines([1,2,3]).then(results =>{
+    console.log(results)
+})
+~~~
+
+`Worker()`构造函数的第一个参数是线程中运行的JS代码文件的路径。如果是相对路径，它是相对于`process.cwd()`的。
+
+如果想让它相对于当前模块，可以使用这样的方式：
+
+~~~js
+path.resolve(__dirname,'xxx/demo.js');
+~~~
+
+`Worker()`接收一个可选的配置对象作为第二个参数，如果第二个参数传入了 `{eval:true}`作为第二个参数，那么`Worker()`的第一个参数将被作为要进行求值的JS代码字符串而不是一个文件名来解释：
+
+~~~js
+new threads.Worker(`
+	const threads = require("worker_threads");
+    threads.parentPort.postMessage('hello'); 
+`,{eval: true}).on("message",console.log);
+~~~
+
+Node会将传递个`postMessage()`的对象复制一个副本，然后传递给目标线程，而不是让它在线程间共享。这里副本的制作不是通过JSON的序列化、反序列化，而是通过结构化克隆算法的技术。这个技术Node 和Web JS都有用到。
+
+结构化克隆算法可以序列化多种JS类型，包括Map、Set、Date和RegExp对象以及定型数组。而且，它还能处理包含循环引用的数据结构。不过它不能序列化函数和类。也不能复制宿主环境定义的类型，如`process`。
+
+## 工作线程的执行环境
+
+Node工作线程的环境基本上和主线程一样，但是有有一下区别：
+
+* `thread.isMainThread`在主线程中是true，在任何工作线程都是false
+
+* 在工作线程中，可以使用`threads.parentPort.postMessage()`向父线程发送消息，使用`threads.parentPort.on`接收父线程的消息。而在主线程中`threads.parentPort`始终为null
+
+* 在工作线程中，`thread.workerData`被设置为`Worker()`构造函数第二个参数workerData属性的一个副本。在主线程中，这个属性为null。可以通过它向工作线程传递一个初始数据。
+
+* 默认情况下，`process.env`在工作线程中式父线程的`process.env`的一个副本。但是父线程可以通过设置`Worker()`构造函数的options对象的env属性指定一组自定义的环境变量
+
+  在特殊的情况下，也可以将options对象的env属性设置为`threads.SHARE_ENV`，这样两个线程就共享一组环境变量，因此一个线程中的修改对另一个线程就是可见的。
+
+* 默认情况下，工作线程中的`process.stdin`永远不会有可读数据。可以通过将`Worker()`构造函数的options对象的stdin属性设置为true改变这个默认设置。此时，`Worker`对象的stdin属性就是一个可写的流。父线程写入`worker.stdin`的数据会传入工作线程的`process.stdin`中
+
+* 默认情况下,工作线程的`process.stdout`和`process.stderr`会被重定向到父线程中对应的流中。通过将`Worker()`构造函数的options对象的stdout和stderr属性设置为true。可以将工作线程中的标准输出流和错误流定向到`worker.stdout`和`worker.stderr`中。
+
+* 工作线程调用`process.exit()`只会退出当前线程。
+
+* 工作线程不能改变它们所属进程的共享状态。在工作线程中调用`process.chdir()`和`process.setuid()`等函数会抛出异常
+
+## MessageChannel
+
+和Web JS中的`Worker.postMessage()`一样，Node中的`postMessage()`同样接收可选的第二个数组参数，这个数组的元素不是被复制到信道的另一端，而是被转移到信道的另一端。但不一样的是这个可选的第二个数组元素的类型：
+
+* 在Web中，必须是 `ArrayBuffer | MessagePort | ImageBitmap`
+* 而在Node中，必须是`ArrayBuffer | MessagePort | FileHandle | X509Certificate | Blob`
+
+所以Node中的`postMessage()`同样可以转移定型数组和`MessagePort`
+
+具体代码示例请参照之前Web JS中的示例。
+
+## 线程间共享定型数组
 
