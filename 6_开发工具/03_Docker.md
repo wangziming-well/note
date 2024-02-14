@@ -154,7 +154,7 @@ docker ps -f status=exited
 
 **创建容器**
 
-~~~properties
+~~~bash
 docker run  [参数] <imageName ：tag>  [命令]  : 根据镜像创建容器
 参数说明:
 -i:表示创建并运行容器
