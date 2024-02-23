@@ -157,3 +157,311 @@ redis-cli --raw get hello
 
 ## redis-server
 
+redis-server除了启动Redis之外，还有一个`--test-memory`选项，用来检测当前操作系统是否稳定地分配指定容量的内存给Redis，这种检测可以有效避免因内存问题造成Redis崩溃，例如：
+
+~~~bat
+redis-server --test-memory 1024 #检测操作系统是否提供1G的内存给Redis
+~~~
+
+##  redis-benchmark
+
+redis-benchmark可以为Redis做基准性能测试，它提供的选项如下
+
+**-c**
+
+-c(clients)选项表示客户端的并发数量，默认50
+
+**-n\<requests>**
+
+-n(num)表示客户端请求总量，默认100000
+
+例如：下面命令表示100个客户端同时请求Redis，一共执行20000次：
+
+~~~bat
+redis-benchmark -c 100 -n 20000
+......
+====== GET ======
+  20000 requests completed in 0.31 seconds
+  100 parallel clients
+  3 bytes payload
+  keep alive: 1
+
+25.42% <= 1 milliseconds
+99.83% <= 2 milliseconds
+100.00% <= 2 milliseconds
+64516.13 requests per second
+......
+~~~
+
+命令会输出redis的各种命令的测试结果
+
+**-q**
+
+-q选项表示仅仅显示redis-benchmark的requests per second信息，例如：
+
+~~~bat
+redis-benchmark -c 100 -n 20000 -q
+PING_INLINE: 63291.14 requests per second
+PING_BULK: 63897.77 requests per second
+SET: 60240.96 requests per second
+......
+~~~
+
+**-r**
+
+使用redis-benchmark只会生成下面三个键：
+
+~~~bat
+1) "mylist"
+2) "counter:__rand_int__"
+3) "key:__rand_int__"
+~~~
+
+可以使用-r(random)生成更多的键
+
+~~~bat
+redis-benchmark -c100 -n 2000 -r 10000
+~~~
+
+-r选项会在key、counter键上加一个12位的后缀， -r10000代表只对后四位做随机处理(不表示随机数的个数)
+
+**-P**
+
+表示每个请求pipeline的数据量，默认为1
+
+**-k\<boolean>**
+
+代表客户端是否使用keepalive，1为使用，0为不使用；默认为1
+
+**-t**
+
+可以对指定命令进行基准测试
+
+~~~bat
+redis-benchmark -t get,set -q
+SET: 62034.74 requests per second
+GET: 65231.57 requests per second
+~~~
+
+**-csv**
+
+表示将结果按照csv格式输出，便于后续处理，如导入到Excel等
+
+~~~bat
+redis-benchmark -t get,set --csv
+"SET","64143.68"
+"GET","65616.80"
+~~~
+
+# Pipeline
+
+Redis客户端执行一条命令分为如下四个过程：
+
+* 发送命令
+* 命令排队
+* 命令执行
+* 返回结果
+
+其中发送命令和返回结果的总时间称为 Round Trip Time(RTT,往返时间)
+
+Redis提供了批量操作命令，如mget、mset，有效地减少RTT。但是大部分命令是不支持批量操作的。先对于Redis命令排队和执行，网络可以成为Redis的性能瓶颈。
+
+Pipeline(流水线)机制能改善上述问题，它将一组Redis命令进行组装，通过一次RTT传输给Redis，再将这组Redis命令的执行结果按顺序返回给客户端。
+
+客户端和服务端网络延时越大，Pipeline的效果越明显
+
+redis-cli的--pipe选项实际上就是使用Pipeline机制，下面操作将set hello world 和incr counter 两条命令组装
+
+~~~bat
+echo -en '*3\r\n$3\r\nSET\r\n$5\r\nhello\r\n$5\r\nworld\r\n*2\r\n$4\r\nincr\r\n$7\r\ncounter\r\n' | redis-cli --pipe
+~~~
+
+生产中我们一般在高级语言客户端中使用Pipeline
+
+## 和原生批量命令相比
+
+可以使用Pipeline模拟出批量操作的效果，它们两者有如下区别：
+
+* 原生批量命令是原子的，而Pipeline不是原子的
+* 原生批量命令是一个命令对应对各key，Pipeline支持多个命令
+* 原生批量命令是Redis服务端支持实现的，而Pipeline需要服务端和客户端共同实现。
+
+
+
+# 事务
+
+Redis提供了简单的事务功能，将一组需要一起执行的命令放到multi和exec两个命令之间。multi表示事务开始，exec表示事务结束。它们之间的命令是原子顺序执行的。
+
+ 例如：
+
+~~~bat
+127.0.0.1:6379> multi
+OK
+127.0.0.1:6379> sadd user:a:follow user:b
+QUEUED
+127.0.0.1:6379> sadd user:b:fans user:a
+QUEUED
+127.0.0.1:6379> exec
+1) (integer) 1
+2) (integer) 1
+~~~
+
+可以看到，在事务中的命令结果返回QUEUE，表示命令没有真正执行，而是暂存在Redis中，只有当exec执行后，事务中的所有命令才算完成exec的返回结果是事务中命令的所有结果
+
+如果需要取消事务，可以使用`discard`命令代替`exec`命令即可
+
+## 错误处理
+
+关于事务中的错误处理：
+
+* 命令错误，如果事务中的命令有语法错误，那么exec将失败，整个事务无法执行
+* 运行时错误，如果没有命令错误，而是执行逻辑有误，事务将正确执行，不支持回滚。开发人员需要自己修复这类问题。
+
+在事务运行中，一般需要保证事务访问的键不被其他客户端修改，Redis提供了watch命令，以提供类似乐观锁的机制来解决这个问题
+
+## 监控key
+
+在事务开启前，可以用`watch key`命令监视key，在事务提交前，如果监控的key被其他事务/客户端修改了，那么事务提交将失败。
+
+`unwatch key`用于取消监视。
+
+# Redis中的Lua脚本
+
+在Redis中执行Lua脚本由两种方法eval和evalsha。
+
+Lua脚本为Redis开发带来下面好处：
+
+* Lua脚本在Redis中是原子执行的，执行过程中不会插入其他命令
+* Lua脚本可以帮助用户定制复合命令，并可以将这些命令常驻在Redis内存中，实现复用效果
+* Lua脚本可以将多条命令一次性打包，有效地减少网络开销
+
+## eval
+
+~~~bat
+eval 脚本内容 key个数 key列表 参数列表
+~~~
+
+例如：
+
+~~~bat
+127.0.0.1:6379> eval 'return "hello " .. KEYS[1] .. ARGV[1]' 1 redis world
+"hello redisworld"
+~~~
+
+此时 KEYS[1] = "redis",ARGV[1] ="world"，所以最终返回结果为 "hello redisworld"
+
+如果Lua脚本较长，可以使用`redis-cli --eval`直接执行文件，eval命令和--eval参数本质一样，都是将脚本作为字符串发送给服务端，服务端执行脚本，将结果返回给客户端。
+
+格式如下：
+
+~~~bat
+redis-cli –eval [lua 脚本] [key…]空格,空格[args…]
+~~~
+
+例如：
+
+~~~bat
+redis-cli --eval ./test.lua  redis , world
+"hello redisworld"
+~~~
+
+## evalsha
+
+evalsha同样用来执行Lua脚本。
+
+与eval不同的是，需要通过`script load`命令首先将Lua脚本加载到Redis服务端，得到该脚本的SHA1校验和，
+
+然后再evalsha命令使用SHA1作为参数可以直接执行Lua脚本。
+
+这在需要多次执行同一个脚本的情况下可以避免每次发送Lua脚本的开销。让脚本得到复用。
+
+例如：
+
+在Window系统下使用script load命令将脚本内容加载到Redis内存中：
+
+~~~bat
+D:\Data\Temporary> redis-cli -x script load < ./test.lua
+"7413dc2440db1fea7c0a0bde841fa68eefaf149c"
+~~~
+
+然后开打客户端使用这串SHA1加载调用lua脚本：
+
+~~~bat
+127.0.0.1:6379> evalsha 7413dc2440db1fea7c0a0bde841fa68eefaf149c 1 redis world
+"hello redisworld"
+~~~
+
+如果使用liunx系统，可以使用下面命令加载脚本：
+
+~~~bat
+redis-cli script load "$(cat test.lua)"
+~~~
+
+或者使用`pipe`：
+
+~~~bat
+cat test.lua | redis-cli script load --pipe
+~~~
+
+## Lua的Redis API
+
+Lua可以使用`redis.call`函数实现对Redis的访问，例如下面代码使用redis.call调用了Redis的set和get：
+
+~~~lua
+redis.call("set","hello","world")
+redis.call("get","hello")
+~~~
+
+用Redis调用的执行效果如下：
+
+~~~bat
+127.0.0.1:6379> eval 'return redis.call("get",KEYS[1])' 1 hello
+"world"
+~~~
+
+也可以使用`redis.pcall()`函数实现对Redis的调用，`redis.call`与`redis.pcall`的不同之处在于，如果`redis.call`执行失败，那么脚本执行结束会直接返回错误，而`redis.pcall`会忽略错误继续执行脚本。
+
+`redis.log`可以向Redis日志文件输出。
+
+## Redis管理Lua脚本
+
+Redis提供了4个命令实现对Lua脚本的管理：
+
+**script load**
+
+~~~bat
+script load scriptStr
+~~~
+
+用于将Lua脚本加载到Redis内存中，并且返回对应的sha1
+
+**script exists**
+
+~~~bat
+scripts exists sha1 [sha1 ...]
+~~~
+
+用于判断sha1是否已经加载到Redis内存中
+
+返回结果代表指定的sha1中被加载到Redis内存中的个数
+
+**script flush**
+
+~~~bat
+script flush
+~~~
+
+用于清除Redis内存中所有已经加载的Lua脚本
+
+**script kill**
+
+~~~bat
+script kill
+~~~
+
+用于杀掉正在执行的Lua脚本。如果Lua脚本耗时很多，就会阻塞Redis，可以用这个命令强制杀死运行的脚本。
+
+# Bitmaps
+
+
+
