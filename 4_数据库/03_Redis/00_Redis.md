@@ -413,6 +413,8 @@ JedisPool pool = new JedisPool(config, "192.168.134.128", 6379, 6 * 1000, "12345
 Jedis jedis = pool.getResource();
 ~~~
 
+
+
 ## 对象方法
 
 ### 键方法

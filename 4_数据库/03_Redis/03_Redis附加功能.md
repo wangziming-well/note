@@ -463,5 +463,171 @@ script kill
 
 # Bitmaps
 
+Redis提供Bitmaps位图可以实现对位的操作，它实际上就是字符串，但可以对字符串的位进行操作。
 
+Bitmaps提供了一套命令，可以把Bitmaps想象成一个以位为单位的数组，数组中的每个单元都只能存储0和1，数组的下标在Bitmaps中叫做偏移量。
+
+## 命令
+
+Bitmaps提供如下命令：
+
+* `setbit key offset value`设置值
+
+* `gitbit key offset`获取值
+
+* `bitcount [start] [end]`获取Bitmaps指定范围值为1的个数
+* `bitop op destkey key[key ...]`Bitmaps间运算，这是一个复合动作，将多个Bitmaps做运算，并将结果保存在destkey中，其中op有如下选项：
+  * and 按位与
+  * or 按位或
+  * not 按位非
+  * xor 按位异或
+
+* `bitpos key targetBit [start] [end]`计算Bitmaps中的第一个值为targetBit的偏移量；其中start 和 end 可以指定要计算的范围
+
+## 使用场景
+
+可以将偏移量作为对象ID，例如用户ID，订单ID；将偏移量对应的值作为标志位，例如1表示今天用户访问过网站，0表示没有；1表示订单已完成，0表示没有。
+
+这样在对象数量很大时能有效节省大量空间。
+
+# HyperLogLog
+
+HyperLogLog是一种估算基数算法，可以计算在一批数据中**不重复**的元素个数有多少个，通过HyperLogLog可以利用极小的内存空间完成这种计算。
+
+例如用它来统计每日访问的IP数，在线用户数等
+
+## 命令
+
+**添加**
+
+~~~bat
+pfadd key element [element ...]
+~~~
+
+用于向HyperLogLog添加元素，如果添加成功返回1,例如：
+
+~~~bat
+127.0.0.1:6379> pfadd user_login:2024_02_25 tom alice wzm
+(integer) 1
+~~~
+
+**计算独立用户数**
+
+~~~bat
+pfcount key [key...]
+~~~
+
+计算一个或多个HyperLogLog的不重复元素个数
+
+例如：
+
+~~~bat
+127.0.0.1:6379> pfcount user_login:2024_02_25
+(integer) 3
+127.0.0.1:6379> pfadd user_login:2024_02_26 tom alice fxy
+127.0.0.1:6379> pfcount pfcount user_login:2024_02_25 pfcount user_login:2024_02_26
+(integer) 4
+~~~
+
+**合并**
+
+~~~bat
+pfmerge destkey sourcekye [sourcekey ...]
+~~~
+
+将多个hyperLogLog合并并复制给destkey
+
+## 使用场景
+
+可以用HyperLogLog统计统计注册ip数、统计每日访问 IP 数、统计在线用户数等统计数。相较于使用集合直接存储相关数据并计算总数，使用HyperLogLog能节省大量的空间，其内存占用量小的惊人，但是需要注意，HyperLogLog是估算统计，会有一定的误差率，Redis官方给出它有0.81的失误率。
+
+在满足下面两个条件时，我们推荐使用HyperLogLog：
+
+* 只为了计算独立总数， 不需要获取单条数据。
+* 可以容忍一定误差率， 毕竟HyperLogLog在内存的占用量上有很大的优势。  
+
+# 发布订阅
+
+Redis提供“发布/订阅”模式的消息机制，发布者向指定channel发布消息，订阅者接听channel接收消息。
+
+## 命令
+
+**发布消息**
+
+~~~bat
+publish channel message
+~~~
+
+发布消息。返回结果位订阅者个数,例如：
+
+~~~bat
+127.0.0.1:6379> publish channel_test "Hello"
+(integer) 0
+~~~
+
+**订阅消息**
+
+~~~bat
+subscribe channel [channel ...]
+~~~
+
+订阅者可以订阅一个或者多个频道：
+
+~~~bat
+127.0.0.1:6379> subscribe channel1
+Reading messages... (press Ctrl-C to quit)
+1) "subscribe"
+2) "channel1"
+3) (integer) 1
+~~~
+
+发起命令后，客户端将进入监听模式，如果此时有其他发布者客户端在channel1上发布消息：
+
+~~~bat
+127.0.0.1:6379> publish channel1 hello
+(integer) 1
+~~~
+
+那么接收者将会收到消息：
+
+~~~bat
+1) "subscribe"
+2) "channel1"
+3) (integer) 1
+1) "message"
+2) "channel1"
+3) "hello"
+~~~
+
+**取消订阅**
+
+~~~bat
+unsubscribe [channle [channel ...]]
+~~~
+
+**按模式订阅/取消订阅**
+
+~~~bat
+psubscribe pattern [pattern...]
+puunsubscribe [pattern [pattern ...]]
+~~~
+
+Redis命令支持glob风格的订阅命令，例如下面命令支持订阅以it开头的所有频道：
+
+~~~bat
+psubscribe it*
+~~~
+
+**查询订阅**
+
+* `pubsub channels [pattern]`:查看活跃频道，活跃频道是指至少有一个订阅者的频道，其中`[pattern]`可以指定具体模式
+
+* `pubsbu numsub [channel ...]`:查看指定频道的订阅数量
+* `pubsub numpat`查看模式订阅数量
+
+## 使用场景
+
+聊天室、公告牌、服务之间利用消息解耦都可以使用发布订阅模式  
+
+Redis提供的消息队列服务很多专业的消息队列系统（例如Kafka、 RocketMQ） 相比略显粗糙， 例如无法实现消息堆积和回溯。 但胜在足够简单， 如果当前场景可以容忍的这些缺点， 也不失为一个不错的选择  
 
