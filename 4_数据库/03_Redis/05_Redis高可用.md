@@ -455,3 +455,85 @@ psync命令，的整体流程如下：
 * 对于修改命令异步发送给从节点，从节点在主线程中执行复制的命令
 
 因为主从复制过程是异步的，所以会造成从节点的数据相对主节点存在延迟。可以通过`info replication`命令查看相关主从节点的offset判断。主从节点的offset差值就是它们延迟量。
+
+# 哨兵
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Temp
+
+## Sentinel
+
+sentinel哨兵提供主从复制模式的故障转移的的自动化处理
+
+### 原理
+
+Redis Sentinel是运行在特殊模式下的Redis服务器
+
+有三个主要任务：
+
+* 监控：Sentinel不断检查主服务器和从服务器是否按照预期正常工作，
+
+  每隔固定时间sentinel会请求主服务器，如果没有收到主服务的正常响应，则报告异常
+
+* 提醒：被监视的Redis出现问题时，Sentinel会通知管理员或其他应用程序
+
+* 自动故障转移：监控的主Redis不能正常工作，Sentinel会开始进行故障迁移操作。
+
+  将一个从服务器升级新的主服务器。让其他从服务器挂到新的主服务器。同时向客户端提供新的主服务器地址
+
+Sentinel分布式系统：
+
+* 如果只有一个Sentinel，那么Sentinel出现问题就无法监控。所以需要多个哨兵，组成Sentinel网络。一个健康的sentinel至少有三个Sentinel应用。彼此在独立的物理机器或虚拟机
+* 监控同一个Master的Sentinel会自动连接，组成一个分布式的网络，互相通信并彼此交换关于被监控服务器的信息
+* 当一个 Sentinel 认为被监控的服务器已经下线时，它会向网络中的其它 Sentinel 进行确认，判断该服务器是否真的已经下线 
+* 如果下线的服务器为主服务器，那么 Sentinel 网络将对下线主服务器进行自动故障转移，通过将下线主服务器的某个从服务器提升为新的主服务器，并让其从服务器转移到新的主服务器下，以此来让系统重新回到正常状态 
+* 下线的旧主服务器重新上线，Sentinel 会让它成为从，挂到新的主服务器下 
+
+### 实现
+
+配置sentinel.conf文件：
+
+~~~python
+#sentinel自己的接口:
+port <port>
+#sentinel要监视的master:
+sentinel monitor <name> <masterIP> <masterPort> <Quorum>
+# quorum 表示投票数，当有超过该数量的哨兵认为服务器已经下线，才会判断下线
+~~~
+
+启动sentinel服务器：
+
+~~~python
+redis-sentinel sentinel.conf
+~~~
+
+## Cluster
+
+Sentinel 集群方案中只有一个主服务器，只提高了redis 的可用性，并没有提高redis 的性能，如果业务对redis性能有高要求，需要搭建多台主服务器，来提高redis性能，这就是cluster集群
+
+为了实现高可用，最好一个集群有3个master节点，每个master节点至少有1个子节
+
+哈希槽：
+
+cluster集群的设计是去中性化的
+
+它引入了哈希槽的概念，Redis集群有16384个哈希槽
+
+在集群中的每个主节点会被分配相等个数的哈希槽
+
+在进行set操作时，每个key会通过 CRC16 算法得出当前key对应的哈希槽，这样就能知道这个key应该去往的master节点
+
+gossip协议：
+
+redis集权通过gossip协议进行通讯，保证所有节点都会知道整个集群完整的信息
