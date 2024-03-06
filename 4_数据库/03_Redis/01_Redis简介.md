@@ -155,7 +155,7 @@ redis-cli可以通过两种方式连接Redis服务器：
 
 ## 停止Redis服务
 
-通过`redis-cli`客户端，可以通过`shotdown`命令关闭指定的redis服务端，例如：
+通过`redis-cli`客户端，可以通过`shutdown`命令关闭指定的redis服务端，例如：
 
 ~~~bash
 $ redis-cli shutdown #将关闭 1270.0.1:6379上的redis服务端 

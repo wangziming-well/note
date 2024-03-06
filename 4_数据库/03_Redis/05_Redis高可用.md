@@ -1,13 +1,13 @@
 # 简介
 
-在web服务器中，高可用是指服务器可以正常访问的时间，衡量的标准是在多长时间内可以提供正常服务。但是在Redis语境中，高可用的含义似乎要宽泛一些，除了保证提供正常服务( 如主从分离、快速容灾技术)，还需要考虑数据容量的扩展、数据安全不会丢失等。
+在web服务器中，高可用是指服务器可以正常访问的时间，衡量的标准是在多长时间内可以提供正常服务。但是在Redis语境中，高可用的含义似乎要宽泛一些，除了保证提供正常服务(如主从分离、快速容灾技术)，还需要考虑数据容量的扩展、数据安全不会丢失等。
 
 在Redis中，实现高可用的技术主要包括持久化、主从复制、哨兵和cluster集群：
 
-* 持久化： 持久化是最简单的高可用方法（有时甚至不被归为高可用的手段），主要作用是数据备份，即将数据存储在硬盘，保证数据不会因进程退出而丢失。
-* 主从复制： 主从复制是高可用Redis的基础，哨兵和集群都是在主从复制基础上实现高可用的。主从复制主要实现了数据的多机备份（和同步），以及对于读操作的负载均衡和简单的故障恢复。缺陷：故障恢复无法自动化；写操作无法负载均衡；存储能力受到单机的限制。
-* 哨兵： 在主从复制的基础上，哨兵实现了自动化的故障恢复。（主挂了，找一个从成为新的主，哨兵节点进行监控）缺陷：写操作无法负载均衡；存储能力受到单机的限制。
-* Cluster集群： 通过集群，Redis解决了写操作无法负载均衡，以及存储能力受到单机限制的问题，实现了较为完善的高可用方案。（6台起步，3主3从）
+* 持久化： 持久化是最简单的高可用方法(有时甚至不被归为高可用的手段)，主要作用是数据备份，即将数据存储在硬盘，保证数据不会因进程退出而丢失。
+* 主从复制： 主从复制是高可用Redis的基础，哨兵和集群都是在主从复制基础上实现高可用的。主从复制主要实现了数据的多机备份(和同步)，以及对于读操作的负载均衡和简单的故障恢复。缺陷：故障恢复无法自动化；写操作无法负载均衡；存储能力受到单机的限制。
+* 哨兵： 在主从复制的基础上，哨兵实现了自动化的故障恢复。(主挂了，找一个从成为新的主，哨兵节点进行监控)缺陷：写操作无法负载均衡；存储能力受到单机的限制。
+* Cluster集群： 通过集群，Redis解决了写操作无法负载均衡，以及存储能力受到单机限制的问题，实现了较为完善的高可用方案。(6台起步，3主3从)
 
 # 持久化
 
@@ -68,7 +68,7 @@ Redis默认采用LZF算法对生成的RDB文件做压缩处理，压缩后的文
 
 ## AOF
 
-(Append-only File）AOF持久化：以独立日志的形式来记录每次写命令，重启时再重新执行AOF文件中的命令以达到恢复数据的目的。AOFn能够实时进行数据持久化，是Redis持久化的主流方式
+(Append-only File)AOF持久化：以独立日志的形式来记录每次写命令，重启时再重新执行AOF文件中的命令以达到恢复数据的目的。AOFn能够实时进行数据持久化，是Redis持久化的主流方式
 
 ### AOF持久化过程
 
@@ -177,7 +177,7 @@ fork操作耗时优化：
 
 #### 内存
 
-子进程通过fork操作产生，占用内存大小等同于父进程，理论上需要两倍的内存来完成持久化操作，但Linux有写时复制机制（copy-on-write） 。父子进程会共享相同的物理内存页，当父进程处理写请求时会把要修改的页创建副本，而子进程在fork操作过程中共享整个父进程内存快照。
+子进程通过fork操作产生，占用内存大小等同于父进程，理论上需要两倍的内存来完成持久化操作，但Linux有写时复制机制(copy-on-write)。父子进程会共享相同的物理内存页，当父进程处理写请求时会把要修改的页创建副本，而子进程在fork操作过程中共享整个父进程内存快照。
 
 在RDB和AOF重写时，Redis日志会输出相关内存占用信息。
 
@@ -326,7 +326,7 @@ psync命令需要以下组件支持：
 
 #### 复制偏移量
 
-参与复制的主从节点都会维护自身复制偏移量，主节点（master） 在处理完写入命令后，会把命令的字节长度做累加记录，统计信息在info relication中的master_repl_offset指标中。
+参与复制的主从节点都会维护自身复制偏移量，主节点(master)在处理完写入命令后，会把命令的字节长度做累加记录，统计信息在info relication中的master_repl_offset指标中。
 
 从节点每秒上报自身的复制偏移量给主节点，因此主节点也会保存从节点的复制偏移量，可以在`info relication`中查看
 
@@ -357,7 +357,7 @@ repl_backlog_histlen:1048576 // 已保存数据的有效长度
 
 每个Redis节点启动后都会动态分配一个40位的16进制字符串作为运行ID。运行ID的主要作用是用来唯一识别Redis节点， 比如从节点保存主节点的运行ID识别自己正在复制的是哪个主节点。
 
-如果只使用ip+port的方式识别主节点， 那么主节点重启变更了整体数据集（如替换RDB/AOF文件）从节点再基于偏移量复制数据将是不安全的， 因此当运行ID变化后从节点将做全量复制
+如果只使用ip+port的方式识别主节点， 那么主节点重启变更了整体数据集(如替换RDB/AOF文件)从节点再基于偏移量复制数据将是不安全的， 因此当运行ID变化后从节点将做全量复制
 
 可以运行info server命令查看当前节点的运行ID。需要注意的是Redis关闭再启动后， 运行ID会随之改变
 
@@ -396,7 +396,7 @@ psync命令，的整体流程如下：
 
 * 主节点发送RDB文件给从节点，从节点把接收的RDB文件保存在本地并直接作为从节点的数据文件。
 
-  如果数据量比较打，可能耗时会很久，当耗时超过`repl-timeout`（默认60s）时全量复制会失败。所以此时可以调高`repl-timeout`的值
+  如果数据量比较打，可能耗时会很久，当耗时超过`repl-timeout`(默认60s)时全量复制会失败。所以此时可以调高`repl-timeout`的值
 
   * **无盘复制**：为了降低主节点的磁盘开销，Redis支持无盘复制，生成的RDB文件不保存到硬盘而是直接通过网络发送给从节点，通过`repl-diskless-sync`参数控制，默认关闭。无盘复制适用于主节点磁盘性能较差但网络带宽充裕的场景。
 
@@ -757,7 +757,7 @@ $max(quorum,num(sentinels)/2+1)$个Sentinel节点参与选举， 才能选出领
 sentinel down-after-milliseconds <master-name> <times>
 ~~~
 
-每个Sentinel节点都要通过定期发送ping命令来判断Redis数据节点和其余Sentinel节点是否可达， 如果超过了down-after-milliseconds配置的时间且没有有效的回复， 则判定节点不可达， `<times>`（单位为毫秒） 就是超时时间。 这个配置是对节点失败判定的重要依据  
+每个Sentinel节点都要通过定期发送ping命令来判断Redis数据节点和其余Sentinel节点是否可达， 如果超过了down-after-milliseconds配置的时间且没有有效的回复， 则判定节点不可达， `<times>`(单位为毫秒)就是超时时间。 这个配置是对节点失败判定的重要依据  
 
 down-after-milliseconds虽然以`<master-name>`为参数， 但实际上对Sentinel节点、 主节点、 从节点的失败判定同时有效  
 
@@ -792,7 +792,7 @@ failover-timeout的作用具体体现在四个方面：
 * 如果Redis Sentinel对一个主节点故障转移失败， 那么下次再对该主节点做故障转移的起始时间是failover-timeout的2倍
 * 在晋升选出的从节点为主节点时， 如果要晋升的从节点执行  slaveof no one一直失败， 当此过程超过failover-timeout时， 则故障转移失败。
 * 如果晋升主节点成功， Sentinel节点还会执行info命令来确认选出来的节点确实晋升为主节点， 如果此过程执行时间超过failovertimeout时， 则故障转移失败。
-* 如果命令其余从节点复制新的主节点阶段执行时间超过了failover-timeout（不包含复制时间） ，则故障转移失败。 注意即使超过了这个时间， Sentinel节点也会最终配置从
+* 如果命令其余从节点复制新的主节点阶段执行时间超过了failover-timeout(不包含复制时间)，则故障转移失败。 注意即使超过了这个时间， Sentinel节点也会最终配置从
   节点去同步最新的主节点
 
 **sentinel auth-pass**
@@ -809,7 +809,7 @@ sentinel auth-pass <master-name> <password>
 sentinel notification-script <master-name> <script-path>
 ~~~
 
-该参数的作用是在故障转移期间， 当一些警告级别的Sentinel事件发生（指重要事件， 例如-sdown： 客观下线、 -odown： 主观下线） 时， 会触发对应路径的脚本， 并向脚本发送相应的事件参数  
+该参数的作用是在故障转移期间， 当一些警告级别的Sentinel事件发生(指重要事件， 例如-sdown： 客观下线、 -odown： 主观下线)时， 会触发对应路径的脚本， 并向脚本发送相应的事件参数  
 
 **sentinel client-reconfig-script**
 
@@ -882,8 +882,8 @@ Sentinel节点是一个特殊的Redis节点， 它有自己专属的API
 * `sentinel sentinels<master name>  `:展示指定`<master name>`的Sentinel节点集合,不包含当前Sentinel节点
 *  `sentinel get-master-addr-by-name<master name>  `:返回指定`<master name>`主节点的IP地址和端口  
 
-* `sentinel reset<pattern>  `:当前Sentinel节点对符合`<pattern>`（通配符风格） 主节点的配置进行重置， 包含清除主节点的相关状态（例如故障转移） ， 重新发现从节点和Sentinel节点
-* `sentinel failover<master name>  `:对指定`<master name>`主节点进行强制故障转移（没有和其他Sentinel节点“协商”） ， 当故障转移完成后， 其他Sentinel节点按照故障转移的结果更新自身配置
+* `sentinel reset<pattern>  `:当前Sentinel节点对符合`<pattern>`(通配符风格)主节点的配置进行重置， 包含清除主节点的相关状态(例如故障转移)， 重新发现从节点和Sentinel节点
+* `sentinel failover<master name>  `:对指定`<master name>`主节点进行强制故障转移(没有和其他Sentinel节点“协商”)， 当故障转移完成后， 其他Sentinel节点按照故障转移的结果更新自身配置
 * `sentinel ckquorum<master name>  `:检测当前可达的Sentinel节点总数是否达到`<quorum>`的个数
 * `sentinel flushconfig`将Sentinel节点的配置强制刷到磁盘上
 * `sentinel remove<master name>  `:取消当前Sentinel节点对于指定`<master name>`主节点的监控
@@ -981,13 +981,632 @@ Redis Sentinel的基本实现原理包含以下几个方面：Redis Sentinel的�
 
 #### 主观下线
 
+在Sentinel节点的定时任务中，每个Sentinel节点会每隔1秒对主节
+点、 从节点、 其他Sentinel节点发送ping命令做心跳检测， 当这些节点超过down-after-milliseconds没有进行有效回复， Sentinel节点就会对该节点做失败判定， 这个行为叫做主观下线。
+
+这个行为是单个Sentinel节点的判断，存在误判的可能。
+
+#### 客观下线
+
+当Sentinel主观下线的节点是主节点时， 该Sentinel节点会通过sentinel ismaster-down-by-addr命令向其他Sentinel节点询问对主节点的判断， 当超过`<quorum>`个数， Sentinel节点认为主节点确实有问题， 这时该Sentinel节点会做出客观下线的决定， 这样客观下线的含义是比较明显了， 也就是大部分Sentinel节点都对主节点的下线做了同意的判定， 那么这个判定就是客观的  
+
+sentinel is-master-down-by-addr命令如下：
+
+~~~bash
+sentinel is-master-down-by-addr <ip> <port> <current_epoch> <runid>
+~~~
+
+* ip： 主节点IP。
+* port： 主节点端口。
+* current_epoch： 当前配置纪元。
+* runid： 此参数有两种类型， 不同类型决定了此API作用的不同
+  * 当runid等于`*`时， 作用是Sentinel节点直接交换对主节点下线的判定
+  * 当runid等于当前Sentinel节点的runid时， 作用是当前Sentinel节点希望目标Sentinel节点同意自己成为领导者的请求
+
+### 领导者选举
+
+当Sentinel节点集群对主节点做了客观下线后，就需要进行故障转移。但是故障转移只需要一个Sentinel节点来完成即可，所以Sentinel节点之间会进行一个领导者选举的工作，选出一个Sentinel节点作为领导者来进行故障转移。
+
+Redis使用Raft算法实现领导者选举，大致的思路是：
+
+* 每个在线的Sentinel节点都有资格成为领导者， 当它确认主节点主观下线时候， 会向其他Sentinel节点发送sentinel is-master-down-by-addr命令，要求将自己设置为领导者。
+* 收到命令的Sentinel节点， 如果没有同意过其他Sentinel节点的sentinel is-master-down-by-addr命令， 将同意该请求， 否则拒绝。
+* 如果该Sentinel节点发现自己的票数已经大于等于$max(quorum，num(sentinels)/2+1)$ ， 那么它将成为领导者。
+* 如果此过程没有选举出领导者， 将进入下一次选举  
+
+实际上选举的过程非常快， 基本上谁先完成客观下线， 谁就是领导者。
+
+### 故障转移
+
+领导者选举出的Sentinel节点负责故障转移， 具体步骤如下：
+
+* 在从节点列表中选出一个节点作为新的主节点， 选择方法如下：
+  * 过滤： “不健康”(主观下线、 断线)、 5秒内没有回复过Sentinel节点ping响应、 与主节点失联超过down-after-milliseconds*10秒。
+  * 选择slave-priority(从节点优先级)最高的从节点列表， 如果存在则返回， 不存在则继续。
+  * 选择复制偏移量最大的从节点(复制的最完整)， 如果存在则返回， 不存在则继续。
+  * 选择runid最小的从节点
+
+* Sentinel领导者节点会对第一步选出来的从节点执行slaveof no one命令让其成为主节点  
+
+* Sentinel领导者节点会向剩余的从节点发送命令， 让它们成为新主节点的从节点， 复制规则和parallel-syncs参数有关
+* Sentinel节点集合会将原来的主节点更新为从节点， 并保持着对其关注， 当其恢复后命令它去复制新的主节点
+
+# 集群
+
+Redis Cluster是Redis的分布式解决方案，当遇到单机内存、 并发、 流量等瓶颈时可以采用Cluster架构方案达到负载均衡的目的 
+
+## 数据分布
+
+分布式数据库首先需要将整个数据集按照分区规则映射到多个节点的问题， 即把数据集划分到多个节点上， 每个节点负责整体数据的一个子集
+
+### 数据分布理论
+
+常见的分区规则有哈希分区和顺序分区两种：
+
+* 哈希分区：离散度好、数据分布与业务无关、无法顺序访问
+* 顺序分区：离散度易倾斜、数据分布与业务无关、可顺序访问
+
+Redis Cluster采用哈希分区规则， 这里我们重点讨论哈希分区：
+
+#### 节点取余分区
+
+使用特定的数据， 如Redis的键或用户ID， 再根据节点数量N使用公式：$hash(key)\%N$计算出哈希值， 用来决定数据映射到哪一个节点上  
+
+但是当节点数量变化时， 如扩容或收缩节点， 数据节点映射关系需要重新计算， 会导致数据的重新迁移
+
+![节点取余分区示意图](https://gitee.com/wangziming707/note-pic/raw/master/img/%E8%8A%82%E7%82%B9%E5%8F%96%E4%BD%99%E5%88%86%E5%8C%BA%E7%A4%BA%E6%84%8F%E5%9B%BE.png)
 
 
 
 
 
+这种方式的突出优点是简单性， 常用于数据库的分库分表规则， 一般采用预分区的方式， 提前根据数据量规划好分区数， 比如划分为512或1024张表， 保证可支撑未来一段时间的数据量， 再根据负载情况将表迁移到其他数据库中。 扩容时通常采用翻倍扩容， 避免数据映射全部被打乱导致全量迁移的情况
+
+#### 一致性哈希分区
+
+一致性哈希分区（Distributed Hash Table） 实现思路是为系统中每个节点分配一个token， 范围一般在0~232， 这些token构成一个哈希环。 数据读写执行节点查找操作时， 先根据key计算hash值， 然后顺时针找到第一个大于等于该哈希值的token节点
+
+![一致性哈希分区示意图](https://gitee.com/wangziming707/note-pic/raw/master/img/%E4%B8%80%E8%87%B4%E6%80%A7%E5%93%88%E5%B8%8C%E5%88%86%E5%8C%BA%E7%A4%BA%E6%84%8F%E5%9B%BE.png)
 
 
+
+这种方式相比节点取余最大的好处在于加入和删除节点只影响哈希环中相邻的节点， 对其他节点无影响
+
+但是也存在以下问题：
+
+* 加减节点会造成哈希环中部分数据无法命中， 需要手动处理或者忽略这部分数据， 因此一致性哈希常用于缓存场景
+
+* 当使用少量节点时， 节点变化将大范围影响哈希环中数据映射， 因此这种方式不适合少量数据节点的分布式方案
+* 普通的一致性哈希分区在增减节点时需要增加一倍或减去一半节点才能保证数据和负载的均衡
+
+#### 虚拟槽分区
+
+虚拟槽分区巧妙地使用了哈希空间， 使用分散度良好的哈希函数把所有数据映射到一个固定范围的整数集合中， 整数定义为槽（slot） 。 这个范围一般远远大于节点数， 比如Redis Cluster槽范围是0~16383。 槽是集群内数据管理和迁移的基本单位。 采用大范围槽的主要目的是为了方便数据拆分和集群扩展。 每个节点会负责一定数量的槽
+
+Redis Cluster就是采用虚拟槽分区
+
+### Redis数据分区
+
+Redis Cluser采用虚拟槽分区， 所有的键根据哈希函数映射到0~16383整数槽内， 计算公式： $slot=CRC16(key) \&16383$。每个节点负责维护一部分槽以及槽所映射的键值数据。如图所示：
+
+![RedisCluster槽集合与节点关系](https://gitee.com/wangziming707/note-pic/raw/master/img/RedisCluster%E6%A7%BD%E9%9B%86%E5%90%88%E4%B8%8E%E8%8A%82%E7%82%B9%E5%85%B3%E7%B3%BB.png)
+
+Redis虚拟槽分区的特点：
+
+* 解耦数据和节点之间的关系， 简化了节点扩容和收缩难度
+* 节点自身维护槽的映射关系， 不需要客户端或者代理服务维护槽分区元数据
+* 支持节点、 槽、 键之间的映射查询， 用于数据路由、 在线伸缩等场景
+
+数据分区是分布式存储的核心，理解和灵活运用数据分区规则对于掌握Redis Cluster非常有帮助
+
+### 集群功能限制
+
+Redis集群相对单机在功能上存在一些限制：
+
+* key批量操作支持有限。 如mset、 mget， 目前只支持具有相同slot值的key执行批量操作。 对于映射为不同slot值的key由于执行mget、 mget等操作可能存在于多个节点上因此不被支持
+* key事务操作支持有限。 同理只支持多key在同一节点上的事务操作， 当多个key分布在不同的节点上时无法使用事务功能
+* key作为数据分区的最小粒度， 因此不能将一个大的键值对象如hash、 list等映射到不同的节点
+* 不支持多数据库空间。 单机下的Redis可以支持16个数据库， 集群模式下只能使用一个数据库空间， 即db0
+* 复制结构只支持一层， 从节点只能复制主节点， 不支持嵌套树状复制结构
+
+## 搭建集群
+
+接下来我们来搭建一个Redis集群作为示例
+
+### 准备节点
+
+Redis集群一般由多个节点组成， 节点数量至少为6个才能保证组成完整
+高可用的集群。 每个节点需要开启配置cluster-enabled yes， 让Redis运行在集
+群模式下。一般节点数量为6个可以组成完成的高可用集群，配置如下，其他配置修改端口号即可：
+
+redis-6379.conf:
+
+~~~bash
+port 6379
+daemonize yes
+logfile "6379.log"
+dbfilename "dump-6379.rdb"
+dir "/opt/soft/redis/data"
+# 开启集群模式
+cluster-enabled yes 
+# 节点超时时间， 单位毫秒
+cluster-node-timeout 15000 
+# 集群内部配置文件
+cluster-config-file "nodes-6379.conf" 
+~~~
+
+准备好配置后启动所有节点:
+
+~~~bash
+redis-server redis-6379.conf 
+redis-server redis-6380.conf 
+redis-server redis-6381.conf 
+redis-server redis-6382.conf 
+redis-server redis-6383.conf 
+redis-server redis-6384.conf
+~~~
+
+节点启动成功后，第一次启动如果没有集群配置文件，它会自动创建一份，文件名通过`cluster-config-file`参数控制，建议采用`node-{port}.conf`格式定义，通过端口号区分不同节点。如果启动时存在集群配置文件，节点会使用配置文件内容初始化集群信息。
+
+集群模式的Redis除了原有的配置文件之外又加了一份集群配置文件。当集群内节点信息发生变化， 如添加节点、 节点下线、 故障转移等。 节点会自动保存集群状态到配置文件中。  
+
+如节点6379首次启动后生成集群配置如下：
+
+~~~bash
+cat nodes-6379.conf 
+a3b8b1245e5602f3759c83bf7a92537eaec0f30c :0@0 myself,master - 0 0 0 connected
+vars currentEpoch 0 lastVoteEpoch 0
+~~~
+
+记录了集群初始状态，其中最重要的是节点ID，它是一个40位16进制字符串，用于唯一标识集群内一个节点。
+
+节点ID不同于运行ID。 节点ID在集群初始化时只创建一次， 节点重启时会加载集群配置文件进行重用， 而Redis的运行ID每次重启都会变化  
+
+也可以通过执行`cluster nodes`命令获取当前集群节点状态：
+
+~~~bash
+127.0.0.1:6380> cluster nodes
+ddc23f07b96e1f6adac80649ee281344e8f728a3 :6380@16380 myself,master - 0 0 0 connected
+~~~
+
+目前我们只启动了6个节点，每个节点彼此不知道对方的存在，下面通过节点握手让6个节点彼此建立联系从而组成一个集群
+
+### 节点握手
+
+节点握手是指一批运行在集群模式下的节点通过Gossip协议彼此通信，达到感知对方的过程。
+
+通过客户端发起命令：` cluster meet{ip}{port}`发起节点握手操作，该命令让当前节点与指定节点握手。
+
+例如，在6379节点，发起命令` cluster meet 127.0.0.1 6380`会进行握手通信：
+
+* 节点6379本地创建6380节点信息对象， 并发送meet消息。
+* 节点6380接受到meet消息后， 保存6379节点信息并回复pong消息。
+* 之后节点6379和6380彼此定期通过ping/pong消息进行正常的节点通信。
+
+这样执行完成后，在6379和6380节点分别执行cluster nodes命令，可以看到他们彼此已经感知到对方的存在：
+
+~~~bash
+$ cat nodes-6379.conf 
+ddc23f07b96e1f6adac80649ee281344e8f728a3 127.0.0.1:6380@16380 master - 0 1709703365358 0 connected
+a3b8b1245e5602f3759c83bf7a92537eaec0f30c 127.0.0.1:6379@16379 myself,master - 0 0 1 connected
+vars currentEpoch 1 lastVoteEpoch 0
+$ cat nodes-6380.conf 
+a3b8b1245e5602f3759c83bf7a92537eaec0f30c 127.0.0.1:6379@16379 master - 0 1709703365459 1 connected
+ddc23f07b96e1f6adac80649ee281344e8f728a3 127.0.0.1:6380@16380 myself,master - 0 0 0 connected
+vars currentEpoch 1 lastVoteEpoch 0
+~~~
+
+下面分别执行meet命令让其他节点加入到集群中：
+
+~~~bash
+127.0.0.1:6379> cluster meet 127.0.0.1 6381
+OK
+127.0.0.1:6379> cluster meet 127.0.0.1 6382
+OK
+127.0.0.1:6379> cluster meet 127.0.0.1 6383
+OK
+127.0.0.1:6379> cluster meet 127.0.0.1 6384
+OK
+~~~
+
+我们只需要在集群内任意节点上执行cluster meet命令加入新节点， 握手状态会通过消息在集群内传播， 这样其他节点会自动发现新节点并发起握手流程。 最后执行cluster nodes命令确认6个节点都彼此感知并组成集群:
+
+~~~bash
+127.0.0.1:6379> cluster nodes
+ddc23f07b96e1f6adac80649ee281344e8f728a3 127.0.0.1:6380@16380 master - 0 1709703551482 2 connected
+37b01feee2ce3c8be540cb8a21d1a7f4cc7b4885 127.0.0.1:6384@16384 master - 0 1709703552485 5 connected
+3c47191f6d501c6ec47cea38023aeca9ba21bd80 127.0.0.1:6383@16383 master - 0 1709703552000 4 connected
+96ca10fd3b2fee86df6b72c67efc4d20c46a55de 127.0.0.1:6382@16382 master - 0 1709703551000 3 connected
+a3b8b1245e5602f3759c83bf7a92537eaec0f30c 127.0.0.1:6379@16379 myself,master - 0 1709703548000 1 connected
+eaf9bdc4cf636784cf3b20e19ed27bc17e9d9cf8 127.0.0.1:6381@16381 master - 0 1709703553488 0 connected
+~~~
+
+节点握手后集群还不能正常工作，此时集群处于下线状态，所有数据读写都被禁止，例如：
+
+~~~bash
+127.0.0.1:6379> set hello world
+(error) CLUSTERDOWN Hash slot not served
+~~~
+
+可以看到哈希槽还没有分配，通过cluster info 命令可以获取集群当前状态：
+
+~~~bash
+127.0.0.1:6379> cluster info
+cluster_state:fail
+cluster_slots_assigned:0
+cluster_slots_ok:0
+cluster_slots_pfail:0
+cluster_slots_fail:0
+cluster_known_nodes:6
+cluster_size:0
+......
+~~~
+
+从输出内容可以看到， 被分配的槽（cluster_slots_assigned） 是0， 由于目前所有的槽没有分配到节点， 因此集群无法完成槽到节点的映射。 只有当16384个槽全部分配给节点后， 集群才进入在线状态。
+
+### 分配槽
+
+Redis集群把所有的数据映射到16384个槽中。 每个key会映射为一个固定的槽， 只有当节点分配了槽， 才能响应和这些槽关联的键命令。 通过cluster addslots命令为节点分配槽。 这里利用bash特性批量设置槽(slots)，命令如下：  
+
+~~~bash
+redis-cli -p 6379 cluster addslots {0..5461}
+redis-cli -p 6380 cluster addslots {5462..10922}
+redis-cli -p 6381 cluster addslots {10923..16383}
+~~~
+
+把16384个slot平均分配给6379、 6380、 6381三个节点。 执行cluster info查看集群状态:
+
+~~~bash
+127.0.0.1:6379> cluster info
+cluster_state:ok
+cluster_slots_assigned:16384
+cluster_slots_ok:16384
+cluster_slots_pfail:0
+cluster_slots_fail:0
+cluster_known_nodes:6
+cluster_size:3
+cluster_current_epoch:5
+cluster_my_epoch:1
+cluster_stats_messages_ping_sent:1385
+cluster_stats_messages_pong_sent:1282
+cluster_stats_messages_meet_sent:6
+cluster_stats_messages_sent:2673
+cluster_stats_messages_ping_received:1282
+cluster_stats_messages_pong_received:1391
+cluster_stats_messages_received:2673
+~~~
+
+当前集群状态是OK， 集群进入在线状态。 所有的槽都已经分配给节点
+
+执行cluster nodes命令可以看到节点和槽的分配关系：
+
+~~~bash
+127.0.0.1:6379> cluster nodes
+ddc23f07b96e1f6adac80649ee281344e8f728a3 127.0.0.1:6380@16380 master - 0 1709704807000 2 connected 5462-10922
+37b01feee2ce3c8be540cb8a21d1a7f4cc7b4885 127.0.0.1:6384@16384 master - 0 1709704807000 5 connected
+3c47191f6d501c6ec47cea38023aeca9ba21bd80 127.0.0.1:6383@16383 master - 0 1709704805000 4 connected
+96ca10fd3b2fee86df6b72c67efc4d20c46a55de 127.0.0.1:6382@16382 master - 0 1709704806000 3 connected
+a3b8b1245e5602f3759c83bf7a92537eaec0f30c 127.0.0.1:6379@16379 myself,master - 0 1709704805000 1 connected 0-5461
+eaf9bdc4cf636784cf3b20e19ed27bc17e9d9cf8 127.0.0.1:6381@16381 master - 0 1709704807998 0 connected 10923-16383
+~~~
+
+目前还有三个节点没有使用， 作为一个完整的集群， 每个负责处理槽的节点应该具有从节点， 保证当它出现故障时可以自动进行故障转移。 集群模式下， Redis节点角色分为主节点和从节点。 
+
+首次启动的节点和被分配槽的节点都是主节点， 从节点负责复制主节点槽信息和相关的数据。 使用`cluster replicate{nodeId}`命令让一个节点成为从节点。 其中命令执行必须在对应的从节点上执行， nodeId是要复制主节点的节点ID:
+
+~~~bash
+$ redis-cli -p 6382 cluster replicate a3b8b1245e5602f3759c83bf7a92537eaec0f30c
+$ redis-cli -p 6383 cluster replicate ddc23f07b96e1f6adac80649ee281344e8f728a3
+$ redis-cli -p 6384 cluster replicate eaf9bdc4cf636784cf3b20e19ed27bc17e9d9cf8
+~~~
+
+Redis集群模式下的主从复制流程就是之前介绍的复制流程，支持全量和部分复制。复制完成后，整个集群的结构如图：
+
+![RedisCluster集群完整结构示意图](https://gitee.com/wangziming707/note-pic/raw/master/img/RedisCluster%E9%9B%86%E7%BE%A4%E5%AE%8C%E6%95%B4%E7%BB%93%E6%9E%84%E7%A4%BA%E6%84%8F%E5%9B%BE.png)
+
+通过cluster nodes命令查看集群状态和复制关系， 如下所示：
+
+~~~bash
+127.0.0.1:6379> cluster nodes
+ddc23f07b96e1f6adac80649ee281344e8f728a3 127.0.0.1:6380@16380 master - 0 1709707178000 2 connected 5462-10922
+37b01feee2ce3c8be540cb8a21d1a7f4cc7b4885 127.0.0.1:6384@16384 slave eaf9bdc4cf636784cf3b20e19ed27bc17e9d9cf8 0 1709707178565 0 connected
+3c47191f6d501c6ec47cea38023aeca9ba21bd80 127.0.0.1:6383@16383 slave ddc23f07b96e1f6adac80649ee281344e8f728a3 0 1709707176000 2 connected
+96ca10fd3b2fee86df6b72c67efc4d20c46a55de 127.0.0.1:6382@16382 slave a3b8b1245e5602f3759c83bf7a92537eaec0f30c 0 1709707179568 1 connected
+a3b8b1245e5602f3759c83bf7a92537eaec0f30c 127.0.0.1:6379@16379 myself,master - 0 1709707178000 1 connected 0-5461
+eaf9bdc4cf636784cf3b20e19ed27bc17e9d9cf8 127.0.0.1:6381@16381 master - 0 1709707177560 0 connected 10923-16383
+~~~
+
+这样，我们按照Redis协议手动搭建了一个集权，由6个节点构成，三个主节点负责处理槽和相关数据，三个从节点负责故障转移。
+
+### redis-cli搭建集群
+
+可以看到手动搭建需要很多步骤，当集群节点众多时，会增大搭建的复杂度和运营成本
+
+redis5.0版本以上的redis-cli客户端支持`--cluster create`命令来快速搭建集群
+
+首先仍然要完成准备节点的工作，创建配置文件并启动redis节点，此时节点间相互独立，没有组成集群。而`--cluster create`命令可以自动快速完成节点握手和分配槽的流程：
+
+~~~bash
+# 其中可选参数cluster-replicas用于指定集群中每个主节点的从节点数量，
+# --cluster-replicas 1 即指明一主一从
+$ redis-cli --cluster create 127.0.0.1:6379 127.0.0.1:6380 127.0.0.1:6381 127.0.0.1:6382 127.0.0.1:6383 127.0.0.1:6384 --cluster-replicas 1
+
+>>> Performing hash slots allocation on 6 nodes...
+Master[0] -> Slots 0 - 5460
+Master[1] -> Slots 5461 - 10922
+Master[2] -> Slots 10923 - 16383
+Adding replica 127.0.0.1:6383 to 127.0.0.1:6379
+Adding replica 127.0.0.1:6384 to 127.0.0.1:6380
+Adding replica 127.0.0.1:6382 to 127.0.0.1:6381
+.......
+~~~
+
+此时执行`cluster nodes`命令，可以看到节点直接已经建立通信、形成集群并分配号槽：
+
+~~~bash
+127.0.0.1:6379> cluster nodes
+986ed98c1603ca82b25a5f28b8a575b97bfbe7a1 127.0.0.1:6382@16382 slave 7dd0459a12e82fd42104e60496049d76d8e2da4f 0 1709708253000 1 connected
+3b65631a962382c982e5324913b55468a02beecf 127.0.0.1:6381@16381 master - 0 1709708254000 3 connected 10923-16383
+1151a31159c344f93ab585095a0e161f6fd5d776 127.0.0.1:6384@16384 slave 3b65631a962382c982e5324913b55468a02beecf 0 1709708255512 3 connected
+7dd0459a12e82fd42104e60496049d76d8e2da4f 127.0.0.1:6379@16379 myself,master - 0 1709708256000 1 connected 0-5460
+ea6863f8a22f74616af5757c1bf77fe8b781ea1c 127.0.0.1:6380@16380 master - 0 1709708256515 2 connected 5461-10922
+f6fb46edc185372da78ea9250bda31b7cab02193 127.0.0.1:6383@16383 slave ea6863f8a22f74616af5757c1bf77fe8b781ea1c 0 1709708254508 2 connected
+~~~
+
+## 节点通信
+
+### 通信流程
+
+在分布式存储中需要提供维护节点元数据信息的机制， 所谓元数据是指： 节点负责哪些数据， 是否出现故障等状态信息。 常见的元数据维护方式分为： 集中式和P2P方式。 
+
+Redis集群采用P2P的Gossip(流言)协议，Gossip协议工作原理就是节点彼此不断通信交换信息， 一段时间后所有的节点都会知道集群完整的信息， 这种方式类似流言传播。
+
+Gossip协议通信过程：
+
+* 集群中的每个节点都会单独开辟一个TCP通道， 用于节点之间彼此通信， 通信端口号在基础端口上加10000
+* 每个节点在固定周期内通过特定规则选择几个节点发送ping消息
+* 接收到ping消息的节点用pong消息作为响应
+
+集群中每个节点通过一定规则挑选要通信的节点， 每个节点可能知道全部节点， 也可能仅知道部分节点， 只要这些节点彼此可以正常通信， 最终它们会达到一致的状态。 
+
+当节点出故障、 新节点加入、 主从角色变化、 槽信息变更等事件发生时， 通过不断的ping/pong消息通信， 经过一段时间后所有的节点都会知道整个集群全部节点的最新状态， 从而达到集群状态同步的目的。
+
+### Gossip消息
+
+Gossip协议的主要职责就是信息交换。 信息交换的载体就是节点彼此发送的Gossip消息
+
+常用的Gossip消息可分为： ping消息、 pong消息、 meet消息、 fail消息等
+
+* meet消息：用于通知新节点加入。 消息发送者通知接收者加入到当前集群， meet消息通信正常完成后， 接收节点会加入到集群中并进行周期性的ping、 pong消息交换
+* ping消息： 集群内交换最频繁的消息， 集群内每个节点每秒向多个其他节点发送ping消息， 用于检测节点是否在线和交换彼此状态信息。 ping消息发送封装了自身节点和部分其他节点的状态数据。
+* pong消息： 当接收到ping、 meet消息时， 作为响应消息回复给发送方确认消息正常通信。 pong消息内部封装了自身状态数据。 节点也可以向集群内广播自身的pong消息来通知整个集群对自身状态进行更新。
+* fail消息： 当节点判定集群内另一个节点下线时， 会向集群内广播一个fail消息， 其他节点接收到fail消息之后把对应节点更新为下线状态
+
+### 节点选择
+
+虽然Gossip协议的信息交换机制具有天然的分布式特性， 但它是有成本的。
+
+由于内部需要频繁地进行节点信息交换， 而ping/pong消息会携带当前节点和部分其他节点的状态数据， 势必会加重带宽和计算的负担。 Redis集群内节点通信采用固定频率(定时任务每秒执行10次)。 因此节点每次选择需要通信的节点列表变得非常重要:
+
+* 通信节点选择过多虽然可以做到信息及时交换但成本过高。
+*  节点选择过少会降低集群内所有节点彼此信息交换频率，从而影响故障判定、 新节点发现等需求的速度。
+
+因此Redis集群的Gossip协议需要兼顾信息交换实时性和成本开销，其选择的规则如图：
+
+![Redis集群Gossip协议节点选择](https://gitee.com/wangziming707/note-pic/raw/master/img/Redis%E9%9B%86%E7%BE%A4Gossip%E5%8D%8F%E8%AE%AE%E8%8A%82%E7%82%B9%E9%80%89%E6%8B%A9.png)
+
+集群内每个节点维护定时任务默认每秒执行10次， 每秒会随机选取5个节点找出最久没有通信的节点发送ping消息， 用于保证Gossip信息交换的随机性。 
+
+每100毫秒都会扫描本地节点列表， 如果发现节点最近一次接受pong消息的时间大于cluster_node_timeout/2， 则立刻发送ping消息， 防止该节点信息太长时间未更新。
+
+根据以上规则得出每个节点每秒需要发送ping消息的数量=1+10*num(node.pong_received > cluster_node_timeout / 2) ， 因此cluster_node_timeout参数对消息发送的节点数量影响非常大，该参数值越大，带宽消耗越低，但是消息交换会降低，从而影响故障转移、 槽信息更新、 新节点发现的速度
+
+因此需要根据业务容忍度和资源消耗进行平衡，同时整个集群消息总交换量也跟节点数成正比。 
+
+## 集群伸缩
+
+Redis集群提供了灵活的节点扩容和收缩方案。 在不影响集群对外服务的情况下， 可以为集群添加节点进行扩容也可以下线部分节点进行缩容。
+
+Redis集群实现对节点的灵活上下线控制的原理可抽象为槽和对应数据在不同节点之间灵活移动。
+
+例如当一个集群加入新节点后，原节点会向新节点迁移一部分负责的槽和对应的数据。
+
+### 扩容集群
+
+Redis集群扩容可以分为如下步骤：
+
+* 准备新节点
+* 加入集群
+* 迁移槽和数据
+
+#### 准备新节点
+
+需要提前准备好新节点并运行在集群模式下， 新节点建议跟集群内的节点配置保持一致， 便于管理统一 。
+
+准备好两个新节点配置并启动新节点：
+
+~~~bash
+$ redis-server redis-6385.conf
+$ redis-server redis-6386.conf
+~~~
+
+此时两个新节点还没有加入集群与其他节点通信
+
+#### 加入集群
+
+可以通过`cluster meet`命令加入到现有集群，也可以使用 `redis-cli --cluster `命令
+
+我们以 `--cluster add-node`为例，其参数有：
+
+~~~bash
+add-node  new_host:new_port  		#新加入集群的ip和port
+	existing_host:existing_port     #集群中任一节点的ip和port
+	--cluster-slave					#新节点作为从节点，默认随机一个主节点
+	--cluster-master-id <arg> 	 	#给新节点指定主节点,值为节点的节点ID
+~~~
+
+那么可以执行下面命令：
+
+~~~bash
+redis-cli --cluster add-node 127.0.0.1:6385 127.0.0.1:6379
+redis-cli --cluster add-node 127.0.0.1:6386 127.0.0.1:6379 --cluster-slave --cluster-master-id d7368f2323c2bd079cf31b5efe64827826d6bbb1 #为6385的节点ID
+~~~
+
+这样将6385作为主节点，6386作为其从节点加入到集群，然后执行`cluster nodes`可以看到如下信息：
+
+~~~bash
+$ redis-cli cluster nodes
+986ed98c1603ca82b25a5f28b8a575b97bfbe7a1 127.0.0.1:6382@16382 slave 7dd0459a12e82fd42104e60496049d76d8e2da4f 0 1709711926058 1 connected
+d7368f2323c2bd079cf31b5efe64827826d6bbb1 127.0.0.1:6385@16385 master - 0 1709711925000 0 connected
+3b65631a962382c982e5324913b55468a02beecf 127.0.0.1:6381@16381 master - 0 1709711924052 3 connected 10923-16383
+8192d66507511b3aee8a3cc16a639df7549a7714 127.0.0.1:6386@16386 slave d7368f2323c2bd079cf31b5efe64827826d6bbb1 0 1709711925055 0 connected
+1151a31159c344f93ab585095a0e161f6fd5d776 127.0.0.1:6384@16384 slave 3b65631a962382c982e5324913b55468a02beecf 0 1709711925000 3 connected
+7dd0459a12e82fd42104e60496049d76d8e2da4f 127.0.0.1:6379@16379 myself,master - 0 1709711925000 1 connected 0-5460
+ea6863f8a22f74616af5757c1bf77fe8b781ea1c 127.0.0.1:6380@16380 master - 0 1709711928064 2 connected 5461-10922
+f6fb46edc185372da78ea9250bda31b7cab02193 127.0.0.1:6383@16383 slave ea6863f8a22f74616af5757c1bf77fe8b781ea1c 0 1709711927061 2 connected
+~~~
+
+此时6385作为主节点还没有分配槽位
+
+#### 迁移槽和数据
+
+可以通过`--cluster rehard`命令进行槽位的迁移，其命令参数如下：
+
+~~~bash
+reshard	host:port
+	--cluster-from <arg>     #槽位来源的节点节点ID，多个用,分割，all表示全部节点
+	--cluster-to <arg>       #目标节点的节点ID，只允一个
+	--cluster-slots <arg>    #迁移的槽位数
+	--cluster-yes            #是否默认同意集群内部的迁移计划（默认同意就可以）
+	--cluster-timeout <arg>  #迁移命令（migrate）的超时时间
+	--cluster-pipeline <arg> #迁移key时，一次取出 的key数量，默认10
+	--cluster-replace        #是否直接replace到目标节点
+~~~
+
+那么就可以执行如下命令将槽位迁移到新节点：
+
+~~~bash
+redis-cli --cluster reshard 127.0.0.1:6379 --cluster-from all --cluster-to d7368f2323c2bd079cf31b5efe64827826d6bbb1 --cluster-slots 4096 
+~~~
+
+迁移完成后重新查看cluster信息：
+
+~~~bash
+986ed98c1603ca82b25a5f28b8a575b97bfbe7a1 127.0.0.1:6382@16382 slave 7dd0459a12e82fd42104e60496049d76d8e2da4f 0 1709712686307 1 connected
+d7368f2323c2bd079cf31b5efe64827826d6bbb1 127.0.0.1:6385@16385 master - 0 1709712688312 8 connected 0-1364 5461-6826 10923-12287
+3b65631a962382c982e5324913b55468a02beecf 127.0.0.1:6381@16381 master - 0 1709712685303 3 connected 12288-16383
+8192d66507511b3aee8a3cc16a639df7549a7714 127.0.0.1:6386@16386 slave d7368f2323c2bd079cf31b5efe64827826d6bbb1 0 1709712685000 8 connected
+1151a31159c344f93ab585095a0e161f6fd5d776 127.0.0.1:6384@16384 slave 3b65631a962382c982e5324913b55468a02beecf 0 1709712685000 3 connected
+7dd0459a12e82fd42104e60496049d76d8e2da4f 127.0.0.1:6379@16379 myself,master - 0 1709712685000 1 connected 1365-5460
+ea6863f8a22f74616af5757c1bf77fe8b781ea1c 127.0.0.1:6380@16380 master - 0 1709712687000 2 connected 6827-10922
+f6fb46edc185372da78ea9250bda31b7cab02193 127.0.0.1:6383@16383 slave ea6863f8a22f74616af5757c1bf77fe8b781ea1c 0 1709712687310 2 connected
+~~~
+
+可以看到新节点被分配了 0-1364 5461-6826 10923-12287 这些槽位
+
+### 收缩集群
+
+收缩集群需要下线部分节点。首先需要将要下线的节点的槽分配给其他节点，然后才能从集群中安全下线。
+
+#### 迁移槽
+
+为了保证集群之间的平衡，我们需要保证迁移后的各个节点持有的槽的个数大致相同。
+
+为此我们不必使用多次`--cluster rehard`将槽分多次迁移给其他节点。而是可以直接使用一次`--cluster rehard`将所有槽位一次迁移出去，等安全下线后，再使用`--cluster rebalance`来平衡集群。
+
+那么首先迁移槽位：
+
+~~~bash
+redis-cli --cluster reshard 127.0.0.1:6379 --cluster-from d7368f2323c2bd079cf31b5efe64827826d6bbb1 --cluster-to 7dd0459a12e82fd42104e60496049d76d8e2da4f --cluster-slots 4096
+~~~
+
+迁移完成后，重新查看cluster信息：
+
+~~~bash
+$ redis-cli cluster nodes
+986ed98c1603ca82b25a5f28b8a575b97bfbe7a1 127.0.0.1:6382@16382 slave 7dd0459a12e82fd42104e60496049d76d8e2da4f 0 1709713708000 9 connected
+d7368f2323c2bd079cf31b5efe64827826d6bbb1 127.0.0.1:6385@16385 master - 0 1709713709382 8 connected
+3b65631a962382c982e5324913b55468a02beecf 127.0.0.1:6381@16381 master - 0 1709713706000 3 connected 12288-16383
+8192d66507511b3aee8a3cc16a639df7549a7714 127.0.0.1:6386@16386 slave 7dd0459a12e82fd42104e60496049d76d8e2da4f 0 1709713706372 9 connected
+1151a31159c344f93ab585095a0e161f6fd5d776 127.0.0.1:6384@16384 slave 3b65631a962382c982e5324913b55468a02beecf 0 1709713708378 3 connected
+7dd0459a12e82fd42104e60496049d76d8e2da4f 127.0.0.1:6379@16379 myself,master - 0 1709713705000 9 connected 0-6826 10923-12287
+ea6863f8a22f74616af5757c1bf77fe8b781ea1c 127.0.0.1:6380@16380 master - 0 1709713707000 2 connected 6827-10922
+f6fb46edc185372da78ea9250bda31b7cab02193 127.0.0.1:6383@16383 slave ea6863f8a22f74616af5757c1bf77fe8b781ea1c 0 1709713710384 2 connected
+~~~
+
+可以看到3685节点已经没有槽位了。
+
+#### 删除节点
+
+可以使用`--cluster del-node`删除集群中的节点。其参数如下：
+
+~~~bash
+del-node host:port node_id
+~~~
+
+为了防止全量复制，建议先删除从节点，再删除主节点
+
+~~~bash
+redis-cli --cluster del-node 127.0.0.1:6379 8192d66507511b3aee8a3cc16a639df7549a7714
+redis-cli --cluster del-node 127.0.0.1:6379 d7368f2323c2bd079cf31b5efe64827826d6bbb1
+~~~
+
+我们再确认当前集群的状态:
+
+~~~bash
+redis-cli cluster nodes
+986ed98c1603ca82b25a5f28b8a575b97bfbe7a1 127.0.0.1:6382@16382 slave 7dd0459a12e82fd42104e60496049d76d8e2da4f 0 1709714267000 9 connected
+3b65631a962382c982e5324913b55468a02beecf 127.0.0.1:6381@16381 master - 0 1709714265100 3 connected 12288-16383
+1151a31159c344f93ab585095a0e161f6fd5d776 127.0.0.1:6384@16384 slave 3b65631a962382c982e5324913b55468a02beecf 0 1709714266000 3 connected
+7dd0459a12e82fd42104e60496049d76d8e2da4f 127.0.0.1:6379@16379 myself,master - 0 1709714266000 9 connected 0-6826 10923-12287
+ea6863f8a22f74616af5757c1bf77fe8b781ea1c 127.0.0.1:6380@16380 master - 0 1709714268109 2 connected 6827-10922
+f6fb46edc185372da78ea9250bda31b7cab02193 127.0.0.1:6383@16383 slave ea6863f8a22f74616af5757c1bf77fe8b781ea1c 0 1709714267106 2 connected
+~~~
+
+可以看到两个节点确实已经下线
+
+#### 再平衡集群
+
+我们为了方便，将要下线的节点的所有槽位都转移给了一个节点，这造成了集群槽位的不平衡。如下：
+
+~~~bash
+redis-cli --cluster info 127.0.0.1:6379
+127.0.0.1:6379 (7dd0459a...) -> 0 keys | 8192 slots | 1 slaves.
+127.0.0.1:6381 (3b65631a...) -> 0 keys | 4096 slots | 1 slaves.
+127.0.0.1:6380 (ea6863f8...) -> 0 keys | 4096 slots | 1 slaves.
+~~~
+
+可以使用`--cluster rebalance`命令再平衡集群，其参数如下：
+
+~~~bash
+rebalance	host:port
+	--cluster-weight <node1=w1...nodeN=wN>#槽位权重（浮点型）比值，例如（这里使用端口号代替运行id）： 7001=1.0,7002=1.0,7003=2.0 则表示，总权重为4.0， 7001和7002将分配到 (16384/4)*1  个槽位，7003则是(16384/4)*2个槽位
+	--cluster-use-empty-masters#再平衡时将空主节点也考虑进去
+	--cluster-timeout <arg>    #迁移命令（migrate）的超时时间
+	--cluster-simulate         # 模拟rebalance操作，不会真正执行迁移操作
+	--cluster-pipeline <arg>   #定义 getkeysinslot命令一次取出的key数量，默认值为10
+	--cluster-threshold <arg>  #平衡触发的阈值条件，默认为2.00%。例如上一步，7001和7002应该有4096个槽位，如果7001的槽位数不够4096个，且超过 (4096*0.02 约等于)82个及以上；或者7001的槽位数比4096少于82个及以上，则会触发自平衡
+	--cluster-replace          #是否直接replace到目标节点
+~~~
+
+那么可以执行如下命令：
+
+~~~bash
+redis-cli --cluster rebalance 127.0.0.1:6379
+~~~
+
+再看当前集群状态：
+
+~~~bash
+$ redis-cli --cluster info 127.0.0.1:6379
+127.0.0.1:6379 (7dd0459a...) -> 0 keys | 5461 slots | 1 slaves.
+127.0.0.1:6381 (3b65631a...) -> 0 keys | 5462 slots | 1 slaves.
+127.0.0.1:6380 (ea6863f8...) -> 0 keys | 5461 slots | 1 slaves.
+~~~
+
+可以看到槽位已经平衡
+
+## 请求路由
 
 
 
