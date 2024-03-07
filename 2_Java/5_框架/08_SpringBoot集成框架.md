@@ -115,9 +115,9 @@ maven配置资源扫描
 
 **注意：**以上四个rollbackFor参数，既可以指定单个参数，也可以用数组指定多个参数,例如：
 
-指定单一异常类：@Transactional(noRollbackFor=RuntimeException.class)
+指定单一异常类：`@Transactional(noRollbackFor=RuntimeException.class)`
 
-指定多个异常类：@Transactional(noRollbackFor={RuntimeException.class, Exception.class})
+指定多个异常类：`@Transactional(noRollbackFor={RuntimeException.class, Exception.class})`
 
 ### 手动回滚
 

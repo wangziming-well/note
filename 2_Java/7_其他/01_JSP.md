@@ -158,10 +158,10 @@ EL(Expression Language)表达式语言，对应`<%=...%>`
     pageContext->request->session->application
 
 * 获取指定域的值：
-    * pageScope：${pageScope.name}等同与pageContext.getAttribute(“name”)；
-    * requestScope：${requestScope.name}等同与request.getAttribute(“name”)；
-    * sessionScoep： ${sessionScope.name}等同与session.getAttribute(“name”)；
-    * applicationScope：${applicationScope.name}等同与application.getAttribute(“name”)；
+    * pageScope：`${pageScope.name}`等同与pageContext.getAttribute(“name”)；
+    * requestScope：`${requestScope.name}`等同与request.getAttribute(“name”)；
+    * sessionScoep：` ${sessionScope.name}`等同与session.getAttribute(“name”)；
+    * applicationScope：`${applicationScope.name}`等同与application.getAttribute(“name”)；
 
 * 获取java对象的属性（不论public或private，应该用的反射）：
 

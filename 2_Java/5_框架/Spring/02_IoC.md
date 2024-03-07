@@ -1008,7 +1008,7 @@ dog.age = 3
 
 使用了PropertyPlaceholderConfigurer后，它替换占位符的逻辑如下：
 
-* BeanFactory在第一个阶段加载完成所有配置的配置信息是，BeanDefinition中保持的信息仍然是占位符形式的，如${dog.age}
+* BeanFactory在第一个阶段加载完成所有配置的配置信息是，BeanDefinition中保持的信息仍然是占位符形式的，如`${dog.age}`
 * 当PropertyPlaceholderConfigurer调用postProcessBeanFactory进行后处理时，会将properties文件中的配置信息来替换相应BeanDefinition中占位符所表示的属性值
 
 ### `PropertyOverrideConfigurer  `
