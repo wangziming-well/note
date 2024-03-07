@@ -1,6 +1,6 @@
 # Redis特性
 
-Redis是一种基于键值对的NoSQL数据库，Redis中的值可以是由string、hash、list、set、zset、Bitmaps、HyperLogLog、GEO等多种数据结构和算法组成，所以它可以满足多种应用常见；并且Redis所有数据都存放在内存中，它的读写性能很好；而且对内存中的数据做了持久化，以防止故障导致的数据丢失。除此之外，Redis还提供了键过期、发布订阅、事务、流水现、Lua脚本等附加功能。
+Redis是一种基于键值对的NoSQL数据库，Redis中的值可以是由string、hash、list、set、zset、Bitmaps、HyperLogLog、GEO等多种数据结构和算法组成，所以它可以满足多种应用常见；并且Redis所有数据都存放在内存中，它的读写性能很好；而且对内存中的数据做了持久化，以防止故障导致的数据丢失。除此之外，Redis还提供了键过期、发布订阅、事务、流水线、Lua脚本等附加功能。
 
 下面是关于Redis的重要特性
 
