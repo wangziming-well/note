@@ -171,6 +171,7 @@ CSS/HTML支持140多种标准颜色名，一下提供常用的颜色：
         <td>灰</td>
         <td style="background-color:gray;"></td>
     </tr>
+</table>
 
 ## RGB颜色
 
@@ -196,6 +197,7 @@ CSS/HTML支持140多种标准颜色名，一下提供常用的颜色：
     <p style="background-color:rgba(255,0,0,0.3);color:white;" align="center">a=0.3</p>
     <p style="background-color:rgba(255,0,0,0.6);color:white" align="center">a=0.6</p>
     <p style="background-color:rgba(255,0,0,1.0);color:white" align="center">a=1.0</p>
+</div>
 
 ## HEX颜色
 
@@ -306,6 +308,7 @@ background-repeat属性值为no-repeat时，可以设置backgroud-position属性
     <p style="border-style:none;">无边框</p>
     <p style="border-style:hiden;">隐藏边框</p>
     <p style="border-style:dotted dashed solid double;">混合边框</p>
+</div>
 ## 边框宽度
 
 `border-width`属性指定四个边框的宽度
@@ -327,6 +330,7 @@ background-repeat属性值为no-repeat时，可以设置backgroud-position属性
     <p style="border:solid thick">thick</p>
     <p style="border:solid 1cm">1cm</p>
     <p style="border-style:solid;border-width:thin medium thick 1cm ">混合长度</p>
+</div>
 ## 边框颜色
 
 `border-color`属性用于设置四个边框的颜色。
@@ -439,7 +443,7 @@ padding-top,padding-right,padding-botton,padding-left
 * initial 默认值
 * inherit 从其父值继承高度/宽度
 
-<hr>
+<hr />
 `max-width` 设置元素的最大宽度
 
 有属性值
@@ -541,7 +545,7 @@ invert 执行颜色反转（确保轮廓可见）
 * justify:使文本每一行具有相等的宽度，且左右边距是直的
 * inherit：从父元素继承
 
-<hr>
+<hr />
 
 `vertical-align`属性指定元素的垂直对齐方式
 
@@ -594,7 +598,7 @@ invert 执行颜色反转（确保轮廓可见）
 
 * length
 
-<hr>
+<hr />
 
 `letter-spacing`指定字符间距
 
@@ -602,7 +606,7 @@ invert 执行颜色反转（确保轮廓可见）
 
 * length
 
-<hr>
+<hr />
 
 `line-height`指定行高
 
@@ -610,7 +614,7 @@ invert 执行颜色反转（确保轮廓可见）
 
 * %：大多数浏览器的默认值为1.2或1.1
 
-<hr>
+<hr />
 
 `word-sapcing`指定单词间距
 
@@ -618,7 +622,8 @@ invert 执行颜色反转（确保轮廓可见）
 
 * length
 
-<hr>
+<hr />
+
 
 `white-sapce`指定元素内部空白的处理方式
 
@@ -654,7 +659,8 @@ font-family 属性应包含多个字体名称作为“后备”系统，以确�
 * italic：斜体显示
 * oblique：文本倾斜（与斜体相似，支持较少）
 
-<hr>
+<hr />
+
 
 `font-weight`指定字体粗细
 
@@ -663,9 +669,10 @@ font-family 属性应包含多个字体名称作为“后备”系统，以确�
 * normal
 * lighter
 * bold
-* number（属于${ \{x|x=100\times y,y 属于0到9\} }$
+* number（属于$ \{x|x=100\times y,y 属于0到9\} $
 
-<hr>
+<hr />
+
 
 `font-variant`指定字体是否以small-caps字体(小型大写字母)显示文本
 

@@ -1673,7 +1673,7 @@ Smart客户端通过在内部维护slot->node的映射关系，本地久可实�
   * 计算slot并根据slots缓存获取目标节点连接， 发送命令
   * 如果出现连接错误， 使用随机连接重新执行键命令， 每次命令重试对redi-rections参数减1
   * 捕获到MOVED重定向错误， 使用cluster slots命令更新slots缓存
-  * 重复执行以上三步，直到命令执行成功， 或者当redirections<=0时抛出Jedis ClusterMaxRedirectionsException异常
+  * 重复执行以上三步，直到命令执行成功， 或者当`redirections<=0`时抛出Jedis ClusterMaxRedirectionsException异常
 
 ####  JedisCluster
 
