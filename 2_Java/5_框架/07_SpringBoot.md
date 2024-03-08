@@ -441,17 +441,17 @@ management:
 
 ## 使用
 
-| **HTTP****方法** | **路径**        | **描述**                                   |
-| ---------------- | --------------- | ------------------------------------------ |
-| GET              | /configprops    | 查看配置属性，包括默认配置                 |
-| GET              | /beans          | 查看Spring容器目前初始化的bean及其关系列表 |
-| GET              | /env            | 查看所有环境变量                           |
-| GET              | /mappings       | 查看所有url映射                            |
-| GET              | /health         | 查看应用健康指标                           |
-| GET              | /info           | 查看应用信息                               |
-| GET              | /metrics        | 查看应用基本指标                           |
-| GET              | /metrics/{name} | 查看具体指标                               |
-| JMX              | /shutdown       | 关闭应用                                   |
+| **HTTP方法 | **路径**          | **描述**                                   |
+| ---------- | ----------------- | ------------------------------------------ |
+| GET        | `/configprops`    | 查看配置属性，包括默认配置                 |
+| GET        | `/beans`          | 查看Spring容器目前初始化的bean及其关系列表 |
+| GET        | `/env`            | 查看所有环境变量                           |
+| GET        | `/mappings`       | 查看所有url映射                            |
+| GET        | `/health`         | 查看应用健康指标                           |
+| GET        | `/info`           | 查看应用信息                               |
+| GET        | `/metrics`        | 查看应用基本指标                           |
+| GET        | `/metrics/{name}` | 查看具体指标                               |
+| JMX        | `/shutdown`       | 关闭应用                                   |
 
 # springboot使用springsession
 
