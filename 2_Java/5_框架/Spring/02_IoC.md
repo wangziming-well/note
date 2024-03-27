@@ -303,10 +303,8 @@ BeanFactory可以通过实现HierarchicalBeanFactory接口实现分层
 容器A在初始化的时候，可以首先加载容器B中的所有对象定义，然后再加载自身的对象定义，这样，容器B就成为了容器A的父容器，容器A可以引用容器B中的所有对象定义：  
 
 ~~~java
-BeanFactory parentContainer = new XmlBeanFactory(new ClassPathResource("父容器配置文件路
-径"));
-BeanFactory childContainer = new XmlBeanFactory(new ClassPathResource("子容器配置文件路
-径"),parentContainer);
+BeanFactory parentContainer = new XmlBeanFactory(new ClassPathResource("父容器配置文件路径"));
+BeanFactory childContainer = new XmlBeanFactory(new ClassPathResource("子容器配置文件路径"),parentContainer);
 ~~~
 
 
@@ -478,9 +476,10 @@ spring提供了两种基本的scope类型:
   * 如果该bean不是懒加载的，那么它的生命周期几乎和IoC容器一样
 
 * `prototype`针对该类型的bean：
-* 容器在接到该类型对象的请求的时候，会每次都重新生成一个新的对象实例给请求方
-  
-* 并且容器就不再拥有当前返回对象的引用  请求方需要自己负责当前返回对象的后继生命周期的管理工作，包括该对象的销毁
+  * 容器在接到该类型对象的请求的时候，会每次都重新生成一个新的对象实例给请求方
+
+  * 并且容器就不再拥有当前返回对象的引用  请求方需要自己负责当前返回对象的后继生命周期的管理工作，包括该对象的销毁
+
 
 如果spring整合了web，那么针对web的域，spring还提供了额外的scope类型：
 
@@ -944,7 +943,7 @@ public interface BeanFactoryPostProcessor {
 
 但是，因为Spring已经提供了几个现成的BeanFactoryPostProcessor实现类，所以，大多时候，我们很少自己去实现某个BeanFactoryPostProcessor。常用的有：
 
-* `PropertyPlaceholderConfigurer  `(该方法现已过时)
+* `PropertyPlaceholderConfigurer  `(已过时)
 * `PropertyOverrideConfigurer `
 * `CustomEditorConfigurer  `
 
@@ -1149,11 +1148,11 @@ Aware接口及其子接口：
 
 ### `BeanPostProcessor  `
 
-和`BeanFactoryPostProcessor`作用类似
+和`BeanFactoryPostProcessor`作用类似：
 
-实现`BeanFactoryPostProcessor`的`BeanFactory`会在启动阶段的最后进行后处理
+* 实现`BeanFactoryPostProcessor`的`BeanFactory`会在启动阶段的最后进行后处理
 
-实现`BeanFactoryPostProcessor`的`Bean`会在实例化后的合适时机进行后处理
+* 实现`BeanFPostProcessor`的`Bean`会在实例化后的合适时机进行后处理
 
 它的定义如下:
 
@@ -1181,7 +1180,7 @@ public interface BeanPostProcessor {
 
 **应用场景:**
 
-通常使用`BeanPostProcessor  `的场景时处理标记接口实现类,或者为当前对象提供代理实现
+通常使用`BeanPostProcessor  `的场景是处理标记接口实现类,或者为当前对象提供代理实现
 
 比如ApplicationContext对应的那些Aware接口实际上就是通过BeanPostProcessor的方式进行处理的  
 
@@ -1252,7 +1251,7 @@ Spring 为ApplicationContext提供了几个常用的实现：
 
 ## 统一资源加载策略
 
-Spring提供了一套基于org.springframework.core.io.Resource和org.springframework.core.io.ResourceLoader接口的资源抽象和加载策略。  
+Spring提供了一套基于`org.springframework.core.io.Resource`和`org.springframework.core.io.ResourceLoader`接口的资源抽象和加载策略。  
 
 ### `Resource  `
 
