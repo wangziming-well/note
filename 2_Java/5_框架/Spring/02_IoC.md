@@ -1582,12 +1582,168 @@ String[] locations = new String[]{ "conf/dao-tier.springxml",
 "conf/view-tier.springxml", "conf/business-tier.springxml"};
 ApplicationContext container = new ClassPathXmlApplicationContext(locations);
 //使用通配符
-ApplicationContext container = new FileSystemXmlApplicationContext("conf/**/*.springxml")
+ApplicationContext container = new FileSystemXmlApplicationContext("conf/**/*.springxml");
 ~~~
 
 # 基于注解的IOC
 
-==TODO==
+基于注解的Ioc配置时XML配置的替代方案，它依赖于字节码元数据来连接组件。
+
+通过在相关类、方法和字段声明上使用注解，将配置从用XML描述bean装配转移到组件类本身。
+
+这种基于注解的配置是通过`BeanPostProcessor`实现的，可以使用下面标签来隐式注册注解配置需要的`BeanPostProcessor`:
+
+~~~xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+		https://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context
+		https://www.springframework.org/schema/context/spring-context.xsd">
+
+	<context:annotation-config/>
+
+</beans>
+~~~
+
+ `<context:annotation-config/>` 标签会隐式注册下面后处理器：
+
+- `ConfigurationClassPostProcessor`
+- `AutowiredAnnotationBeanPostProcessor`
+- `CommonAnnotationBeanPostProcessor`
+- `PersistenceAnnotationBeanPostProcessor`
+- `EventListenerMethodProcessor`
+
+## `@Autowired`
+
+`@Autowired`注解用来进行自动依赖注入，它可以注释在类的构造器方法、set方法、普通方法、类字段上，让当前类获取指定类的实例对象，例如，通过`@Autowired`向`Person`中注入`Dog`实例：
+
+~~~java
+@Data
+public class Person {
+
+    private String name;
+    @Autowired
+    private Dog dog;
+
+}
+~~~
+
+
+
+~~~java
+@Data
+public class Dog {
+    private String name;
+    private int age;
+}
+~~~
+
+对应的XML配置：
+
+~~~xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
+    <context:annotation-config/>
+    <bean name="person" class="com.wzm.spring.Person">
+        <property name="name" value="wzm"/>
+    </bean>
+    <bean name="dog" class="com.wzm.spring.Dog">
+        <property name="name" value="tom"/>
+        <property name="age" value="12"/>
+    </bean>
+
+</beans>
+~~~
+
+注意XML文件中并没有指定Person的dog属性，但是容器在加载Bean是扫描到了`@Autowired`注解，会自动将对应的对象注入：
+
+~~~java
+ClassPathXmlApplicationContext container = new ClassPathXmlApplicationContext("spring.xml");
+Person person = (Person)container.getBean("person");
+System.out.println(person.getDog().getAge()); //12
+~~~
+
+或者直接在普通方法上注释：
+
+~~~java
+@Data
+public class Person {
+
+    private String name;
+    private Dog dog;
+
+    @Autowired
+    public void demo(Dog dog){
+        System.out.println(dog.getName());
+    }
+
+}
+~~~
+
+这样在加载bean时，会调用一次这个`demo()`方法，并将参数中的对象注入。
+
+### 复合注入
+
+可以在数组或者`Set`对象上注释`@Autowired`,这样Spring的Ioc容器会将容器中所有符合的类型都注入指定数组：
+
+~~~java
+@Data
+public class Person {
+    private String name;
+    @Autowired
+    private Dog[] dogs;
+}
+~~~
+
+或者：
+
+~~~java
+@Data
+public class Person {
+    private String name;
+    @Autowired
+    private Set<Dog> dogs;
+}
+~~~
+
+默认情况下，复合注入的顺序是按照容器中bean定义的注册顺序。如果需要自定义这个顺序，可以在目标bean上实现`org.springframework.core.Ordered`接口，或者使用`@Order`或标准的`@Priority`注解。
+
+也可以在`Map`类型上注释`@Autowired`,此时`Map`的键必须是String，注入时，键为注入的bean的名称，值为bean对应的实例：
+
+~~~java
+@Data
+public class Person {
+    private String name;
+    @Autowired
+    private Map<String,Dog> dogs;
+}
+~~~
+
+### 注入失败行为
+
+默认情况下，当没有匹配的bean进行注入时，自动装配会失败，并抛出异常。即使是对数组、Set或MapSet，也至少需要一个匹配的元素。
+
+可以使用在`@Autowired`中设置`required`属性为`false`,使容器忽略装配失败：
+
+~~~java
+@Data
+public class Person {
+    private String name;
+    @Autowired(required = false)
+    private Dog dog;
+}
+~~~
+
+
+
+
 
 
 
@@ -1626,9 +1782,11 @@ ApplicationContext container = new FileSystemXmlApplicationContext("conf/**/*.sp
 
 但不同的是：@Resource默认按照ByName自动注入  
 
-### 注解配置
 
-==TODO==
+
+
+
+
 
 # 其他
 
