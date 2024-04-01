@@ -1741,6 +1741,221 @@ public class Person {
 }
 ~~~
 
+在一个bean类中，只能有一个构造器被required属性为true的`@Autowired`方法注释。
+
+如果有多个构造器都被`@Autowired`注释，那么这些注解的`required`属性必须都为`false`,否则自动装配将不生效。在这种情况下，实例初始化时将选择能够满足的依赖项最多的构造器。如果所有构造器都无法满足，将调用无参/默认的构造器。
+
+### 替代Aware接口注入
+
+Aware接口可以让bean类获取容器支持的资源，`@Autowired`类可以替代它让bean类获取下面实例资源：`BeanFactory`, `ApplicationContext`, `Environment`, `ResourceLoader`, `ApplicationEventPublisher`, 和`MessageSource`. 
+
+例如：
+
+~~~java
+public class MovieRecommender {
+
+	@Autowired
+	private ApplicationContext context;
+
+	public MovieRecommender() {
+	}
+
+	// ...
+}
+~~~
+
+
+
+## `@Qualifier`
+
+`@Autowired`是通过类型进行自动装配的，如果只需要一个实例，但是容器中多多个匹配的类型，自动装配将失败。所以可以使用`@Qualifier`配合`@Autowired`，`@Qualifier`的值用来指定要注入的qualifier限定符值，那么将使用beanName，例如：
+
+~~~java
+@Data
+public class Person {
+    private String name;
+    @Autowired
+    @Qualifier("dog1")
+    private Dog dog;
+}
+~~~
+
+也可以在构造器的参数前注释`@Qualifier`：
+
+~~~java
+@Data
+public class Person {
+    @Autowired
+    public void Person(@Qualifier("dog1") Dog dog){
+        this.dog = dog;
+    }
+    ......
+}
+~~~
+
+与其对应的XML定义为：
+
+~~~xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
+    <context:annotation-config/>
+    <bean name="person" class="com.wzm.spring.Person">
+        <property name="name" value="wzm"/>
+    </bean>
+
+
+    <bean class="com.wzm.spring.Dog">
+        <qualifier value="dog1"/>
+        <property name="name" value="d1"/>
+        <property name="age" value="12"/>
+    </bean>
+    <bean class="com.wzm.spring.Dog">
+        <qualifier value="dog2"/>
+        <property name="name" value="d2"/>
+        <property name="age" value="12"/>
+    </bean>
+</beans>
+~~~
+
+如果没有定义qualifier的值，那么beanName将作为bean的默认qualifier值
+
+需要注意，即使配合 `@Qualifier`注解，`@Autowired`仍然是按照类型注入的，只不过缩小了类型注入的范围。所以如果用`@Qualifier`指定一个不是匹配类型的bean，那么匹配就会失败。
+
+需要注意`@Qualifier`匹配的是指定的`qualifier`值的bean，而`qualifier`值在默认情况下是beanName。beanName不能重复，但是`qualifier`值是可以重复的，但同一类型的bean的qualifier值最好不要重复，负责可能会造成自动装配失败。除非是对数组、集合的自动装配
+
+### 自定义`@Qualifier`注解
+
+可以用`@Qualifier`注释在自定义注解上，让自定义注解同样成为限定注解，这样自定义注解就关联`<qualifier/>`标签的type值，自定义注解的value就关联`<qualifier/>`标签的value值。
+
+例如如下自定义注解：
+
+~~~java
+@Target({ElementType.FIELD, ElementType.PARAMETER})
+@Retention(RetentionPolicy.RUNTIME)
+@Qualifier
+public @interface Main {
+    String value();
+}
+~~~
+
+这样`@Main`就具有`@Qualifier`的功能：
+
+~~~java
+@Data
+public class Person {
+    private String name;
+    @Autowired
+    @Main("dog1")
+    private Dog dog;
+}
+~~~
+
+对应的XML配置为：
+
+~~~xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
+    <context:annotation-config/>
+    <bean name="person" class="com.wzm.spring.Person">
+        <property name="name" value="wzm"/>
+    </bean>
+
+
+    <bean class="com.wzm.spring.Dog">
+        <qualifier type="com.wzm.spring.Main" value="dog1"/>
+        <property name="name" value="d1"/>
+        <property name="age" value="12"/>
+    </bean>
+    <bean class="com.wzm.spring.Dog">
+        <qualifier type="com.wzm.spring.Main"  value="dog2"/>
+        <property name="name" value="d2"/>
+        <property name="age" value="12"/>
+    </bean>
+</beans>
+~~~
+
+也可以不使用带`value`的自定义注解，如：
+
+~~~java
+@Target({ElementType.FIELD, ElementType.PARAMETER})
+@Retention(RetentionPolicy.RUNTIME)
+@Qualifier
+public @interface Main {
+}
+~~~
+
+对应的使用和XML配置如下：
+
+~~~java
+@Data
+public class Person {
+    private String name;
+    @Autowired
+    @Main
+    private Dog dog;
+}
+~~~
+
+配置：
+
+~~~xml
+<bean class="com.wzm.spring.Dog">
+    <qualifier type="com.wzm.spring.Main" />
+    <property name="name" value="d1"/>
+    <property name="age" value="12"/>
+</bean>
+<bean class="com.wzm.spring.Dog">
+    <property name="name" value="d2"/>
+    <property name="age" value="12"/>
+</bean>
+~~~
+
+## `@Resource`
+
+Spring也支持使用 JSR-250 `@Resource `(`jakarta.annotation.Resource`)注解来进行注入，`@Resource`注解可以应用在域和set方法上。
+
+`@Resource`有一个`name`属性，默认情况下，Spring将其解释为beanName进行注入的匹配。所以和`@Autowired`按照类型匹配不同，它是按照名称进行匹配的。例如：
+
+~~~java
+@Data
+public class Person {
+    private String name;
+
+    @Resource(name = "dog1")
+    private Dog dog;
+}
+~~~
+
+如果没有指定`name`属性，那么`@Resource`将使用默认名称，在属性上时，默认名称就是属性名，在setter 方法上时，默认名称为set方法的参数名。
+
+此外，如果`@Resource`没有匹配到指定的name，那么会退一步，按照类型再进行匹配，这样可以像`@Autowired`一样，注入一些容器提供的资源项，如`ApplicationContext`,如：
+
+~~~java
+public class MovieRecommender {
+
+	@Resource
+	private CustomerPreferenceDao customerPreferenceDao;
+	//如果按名称没有找到beanName为customerPreferenceDao的bean，那么将按照类型进行匹配
+	@Resource
+	private ApplicationContext context; 
+
+	public MovieRecommender() {
+	}
+
+	// ...
+}
+~~~
+
+## `@Value`
+
 
 
 
@@ -1762,7 +1977,7 @@ public class Person {
 <context:component-scan base-package="com.bjpn"/>
 ~~~
 
-## 注解类
+### 注解类
 
 实体类注解：
 
@@ -1772,15 +1987,6 @@ public class Person {
 * `@Component`普通类
 
 以上注解都有name属性，以指定bean的beanName；不写默认是类名的驼峰式
-
-依赖注入注解：
-
-* `@Autowired`在属性上，容器按照类型为该属性自动依赖注入（通过setter方法）
-* `@Qualifier`：`@Autowired`的辅助注解，指定beanName，以byName的方式自动注入
-
-除了spring提供的`@Autowired`注解，javax包还提供了`@Resource`同样可以实现依赖注入
-
-但不同的是：@Resource默认按照ByName自动注入  
 
 
 
