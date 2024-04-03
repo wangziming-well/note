@@ -307,12 +307,6 @@ BeanFactory parentContainer = new XmlBeanFactory(new ClassPathResource("父容�
 BeanFactory childContainer = new XmlBeanFactory(new ClassPathResource("子容器配置文件路径"),parentContainer);
 ~~~
 
-
-
-
-
-
-
 # XML加载spring容器
 
 XML格式的容器信息管理方式是Spring提供的最为强大、支持最为全面的方式  
@@ -1956,57 +1950,507 @@ public class MovieRecommender {
 
 ## `@Value`
 
+`@Value`可以用来注入外部配置
+
+使用如下配置类：
+
+~~~java
+@Configuration
+@PropertySource("classpath:application.properties")
+@ComponentScan("com.wzm.spring")
+public class AppConfig {
+}
+~~~
+
+并使用`AnnotationConfigApplicationContext`:
+
+~~~java
+AnnotationConfigApplicationContext container = new AnnotationConfigApplicationContext(AppConfig.class);
+~~~
+
+其中`application.properties`内容为：
+
+~~~properties
+dog.name = kiki
+dog.age = 10
+~~~
+
+此时可以使用`@Value`进行注入：
+
+~~~java
+@Data
+@Component
+public class Dog {
+    public Dog(@Value("${dog.name}") String name, 
+               @Value("${dog.age}") int age){
+        this.age = age;
+        this.name = name;
+    }
+    ....
+}
+~~~
+
+## `@PostConstruct` 和 `@PreDestroy`
+
+`CommonAnnotationBeanPostProcessor`不仅识别`@Resource`注解，还识别JSR-250生命周期注解：`jakarta.annotation.PostConstruct`和`jakarta.annotation.PreDestroy`。这些注解提供了一种替代初始化回调和销毁回调中描述的生命周期回调机制的方法。
+
+只要`CommonAnnotationBeanPostProcessor`在`ApplicationContext`中注册，携带这些注解的方法就会在与相应的Spring生命周期接口方法或显式声明的回调方法相同点处被调用。例如：
+
+~~~java
+@Component
+public class CachingMovieLister {
+
+	@PostConstruct
+	public void populateMovieCache() {
+        System.out.println("初始化");
+	}
+
+	@PreDestroy
+	public void clearMovieCache() {
+        System.out.println("销毁");
+	}
+}
+~~~
 
 
 
+## 注解扫描和组件管理
 
+之前的示例都是使用XML或者注解配置来指定Spring容器内的每个`BeanDefinition` 的配置元数据的。如果生产中需要注册到容器中类都需要手动配置，显然很繁琐且重复。所以Spring提供了一种通过扫描classpath隐式检测bean组件的选项。会将扫描到的被类似`@Component`注解注释的类自动注册到容器中。
 
+任意一个类被`@Component`注解注释，则表示这个类将作为Spring容器的备选组件，在被扫描后将注册到容器中去。
 
-## 注解扫描
+除了`@Component`外，Spring还提供了`@controller`、`@Service`、`@Respository`注解，是`@Component`的特化注解类型，表示被注释的类是处理器类、业务层和持久层。目前这三个注解的行为和`@Component`是一样的，但是之后的Spring版本这几个注解可能会有特化的语义。
 
-`<context:component-scan>`标签可以配置注解扫描，spring会扫描该标签指定的包下的所有类，并将被注解标记为bean 的对象交给spring容器管理
+Spring能够自动检测如下被这四个组件注解注释的类，例如：
 
-该标签有如下属性：
+~~~java
+@Service
+public class SimpleMovieLister {
 
-* `base-package`指定扫描的包
+	private MovieFinder movieFinder;
+
+	public SimpleMovieLister(MovieFinder movieFinder) {
+		this.movieFinder = movieFinder;
+	}
+}
+~~~
+
+和
+
+~~~java
+@Repository
+public class JpaMovieFinder implements MovieFinder {
+	// implementation elided for clarity
+}
+~~~
+
+要自动检测这些类并注册相应的bean，需要在`@Configuration`类中添加`@ComponentScan`注解，其中basePackages属性是要扫描的包：
+
+~~~java
+@Configuration
+@ComponentScan(basePackages = "org.example")
+public class AppConfig  {
+	// ...
+}
+~~~
+
+或者也可以直接用`value`属性，如：`@ComponentScan("org.example")`
+
+对应的XML配置如下：
 
 配置注解扫描：
 
 ~~~xml
-<!--扫描指定包下的所有注解-->
-<context:component-scan base-package="com.bjpn"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+		https://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/context
+		https://www.springframework.org/schema/context/spring-context.xsd">
+
+	<context:component-scan base-package="org.example"/>
+
+</beans>
 ~~~
 
-### 注解类
+注意：使用`<context:component-scan>`会隐式启用`<context:annotation-config>`的功能。所以在使用`<context:component-scan>`时，无需包含`<context:annotation-config>`元素
 
-实体类注解：
+并且使用`<context:component-scan>`会隐式注册以下组件：
 
-* `@controller`表示处理器类
-* `@Service`当前类为业务层
-* `@Respository`当前类为持久层
-* `@Component`普通类
+* `AutowiredAnnotationBeanPostProcessor`
 
-以上注解都有name属性，以指定bean的beanName；不写默认是类名的驼峰式
+* `CommonAnnotationBeanPostProcessor`
+
+### 扫描过滤器
+
+默认情况下，被 `@Component`, `@Repository`, `@Service`, `@Controller`, `@Configuration`或者自定义注解(被`@Component`注释的)注释的类才会被标记为候选组件。
+
+但是，我们可以应用自定义过滤器来修改和扩展这种行为。具体通过`@ComponentScan`注解的`includeFilters`或`excludeFilters`属性添加（或者作为`<context:component-scan>`元素在XML配置中的`<context:include-filter />` 或 `<context:exclude-filter /> `子元素）
+
+filter元素需要类型和表达式属性。以下表格描述了过滤选项：
+
+| 过滤类型          | 表达式示例                   | 描述                                                         |
+| :---------------- | :--------------------------- | :----------------------------------------------------------- |
+| annotation (默认) | `org.example.SomeAnnotation` | 被指定注解注释的类                                           |
+| assignable        | `org.example.SomeClass`      | 特定的类/接口或者其子类或者实现                              |
+| aspectj           | `org.example..*Service+`     | AspectJ类型表达式指定的类                                    |
+| regex             | `org\.example\.Default.*`    | 正则表达式                                                   |
+| custom            | `org.example.MyTypeFilter`   | 对`org.springframework.core.type.TypeFilter`接口的自定义实现 |
+
+例如:
+
+~~~java
+@Configuration
+@ComponentScan(basePackages = "org.example",
+		includeFilters = @Filter(type = FilterType.REGEX, pattern = ".*Stub.*Repository"),
+		excludeFilters = @Filter(Repository.class))
+public class AppConfig {
+	// ...
+}
+~~~
+
+或者XML配置：
+
+~~~xml
+<beans>
+	<context:component-scan base-package="org.example">
+		<context:include-filter type="regex"
+				expression=".*Stub.*Repository"/>
+		<context:exclude-filter type="annotation"
+				expression="org.springframework.stereotype.Repository"/>
+	</context:component-scan>
+</beans>
+~~~
+
+也可以通过在`@ComponentScan`注解上设置`useDefaultFilters=false`或者设置`<component-scan/>`元素的属性`use-default-filters="false"` 来禁用默认过滤器。这禁止了对使用`@Component`、`@Repository`、`@Service`、`@Controller`、`@RestController`或`@Configuration`注解或元注解的类的自动检测。
+
+### 在组件中定义bean
+
+可以在被`@Component`注释的组件中使用`@Bean`来向容器注册bean，就像在`@Configuration`中的`@Bean`行为一样：
+
+~~~java
+@Component
+public class FactoryMethodComponent {
+
+	@Bean
+	@Qualifier("public")
+	public TestBean publicInstance() {
+		return new TestBean("publicInstance");
+	}
+
+	public void doWork() {
+		//组件方法......
+	}
+}
+~~~
+
+### 扫描组件的名称
+
+当组件被类路径包扫描器扫描并加载到容器中时，其beanName将由`BeanNameGenerator`解析生成。
+
+默认将使用`AnnotationBeanNameGenerator`:如果对应的组件注解有`value`属性，那么会使用value属性作为beanName：
+
+~~~java
+@Component("d")
+public class Dog {
+	......
+}
+~~~
+
+否则将使用未大写的非限定类名，例如类名为`MovieFinderImpl `,则默认的beanName为`movieFinderImpl`
+
+如果需要使用自定义的`BeanNameGenerator`，可以设置`@ComponentScan`的`nameGenerator `属性：
+
+~~~java
+@Configuration
+@ComponentScan(basePackages = "org.example", nameGenerator = MyNameGenerator.class)
+public class AppConfig {
+	// ...
+}
+~~~
+
+或者XML配置：
+
+~~~xml
+<beans>
+	<context:component-scan base-package="org.example"
+		name-generator="org.example.MyNameGenerator" />
+</beans>
+~~~
+
+### 设置组件Scope
+
+可以使用`@Scope`注解设置组件的scope，默认情况下，为单例：
+
+~~~java
+@Scope("prototype")
+@Repository
+public class MovieFinderImpl implements MovieFinder {
+	// ...
+}
+~~~
+
+### `@Qualifier `
+
+在使用`@Autowired`进行自动装配时，可以使用`@Qualifier`匹配bean 的qualifier元数据值来缩小匹配范围。bean的qualifier值可以使用XML中的`<qualifier/>`标签进行设置。
+
+在注解中，也可以在备选组件的类上注释`@Qualifier`来设置当前bean的qualifier值：
+
+~~~java
+@Component
+@Qualifier("Action")
+public class ActionMovieCatalog implements MovieCatalog {
+	// ...
+}
+~~~
+
+# 基于Java的容器配置
+
+现在介绍的注解已经能够大大简化XML配置了，但是目前为止XML配置仍然是必须的。
+
+Spring提供了一些注解，让我们只用Java代码就能配置Spring容器，完全替代XML配置。这就是Spring的Java配置。
+
+在Spring的Java配置中，核心的组件是`@Configuration`注解的类和`@Bean`注解的方法
+
+`@Bean`注解用来指示当前方法是用来实例化、配置并初始化一个新对象，这个新对象会被Spring的IoC容器管理的。`@Bean`注解与XML配置中的`<bean/>`标签起着相同的作用。可以在任何`@Component`类中使用`@Bean`，但最好搭配`@Configuration`类使用
+
+用`@Configuration`注解一个类，表示它的主要目的是作为bean定义的来源。此外，@Configuration类允许通过在同一类中调用其他@Bean方法来定义bean之间的依赖关系，一个简单示例如下：
+
+~~~java
+@Configuration
+public class AppConfig {
+
+	@Bean
+	public MyServiceImpl myService() {
+		return new MyServiceImpl();
+	}
+}
+~~~
+
+上述的Java代码等价于下面的XML配置：
+
+~~~xml
+<beans>
+	<bean id="myService" class="com.acme.services.MyServiceImpl"/>
+</beans>
+~~~
+
+## ``AnnotationConfigApplicationContext``
+
+`AnnotationConfigApplicationContext`类可以接收`@Configuration`类作为输入，此外还可以接受普通的`@Component`类
+
+当`@Configuration`类被作为输入提供时，`@Configuration`类本身会被注册为一个bean，而且该类中所有声明的`@Bean`方法也都将被注册为bean.
+
+当提供了`@Component`和时，它们会被注册为bean，并假设在必要的地方在这些类中使用了依赖注入元数据，如`@Autowired`
+
+### 注册组件
+
+就像实例化`ClassPathXmlApplicationContext`时输入Spring XML文件，也可以在实例化`AnnotationConfigApplicationContext`时使用`@Configuration`类作为输入。这样就完全不需要XML文件来使用Spring容器了：
+
+~~~java
+public static void main(String[] args) {
+	ApplicationContext ctx = new AnnotationConfigApplicationContext(AppConfig.class);
+	MyService myService = ctx.getBean(MyService.class);
+	myService.doStuff();
+}
+~~~
+
+或者其他普通`@Component`类也可以作为其入参：
+
+~~~java
+public static void main(String[] args) {
+	ApplicationContext ctx = new AnnotationConfigApplicationContext(MyServiceImpl.class, Dependency1.class, Dependency2.class);
+	MyService myService = ctx.getBean(MyService.class);
+	myService.doStuff();
+}
+~~~
+
+其中`MyServiceImpl`通过`@Autowired`依赖于`Dependency1`和`Dependency2`
+
+除了使用构造器输入`@Configuration`类和`@Component`类，还可以使用其`register()`方法输入：
+
+~~~java
+public static void main(String[] args) {
+	AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+	ctx.register(AppConfig.class, OtherConfig.class);
+	ctx.register(AdditionalConfig.class);
+	ctx.refresh();
+	MyService myService = ctx.getBean(MyService.class);
+	myService.doStuff();
+}
+~~~
+
+### 组件扫描
+
+要开启组件扫描，需要在`@Configuration`类上注释`@ComponentScan`注解，如下所示：
+
+~~~java
+@Configuration
+@ComponentScan(basePackages = "com.acme")
+public class AppConfig  {
+	// ...
+}
+~~~
+
+这类似于下面XML配置：
+
+~~~xml
+<beans>
+	<context:component-scan base-package="com.acme"/>
+</beans>
+~~~
+
+除此之外，也可以使用其`scan()`方法实现相同的组件扫描功能:
+
+~~~java
+public static void main(String[] args) {
+	AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+	ctx.scan("com.acme");
+	MyService myService = ctx.getBean(MyService.class);
+}
+~~~
+
+## `@Bean`
+
+`@Bean`是一个方法级别的注解，与XML配置中的`<bean/>`标签对应，注解提供`<bean/>`标签支持的一部分属性：
+
+- `init-method`
+- `destroy-method`
+- `autowire`
+- `name`
+
+可以在带有`@Configuration`注解或`@Component`注解的类中使用`@Bean`注解
+
+### 声明Bean
+
+要在`ApplicationContext`中注册一个bean，可以使用`@Bean`注释一个方法，这个bean 的类型由方法的返回值指定。默认情况下，bean的名称与方法名相同，例如：
+
+~~~java
+@Configuration
+public class AppConfig {
+
+	@Bean
+	public TransferServiceImpl transferService() {
+		return new TransferServiceImpl();
+	}
+}
+~~~
+
+上面代码等同于下面XML配置：
+
+~~~xml
+<beans>
+	<bean id="transferService" class="com.acme.TransferServiceImpl"/>
+</beans>
+~~~
+
+### Bean依赖
+
+一个`@Bean`注解的方法可以有任意多个参数，这些参数就是当前bean的依赖项，例如：
+
+~~~java
+@Configuration
+public class AppConfig {
+
+	@Bean
+	public TransferService transferService(AccountRepository accountRepository) {
+		return new TransferServiceImpl(accountRepository);
+	}
+}
+~~~
+
+在实例化bean对象，调用`@Bean`方法时，Spring会自动匹配容器中匹配的bean依赖项到方法入参，
+
+### 声明周期回调方法
+
+由`@Bean`方法注册的bean支持Spring容器支持的所有生命周期回调方法，如 `@PostConstruct` 和`@PreDestroy` 、 `InitializingBean`,和`DisposableBean`接口以及`*Aware`接口
+
+`@Bean`也提供`initMethod `和`destroyMethod `属性，类似于XML`<bean/>`的`init-method`和`destroy-method`属性:
+
+~~~java
+public class BeanOne {
+
+	public void init() {
+		// initialization logic
+	}
+}
+
+public class BeanTwo {
+
+	public void cleanup() {
+		// destruction logic
+	}
+}
+
+@Configuration
+public class AppConfig {
+
+	@Bean(initMethod = "init")
+	public BeanOne beanOne() {
+		return new BeanOne();
+	}
+
+	@Bean(destroyMethod = "cleanup")
+	public BeanTwo beanTwo() {
+		return new BeanTwo();
+	}
+}
+~~~
+
+### 指定Scope
+
+可以在`@Bean`方法上直接注释`@Scope`以设置对应bean的scope：
+
+~~~java
+@Configuration
+public class MyConfiguration {
+
+	@Bean
+	@Scope("prototype")
+	public Encryptor encryptor() {
+		// ...
+	}
+}
+~~~
+
+### 指定beanName
+
+默认情况下，bean的名称与方法名相同，这种行为可以使用`@Bean`的`name`属性进行覆盖：
+
+~~~java
+@Configuration
+public class AppConfig {
+
+	@Bean("myThing")
+	public Thing thing() {
+		return new Thing();
+	}
+}
+~~~
+
+可以通过让单个name属性接收一个字符串数组，来给bean起多个别名，例如：
+
+~~~java
+@Configuration
+public class AppConfig {
+
+	@Bean({"dataSource", "subsystemA-dataSource", "subsystemB-dataSource"})
+	public DataSource dataSource() {
+		// instantiate, configure and return DataSource bean...
+	}
+}
+~~~
+
+## `@Configuration`
 
 
 
 
 
-
-
-# 其他
-
-## Bean线程安全
-
-spring并未对bean的多线程做封装处理
-
-对于一个单例bean，是否线程安全看它是否是无状态的(不保存数据)，如果是无状态的，那么显然线程是安全的，否则，就有线程安全问题
-
-解决方案：
-
-* 对有状态的bean 可以将它的 scope 设置为 Prototype 保证每个线程获取的对象和对象的数据都是独立的
-
-## 循环依赖
+# 循环依赖
 
 ==todo==
 
