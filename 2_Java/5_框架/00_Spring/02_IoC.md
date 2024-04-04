@@ -307,11 +307,11 @@ BeanFactory parentContainer = new XmlBeanFactory(new ClassPathResource("父容�
 BeanFactory childContainer = new XmlBeanFactory(new ClassPathResource("子容器配置文件路径"),parentContainer);
 ~~~
 
-# XML加载spring容器
+# XML配置容器
 
-XML格式的容器信息管理方式是Spring提供的最为强大、支持最为全面的方式  
+XML格式的容器信息管理方式是Spring提供的最为强大、支持最为全面的方式
 
-## XML头文件约束
+## XML配置文件结构
 
 所有使用XML文件进行配置信息加载的Spring IoC容器，包括BeanFactory和ApplicationContext的所有XML对应实现，都使用统一的XML格式。有相同的头文件约束：
 
@@ -325,8 +325,6 @@ XML格式的容器信息管理方式是Spring提供的最为强大、支持最�
 </beans>
 ~~~
 
-## `<beans>`
-
 beans时XML配置文件中最顶层的元素,它的层级结构如下：
 
 * `<beans>`:`[default-lazy-init|default-autowire|default-dependency-check|default-init-method|default-destroy-method]`
@@ -334,9 +332,7 @@ beans时XML配置文件中最顶层的元素,它的层级结构如下：
   * `<alias>`:`[name|alias]` 可以为指定的bean起别名；属性name为要起别名beanId 属性alias是指定的别名
   * `<bean>`：描述对应容器的bean对象
 
-## `<bean>`
-
-### 标签结构
+beans标签最主要的子标签是bean标签，用以声明容器中的bean，其结构如下：
 
 * `<bean>`:`[id|name|class|depends-on|autowire|parent|abstract|scope|lazy-init|factory-method|factory-bean|init-method]`
   * `<constructor-arg>&<property>`
@@ -350,60 +346,81 @@ beans时XML配置文件中最顶层的元素,它的层级结构如下：
     * `<null>`
   * `<lookup-method>`
 
+## bean属性
+
+通过设置bean标签的属性，控制容器管理bean 对象的行为，下面介绍bean常用的属性，其他重要属性会单独介绍：
+
+*  `id`：为bean对象在容器中的唯一标识，该id属性值必须在IoC容器中唯一，大部分情况下我们通过id找到容器中想要的对象可以不指定id属性，只指定全限定类名此时只能通过`getBean(Class<T> requiredType)`来获取Bean，此时如果找不到bean或者找到了多个bean都会抛异常
+
+*  `name`：用来指定bean的别名(alias)，name也需要保证在容器中的唯一性支持设置多个别名，之间用英文逗号分割，注意：
+
+  * 如果不指定id，只指定name，那么name为Bean的标识符，并且需要在容器中唯一
+
+  * 同时指定name和id，此时id为标识符，而name为Bean的别名，两者都可以找到目标Bean
+
+*  `class`：值为类的全限定名，指定bean对象的类型大部分情况下该属性是必须的
+
+*  `depends-on`：值为 beanName ，可以有多个用`,`分割，显示地声明类的依赖关系，让`depends-on`指定的bean对象先于当前bean实例化
+
+  **bean对象的加载顺序:**
+
+  * 没有依赖关系时，bean对象加载进容器的顺序为`<bean>`的声明顺序
 
 
-### 属性
+  * 如果使用`<ref>`的元素明确指定对象的依赖关系，spring会自动根据依赖关系制定bean的加载顺序策略
 
-通过设置bean标签的属性，控制容器管理bean 对象的行为
 
-#### `id`
+  * 而在有的需求中,bean对象之间没有显式的依赖关系，但需要让容器在实例化对象A之前首先实例化对象B,此时就可以通过该属性显式地指定依赖关系
 
-id为bean对象在容器中的唯一标识，该id属性值必须在IoC容器中唯一
 
-大部分情况下我们通过id找到容器中想要的对象
+* `parent`：值为容器中的beanName 以指定继承关系,设置后将继承父bean 的所有property标签属性，如果子bean 有同名property ，将覆盖父bean
 
-可以不指定id属性，只指定全限定类名
+* `abstract`：值为`true`或`false`，指定bean是否为抽象的，如果是抽象的，将不会被加载进容器中
 
-此时只能通过`getBean(Class<T> requiredType)`来获取Bean，此时如果找不到bean或者找到了多个bean都会抛异常
+  * 当bean是抽象bean时，可以不用指定 bean 的 class 属性
 
-#### `name`
 
-用来指定bean的别名(alias)，name也需要保证在容器中的唯一性
+  * 抽象bean配合parent可以将bean定义模板化
 
-支持设置多个别名，之间用英文逗号分割
 
-**补充说明:**
+* `lazy-init`，默认情况下，ApplicationContext容器在初始化时，会实例化所有的bean，可以通过`lazy-init`控制该行为，当`lazy-init`为`true`时，该bean会只有在被用到时才会被实例化(类似与单例模式的懒汉式)
 
-* 如果不指定id，只指定name，那么name为Bean的标识符，并且需要在容器中唯一
+  **补充说明:**`<beans>`标签有属性`default-lazy-init`属性，控制所有bean的默认懒加载行为
 
-* 同时指定name和id，此时id为标识符，而name为Bean的别名，两者都可以找到目标Bean
+*  `init-method`指定bean的方法名，在对象初始化时调用指定方法，作用同`InitializingBean  `
 
-#### `class`
+* `destroy-method  `指定bean的方法名，在对象销毁时调用指定方法，作用同`DisposableBean  `
 
-值为类的全限定名，指定bean对象的类型
+## bean生命周期
 
-大部分情况下该属性是必须的
+bean的scope属性用来声明bean对象的生命周期或者说限定场景
 
-#### `depends-on`
+配置中的bean定义可以看作是一个模板，容器会根据这个模板来构造对象。  
 
-值为 beanName ；可以有多个用`,`分割
+而scope决定了这个模板构造多少对象实例，又该让这些构造完的对象实例存活多久  
 
-显示地声明类的依赖关系，让`depends-on`指定的bean对象先于当前bean实例化
+spring提供了两种基本的scope类型:
 
-**bean对象的加载顺序:**
+* `singleton`是bean的默认scope类型，该类型的bean：
+  * 在Spring的IoC容器中只存在一个实例，所有对该对象的引用将共享这个实例。
+  * 如果该bean不是懒加载的，那么它的生命周期几乎和IoC容器一样
 
-* 没有依赖关系时，bean对象加载进容器的顺序为`<bean>`的声明顺序
+* `prototype`针对该类型的bean：
+  * 容器在接到该类型对象的请求的时候，会每次都重新生成一个新的对象实例给请求方
 
-* 如果使用`<ref>`的元素明确指定对象的依赖关系，spring会自动根据依赖关系制定bean的加载顺序策略
+  * 并且容器就不再拥有当前返回对象的引用  请求方需要自己负责当前返回对象的后继生命周期的管理工作，包括该对象的销毁
 
-* 而在有的需求中,bean对象之间没有显式的依赖关系，但需要让容器在实例化对象A之前首先实例化对象B,此时就可以通过该属性显式地指定依赖关系
 
-#### `autowire`
+如果spring整合了web，那么针对web的域，spring还提供了额外的scope类型：
 
-除了通过配置明确指定bean 之间的依赖关系，Spring还提供了根据bean定义的某些特点将相
-互依赖的某些bean直接自动绑定的功能
+* `request`Spring 容 器 ， 即XmlWebApplicationContext会 为 每 个 HTTP 请 求 创建 一 个 全 新的RequestProcessor对象供当前请求使用，当请求结束后，该对象实例的生命周期即告结束。
+* `session`Spring容器会为每个独立的session创建属于它们自己的全新的UserPreferences对象实例
 
-通过该属性，可以指定bean的自动绑定模式，
+## 自动绑定
+
+除了通过配置明确指定bean 之间的依赖关系，Spring还提供了根据bean定义的某些特点将相互依赖的某些bean直接自动绑定的功能.
+
+通过bean标签的autowired属性，可以指定bean的自动绑定模式：
 
 * `no`:默认值，不采用自动绑定
 * `byName`根据类中声明的实例变量名称，与容器中bean的beanName进行匹配，相匹配的bean将自动绑定到该实例变量(通过setter方法)
@@ -437,60 +454,11 @@ id为bean对象在容器中的唯一标识，该id属性值必须在IoC容器中
 
 `<beans>`标签有一个`default-autowire`可以指定所有`bean`的默认自动绑定模式
 
-#### `parent`
+## 工厂方法
 
-值为容器中的beanName 以指定继承关系
+### 静态工厂方法
 
-设置后将继承父bean 的所有property标签属性
-
-如果子bean 有同名property ，将覆盖父bean
-
-#### `abstract`
-
-值为`true`或`false`
-
-指定bean是否为抽象的，如果是抽象的，将不会被加载进容器中
-
-* 当bean是抽象bean时，可以不用指定 bean 的 class 属性
-
-* 抽象bean配合parent可以将bean定义模板化
-
-#### `scope`
-
-scope用来声明bean对象的生命周期或者说限定场景
-
-配置中的bean定义可以看作是一个模板，容器会根据这个模板来构造对象。  
-
-而scope决定了这个模板构造多少对象实例，又该让这些构造完的对象实例存活多久  
-
-spring提供了两种基本的scope类型:
-
-* `singleton`是bean的默认scope类型，该类型的bean：
-  * 在Spring的IoC容器中只存在一个实例，所有对该对象的引用将共享这个实例。
-  * 如果该bean不是懒加载的，那么它的生命周期几乎和IoC容器一样
-
-* `prototype`针对该类型的bean：
-  * 容器在接到该类型对象的请求的时候，会每次都重新生成一个新的对象实例给请求方
-
-  * 并且容器就不再拥有当前返回对象的引用  请求方需要自己负责当前返回对象的后继生命周期的管理工作，包括该对象的销毁
-
-
-如果spring整合了web，那么针对web的域，spring还提供了额外的scope类型：
-
-* `request`Spring 容 器 ， 即XmlWebApplicationContext会 为 每 个 HTTP 请 求 创建 一 个 全 新的RequestProcessor对象供当前请求使用，当请求结束后，该对象实例的生命周期即告结束。
-* `session`Spring容器会为每个独立的session创建属于它们自己的全新的UserPreferences对象实例
-
-#### `lazy-init`
-
-默认情况下，ApplicationContext容器在初始化时，会实例化所有的bean
-
-可以通过`lazy-init`控制该行为，当`lazy-init`为`true`时，该bean会只有在被用到时才会被实例化(类似与单例模式的懒汉式)
-
-**补充说明:**`<beans>`标签有属性`default-lazy-init`属性，控制所有bean的默认懒加载行为
-
-#### `factory-method`
-
-该属性的值为工厂类的获取实例的方法，针对的是静态工厂方法
+bean标签的`factory-method`属性的值为工厂类的获取实例的方法，针对的是静态工厂方法
 
 通过工厂类获取实例的方法获取bean对象:
 
@@ -513,7 +481,7 @@ spring提供了两种基本的scope类型:
 </bean>
 ~~~
 
-#### `factory-bean  `
+### 非静态方法
 
 针对非静态工厂，我们需要实例化工厂再获取工厂生产的对象
 
@@ -526,7 +494,7 @@ spring提供了两种基本的scope类型:
 <bean id="bar" factory-bean="barFactory" factory-method="getInstance"/>
 ~~~
 
-##### FactoryBean
+### FactoryBean
 
 FactoryBean是Spring容器提供的一种可以扩展容器对象实例化逻辑的接口，当
 
@@ -554,7 +522,7 @@ public interface FactoryBean<T> {
 }
 ~~~
 
- 这样实现了FactoryBean接口的bean定义，通过正常的id引用，容器返回的是FactoryBean所“生产”的对象类型，而非FactoryBean实现本身  
+这样实现了FactoryBean接口的bean定义，通过正常的id引用，容器返回的是FactoryBean所“生产”的对象类型，而非FactoryBean实现本身  
 
 如果一定要取得FactoryBean本身的话，可以通过在bean定义的id之前加前缀`& `
 
@@ -591,23 +559,15 @@ Object nextDayDate = container.getBean("nextDayDate");
 Object factoryBean = container.getBean("&nextDayDate");
 ~~~
 
-#### `init-method`
 
-指定bean的方法名，在对象初始化时调用指定方法
 
-作用同`InitializingBean  `
 
-#### `destroy-method  `
 
-指定bean的方法名，在对象销毁时调用指定方法
-
-作用同`DisposableBean  `
-
-### 子标签
+## 依赖注入
 
 spring通过配置bean的子标签控制**依赖注入**行为
 
-#### `<constructor-arg>  `
+### `<constructor-arg>  `
 
 bean对象在初始化时，默认使用无参构造
 
@@ -619,7 +579,7 @@ bean对象在初始化时，默认使用无参构造
 * `type`指定关联的参数的类型
 * `ref`如果关联的参数是引用数据类型，可通过该属性指定形参，属性值为beanName
 
-#### `<property>  `
+### `<property>  `
 
 bean对象初始化时，也可以使用setter方法进行成员变量的初始化
 
@@ -629,7 +589,7 @@ bean对象初始化时，也可以使用setter方法进行成员变量的初始�
 
 **注意：**使用使用`<property>`的setter方法注入时，要保证对象提供了默认的无参构造
 
-#### `<constructor-arg>`和`<property>  `的子标签
+### `<constructor-arg>`和`<property>  `的子标签
 
 spring提供功能丰富的子标签，以方便注入集合，列表，map等常用容器
 
@@ -672,7 +632,23 @@ spring提供功能丰富的子标签，以方便注入集合，列表，map等�
 
 * `<null>`注入null值
 
-#### `<lookup-method>`
+### `<lookup-method>`
+
+在大多数场景中，容器中的大部分bean都是单例的，当一个单例bean依赖于另一个单例bean、或者一个非单例bean依赖于另一个非单例bean时，可以直接将一个bean定义为另一个bean的属性来处理这种依赖关系。
+
+但是，这种方法在依赖关系的两个bean生命周期不同的时候就会出现问题，例如一个单例bean A需要使用非单例bean B，可能每次在A上调用方法上都需要B，但是为了线程安全或者其他考虑，每次调用时都需要请求一个新的B实例。因为容器只创建一次单例Bean A，所以只有一次设置属性的机会，此时容器无法每次为A提供B的新实例。
+
+
+
+
+
+
+
+
+
+
+
+
 
 实现方法注入：通过相应方法为主体对象注入依赖对象  
 
@@ -691,7 +667,7 @@ spring提供功能丰富的子标签，以方便注入集合，列表，map等�
 
 以上是使用方法注入的方式达到“每次调用都让容器返回新的对象实例”的目的，还可以使用下面方式达到相同的目的：
 
-##### BeanFactoryAware接口
+#### BeanFactoryAware接口
 
 `BeanFactory`的`getBean`方法每次调用都会取得新的对象实例。
 
@@ -737,7 +713,7 @@ public class Person implements BeanFactoryAware {
 
 实际上，方法注入动态生成的子类，完成的是与以上类似的逻辑，只不过实现细节上不同而已。  
 
-##### ObjectFactoryCreatingFactoryBean
+#### ObjectFactoryCreatingFactoryBean
 
 ObjectFactoryCreatingFactoryBean是spring提供的一个FactoryBean实现，它的方法返回一个ObjectFactory实例
 
@@ -843,7 +819,7 @@ public class Person {
 }
 ~~~
 
-#### `<replaced-method>`
+### `<replaced-method>`
 
 该标签可以实现方法替换
 
@@ -2445,6 +2421,32 @@ public class AppConfig {
 ~~~
 
 ## `@Configuration`
+
+`@Configuration`是一个类级别的注解，指示一个对象是bean定义的来源。这个对象通过`@Bean`方法声明bean。
+
+### Bean依赖关系
+
+当bean之间存在依赖关系时，可以用`@Bean`方法调用另一个`@Bean`方法来表达这种依赖关系
+
+~~~java
+@Configuration
+public class AppConfig {
+
+	@Bean
+	public BeanOne beanOne() {
+		return new BeanOne(beanTwo());
+	}
+
+	@Bean
+	public BeanTwo beanTwo() {
+		return new BeanTwo();
+	}
+}
+~~~
+
+这里`beanOne`通过构造函数注入接收到了对`beanTwo`的引用
+
+这种声明bean之间依赖关系的方法只在`@Bean`方法被声明在`@Configuration`类中时才有效。不能使用普通的`@Component`类来声明bean之间的依赖关系。
 
 
 
