@@ -420,7 +420,7 @@ spring提供了两种基本的scope类型:
 
 除了通过配置明确指定bean 之间的依赖关系，Spring还提供了根据bean定义的某些特点将相互依赖的某些bean直接自动绑定的功能.
 
-通过bean标签的autowired属性，可以指定bean的自动绑定模式：
+通过bean标签的autowire属性，可以指定bean的自动绑定模式：
 
 * `no`:默认值，不采用自动绑定
 * `byName`根据类中声明的实例变量名称，与容器中bean的beanName进行匹配，相匹配的bean将自动绑定到该实例变量(通过setter方法)
@@ -632,42 +632,68 @@ spring提供功能丰富的子标签，以方便注入集合，列表，map等�
 
 * `<null>`注入null值
 
-### `<lookup-method>`
+### `<replaced-method>`
+
+该标签可以实现方法替换
+
+可以用新的方法实现覆盖掉原来某个方法的实现逻辑  
+
+它有如下属性：
+
+* name:要替换的方法名
+* replacer:指定替换者类，该类必须实现MethodReplacer接口，会将方法替换成reimplement方法
+
+使用该标签需要用到`MethodReplacer`接口：
+
+~~~java
+public interface MethodReplacer {
+	Object reimplement(Object obj, Method method, Object[] args) throws Throwable;
+}
+~~~
+
+它有子标签`<arg-type>`
+
+如果要替换的方法存在参数，或者对象存在多个重载的方法，可以通过`<arg-type>`明确指定将要替换的方法参数类型  
+
+实例：
+
+~~~java
+public class Demo {
+
+    public void print(){
+        System.out.println("我是原函数");
+    }
+}
+
+public class DemoReplacer implements MethodReplacer {
+    
+    public Object reimplement(Object obj, Method method, Object[] args) throws Throwable {
+        System.out.println("我是替换后函数");
+        return null;
+    }
+}
+~~~
+
+配置文件：
+
+~~~xml
+<bean id="demoReplacer" class="org.example.pojo.DemoReplacer"/>
+<bean id="demo" class="org.example.pojo.Demo">
+    <replaced-method name="print" replacer="demoReplacer"/>
+</bean>
+~~~
+
+
+
+## 方法注入
 
 在大多数场景中，容器中的大部分bean都是单例的，当一个单例bean依赖于另一个单例bean、或者一个非单例bean依赖于另一个非单例bean时，可以直接将一个bean定义为另一个bean的属性来处理这种依赖关系。
 
 但是，这种方法在依赖关系的两个bean生命周期不同的时候就会出现问题，例如一个单例bean A需要使用非单例bean B，可能每次在A上调用方法上都需要B，但是为了线程安全或者其他考虑，每次调用时都需要请求一个新的B实例。因为容器只创建一次单例Bean A，所以只有一次设置属性的机会，此时容器无法每次为A提供B的新实例。
 
+要解决这个问题，一种方法是使用`Aware`接口直接注入容器，在需要beanB时，直接调用容器的`getBean()`方法。这种方法并不理想，因为业务代码已经和Spring框架耦合了。所以Spring提供了方法注入的高级特性，用以处理这种情况。
 
-
-
-
-
-
-
-
-
-
-
-
-实现方法注入：通过相应方法为主体对象注入依赖对象  
-
-* `name:`指定注入的方法名
-* `bean:`指定方法返回的对象
-
-`<lookup-method>`指定的方法签名必须符合如下格式：
-
-~~~java
-<public|protected> [abstract] <return-type> theMethodName(no-arguments);
-~~~
-
-也就是说，该方法必须能被子类实现或者覆写，因为容器会未我们要进行方法注入的对象使用Cglib动态代理生成一个子类实现，替代当前对象。
-
-当指定方法被调用的时候，如果指定的bean是prototype型的，那么每次调用name指定方法时，容器可以返回都是不同的实例
-
-以上是使用方法注入的方式达到“每次调用都让容器返回新的对象实例”的目的，还可以使用下面方式达到相同的目的：
-
-#### BeanFactoryAware接口
+### BeanFactoryAware接口
 
 `BeanFactory`的`getBean`方法每次调用都会取得新的对象实例。
 
@@ -711,11 +737,72 @@ public class Person implements BeanFactoryAware {
 
 这样每次调用getDog方法，获取的都是不同的Dog实例
 
-实际上，方法注入动态生成的子类，完成的是与以上类似的逻辑，只不过实现细节上不同而已。  
+### `<lookup-method>`
 
-#### ObjectFactoryCreatingFactoryBean
+bean的子标签`<lookup-method>`可以实现方法注入。
 
-ObjectFactoryCreatingFactoryBean是spring提供的一个FactoryBean实现，它的方法返回一个ObjectFactory实例
+Spring框架通过使用CGLIB库生成字节码来动态生成一个覆盖`<lookup-method>`指定的方法的子类，让这个子类的返回值为容器中指定的bean，每次调用时都会重新从容器中请求。
+
+该标签有两个属性：
+
+* `name:`指定注入的方法名
+* `bean:`指定方法返回的对象
+
+因为需要实现动态代理，所以`<lookup-method>`指定的方法签名必须符合如下格式：
+
+~~~java
+<public|protected> [abstract] <return-type> theMethodName(no-arguments);
+~~~
+
+这样如果lookup method指定的bean类scope是prototype 时，每次调用这个指定方法都从容器中重新申请一次，这样每次调用使用的就会是独立的bean实例了。
+
+例如:
+
+~~~java
+package fiona.apple;
+
+// no more Spring imports!
+
+public abstract class CommandManager {
+
+	public Object process(Object commandState) {
+		// grab a new instance of the appropriate Command interface
+		Command command = createCommand();
+		// set the state on the (hopefully brand new) Command instance
+		command.setState(commandState);
+		return command.execute();
+	}
+
+	// okay... but where is the implementation of this method?
+	protected abstract Command createCommand();
+}
+~~~
+
+对应的配置为：
+
+~~~xml
+<!-- a stateful bean deployed as a prototype (non-singleton) -->
+<bean id="myCommand" class="fiona.apple.AsyncCommand" scope="prototype">
+	<!-- inject dependencies here as required -->
+</bean>
+
+<!-- commandProcessor uses statefulCommandHelper -->
+<bean id="commandManager" class="fiona.apple.CommandManager">
+	<lookup-method name="createCommand" bean="myCommand"/>
+</bean>
+~~~
+
+
+
+
+
+
+
+### ObjectFactoryCreatingFactoryBean
+
+`ObjectFactoryCreatingFactoryBean`可以实现类似的效果，并且同样与业务代码解耦：
+
+`ObjectFactoryCreatingFactoryBean`是spring提供的一个`FactoryBean`实现，它的方法返回一个`ObjectFactory`实例
 
 通过这个实例可以为我们返回容器管理的相关对象  
 
@@ -817,56 +904,5 @@ public class Person {
         return dogFactory.getObject();
     }
 }
-~~~
-
-### `<replaced-method>`
-
-该标签可以实现方法替换
-
-可以用新的方法实现覆盖掉原来某个方法的实现逻辑  
-
-它有如下属性：
-
-* name:要替换的方法名
-* replacer:指定替换者类，该类必须实现MethodReplacer接口，会将方法替换成reimplement方法
-
-使用该标签需要用到`MethodReplacer`接口：
-
-~~~java
-public interface MethodReplacer {
-	Object reimplement(Object obj, Method method, Object[] args) throws Throwable;
-}
-~~~
-
-它有子标签`<arg-type>`
-
-如果要替换的方法存在参数，或者对象存在多个重载的方法，可以通过`<arg-type>`明确指定将要替换的方法参数类型  
-
-实例：
-
-~~~java
-public class Demo {
-
-    public void print(){
-        System.out.println("我是原函数");
-    }
-}
-
-public class DemoReplacer implements MethodReplacer {
-    
-    public Object reimplement(Object obj, Method method, Object[] args) throws Throwable {
-        System.out.println("我是替换后函数");
-        return null;
-    }
-}
-~~~
-
-配置文件：
-
-~~~xml
-<bean id="demoReplacer" class="org.example.pojo.DemoReplacer"/>
-<bean id="demo" class="org.example.pojo.Demo">
-    <replaced-method name="print" replacer="demoReplacer"/>
-</bean>
 ~~~
 

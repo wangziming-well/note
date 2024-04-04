@@ -431,7 +431,23 @@ public class CachingMovieLister {
 }
 ~~~
 
+## `@Lookup`
 
+使用`@Lookup`注解可以实现Spring的方法注入，对应XML配置中的`<lookup-method/>`标签，例如：
+
+~~~java
+public abstract class CommandManager {
+
+	public Object process(Object commandState) {
+		Command command = createCommand();
+		command.setState(commandState);
+		return command.execute();
+	}
+
+	@Lookup("myCommand")
+	protected abstract Command createCommand();
+}
+~~~
 
 ## 注解扫描和组件管理
 
@@ -890,3 +906,183 @@ public class AppConfig {
 这里`beanOne`通过构造函数注入接收到了对`beanTwo`的引用
 
 这种声明bean之间依赖关系的方法只在`@Bean`方法被声明在`@Configuration`类中时才有效。不能使用普通的`@Component`类来声明bean之间的依赖关系。
+
+### 实现方法注入
+
+Spring提供方法注入机制，使用XML的`<lookup-method/>`和注解的`@Lookup`注解都可以实现方法注入。
+
+在使用`@Configuration`的Java代码配置时，可以直接创建子类，重写抽象方法的方式来查找新的prototype对象，实现方法注入，如：
+
+~~~java
+@Bean
+@Scope("prototype")
+public AsyncCommand asyncCommand() {
+	AsyncCommand command = new AsyncCommand();
+	return command;
+}
+
+@Bean
+public CommandManager commandManager() {
+
+	return new CommandManager() {
+		protected Command createCommand() {
+			return asyncCommand();
+		}
+	}
+}
+~~~
+
+其中`CommandManager`为：
+
+~~~java
+public abstract class CommandManager {
+	public Object process(Object commandState) {
+
+		Command command = createCommand();
+
+		command.setState(commandState);
+		return command.execute();
+	}
+
+	protected abstract Command createCommand();
+}
+~~~
+
+## `@Import`
+
+在XML配置中，可以使用`<import/>`标签引入外部其他xml配置文件，对应的，Java配置可以使用`@Import`注解引入其他`@Configuration`类，例如：
+
+~~~java
+@Configuration
+public class ConfigA {
+
+	@Bean
+	public A a() {
+		return new A();
+	}
+}
+
+@Configuration
+@Import(ConfigA.class)
+public class ConfigB {
+
+	@Bean
+	public B b() {
+		return new B();
+	}
+}
+~~~
+
+Spring4.2后，`@Import`也可以导入普通组件。
+
+## 结合XML和Java配置
+
+Spring的`@Configuration`类支持不旨在取代Spring XML。Spring的XML命名空间仍然是配置容器的好方法。
+
+在以XML配置为中心实例化容器时，可以使用`ClassPathXmlApplicationContext`，如果需要使用Java配置，不要忘了`@Configuration`类也是组件类，直接启用`<context:annotation-config/>`并在XML中配置`@Configuration`类即可。
+
+要以Java为中心实例化容器时可以使用`AnnotationConfigApplicationContext`，如果需要导入XML配置，可以使用`@ImportResource`
+
+### 以XML配置为中心
+
+要在在以XML配置为中心实例化的容器中使用配置类，可以直接在xml文件中配置`@Configuration`类，并启用`<context:annotation-config/>`组件以识别出`@Configuraiton`和`@Bean`注解即可：
+
+~~~java
+@Configuration
+public class AppConfig {
+
+	@Autowired
+	private DataSource dataSource;
+
+	@Bean
+	public AccountRepository accountRepository() {
+		return new JdbcAccountRepository(dataSource);
+	}
+
+	@Bean
+	public TransferService transferService() {
+		return new TransferService(accountRepository());
+	}
+}
+~~~
+
+对应的XML配置文件`system-test-config.xml` 为：
+
+~~~xml
+<beans>
+	<!-- enable processing of annotations such as @Autowired and @Configuration -->
+	<context:annotation-config/>
+	<context:property-placeholder location="classpath:/com/acme/jdbc.properties"/>
+
+	<bean class="com.acme.AppConfig"/>
+
+	<bean class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+		<property name="url" value="${jdbc.url}"/>
+		<property name="username" value="${jdbc.username}"/>
+		<property name="password" value="${jdbc.password}"/>
+	</bean>
+</beans>
+~~~
+
+容器的启动代码为：
+
+~~~java
+public static void main(String[] args) {
+	ApplicationContext ctx = new ClassPathXmlApplicationContext("classpath:/com/acme/system-test-config.xml");
+	TransferService transferService = ctx.getBean(TransferService.class);
+	// ...
+}
+~~~
+
+因为`@Configuration`本身就带有`@Component`的元注解，所以用`@Configuration`注解的类本身扣手组件扫描的候选对象。所以也可以直接启用`<context:component-scan/>`来扫描`@Configuration`类
+
+### 以Java配置为中心
+
+以Java配置为中心的容器也可以通过`@ImportResource`注解引入XML配置。例如：
+
+~~~java
+@Configuration
+@ImportResource("classpath:/com/acme/properties-config.xml")
+public class AppConfig {
+
+	@Value("${jdbc.url}")
+	private String url;
+
+	@Value("${jdbc.username}")
+	private String username;
+
+	@Value("${jdbc.password}")
+	private String password;
+
+	@Bean
+	public DataSource dataSource() {
+		return new DriverManagerDataSource(url, username, password);
+	}
+}
+~~~
+
+其中XML文件properties-config.xml配置为：
+
+~~~xml
+<beans>
+	<context:property-placeholder location="classpath:/com/acme/jdbc.properties"/>
+</beans>
+~~~
+
+~~~properties
+jdbc.properties
+jdbc.url=jdbc:hsqldb:hsql://localhost/xdb
+jdbc.username=sa
+jdbc.password=
+~~~
+
+容器启动代码为：
+
+~~~java
+public static void main(String[] args) {
+	ApplicationContext ctx = new AnnotationConfigApplicationContext(AppConfig.class);
+	TransferService transferService = ctx.getBean(TransferService.class);
+	// ...
+}
+~~~
+
