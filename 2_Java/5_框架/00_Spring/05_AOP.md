@@ -442,7 +442,7 @@ public interface MethodMatcher {
 }
 ~~~
 
-MethodMatcher 重载定义了两个matches方法，他们的去呗就是是否会对方法参数进行校验
+MethodMatcher 重载定义了两个matches方法，他们的区别是 是否会对方法参数进行校验
 
 根据isRuntime的返回值情况，MethodMatcher有两大不同的实现抽象类：
 

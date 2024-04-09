@@ -295,7 +295,7 @@ order值越低优先级越高。
 
 ## Controller
 
-Controller是SpringMVC框架支持的用于处理具体Web情趣的handler类型之一。
+Controller是SpringMVC框架支持的用于处理具体Web请求的handler类型之一。
 
 在使用SpringMVC进行Web开发时，它时我们接触使用最多的组件，用于实现具体的请求处理逻辑。
 
@@ -1422,7 +1422,7 @@ public @interface RequestMapping {
 | `@ResponseBody`                                              | 方法返回值将通过`HttpMessageConverter`转化并写入响应体。     |
 | `HttpEntity<B>`, `ResponseEntity<B>`                         | 指定完整的响应(包括响应头和响应状态)的返回值。通过`HttpMessageConverter`转化 |
 | `HttpHeaders`                                                | 返回一个只有响应头没有响应体的响应                           |
-| `String`                                                     | 返回一个字符串，将被是为逻辑视图名，供`ViewResolver`解析生成视图，并渲染隐式的模型(由`@ModelAttribute`提供，或者方法参数声明的Model) |
+| `String`                                                     | 返回一个字符串，将被视为逻辑视图名，供`ViewResolver`解析生成视图，并渲染隐式的模型(由`@ModelAttribute`提供，或者方法参数声明的Model) |
 | `View`                                                       | 直接返回一个 `View`实例，会被隐式的模型渲染(由`@ModelAttribute`提供，或者方法参数声明的Model) |
 | `Map`, `Model`                                               | 返回一个将被添加到隐式Model的Map或者Model。此时viewName由 `RequestToViewNameTranslator`确定。 |
 | `@ModelAttribute`                                            | 表示返回值将被添加到model中，因为没有指定view或者view的逻辑视图名，将使用`RequestToViewNameTranslator` 来隐式返回视图名 |
