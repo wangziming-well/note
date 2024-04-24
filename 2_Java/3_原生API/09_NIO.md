@@ -13,7 +13,7 @@
 - 服务端每个线程不仅要进行IO读写操作，而且还需要进行业务计算；
 - 服务端在获取客户端连接，读取数据，以及写入数据的过程都是阻塞类型的，在网络状况不好的情况下，这将极大的降低服务器每个线程的利用率，从而降低服务器吞吐量。
 
-所以JDK1.4的`java.nio`包中引入新的Java I/O类库。NIO使用的I/O模型与操作系统I/O更接近，使用连续的大块缓冲区作为数据传输的载体。这样NIO就能充分发挥操作系统I/O的性能。
+所以JDK1.4的`java.nio`包中引入新的Java I/O类库。提供了IO多路复用的功能，不同于传统IO的一个客户端一个线程，IO多路复用可以通过一个或者几个线程完成量通道或者数据源的事件监控和处理。
 
 Java的NIO体系主要有三个主体：`Buffer`、`Channel`、`Selector`
 
@@ -684,7 +684,7 @@ public abstract boolean isBlocking();
 public abstract Object blockingLock();
 ~~~
 
-非阻塞I/O于可选择性紧密相连，这也是管理阻塞的API定义在`SelectableChannel`中的原因。
+非阻塞I/O与可选择性紧密相连，这也是管理阻塞的API定义在`SelectableChannel`中的原因。
 
 可以调用`configureBlocking()`来设置通道的阻塞模式，通过`isBlocking()`方法判断当前通道的阻塞模式。
 
