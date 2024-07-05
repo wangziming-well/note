@@ -1,27 +1,3 @@
-# springboot简介
-
-SpringBoot是Spring家族中的一员，它是用来简化Spring应用程序的创建和开发过程。
-
-它通过采用大量默认配置的方式简化之前框架中繁琐配置
-
-它还可以集成许多优秀的框架
-
-## 特性
-
-* 快速创建基于Spring的应用程序
-* 直接使用java main方法启动内嵌的Tomcat服务器运行Spring Boot程序，不需要部署war包
-* 提供约定的starter POM来简化Maven配置
-* 采用注解配置，Java配置来替代了XML文件配置
-
-## 核心
-
-* 自动配置：针对很多Spring应用程序和常见的应用功能，Spring Boot能自动提供相关配置
-* 起步依赖：告诉Spring Boot需要什么功能模块，它能够引入需要的依赖库
-* Actuator：让你能够深入运行中的Spring Boot应用程序，一探Spring Boot程序的内部信息
-* 命令行界面：这是Spring Boot的可选特性，主要针对Groovy语言使用
-
-
-
 # SpringBoot Web项目结构
 
 * `.mvn|mvnw|mvnw.cmd`使用脚本操作执行maven相关命令，国内使用较少，可删除
