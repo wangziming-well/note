@@ -81,6 +81,8 @@ SpringBoot是Spring家族中的一员，它是用来简化Spring应用程序的�
 </project>
 ~~~
 
+# Springboot核心机制
+
 ## Starter
 
 Starter是Springboot提供的一系列开箱即用的依赖，可以在应用程序中导入它们。 通过Starter，可以获得所有需要的Spring和相关技术的一站式服务，免去了需要到处大量复制粘贴依赖的烦恼。例如，想要使用springmvc，只需要引入下面依赖即可：
@@ -94,13 +96,55 @@ Starter是Springboot提供的一系列开箱即用的依赖，可以在应用程
 
 而无需导入所有的相关依赖，这是因为在`spring-boot-starter-web`包中已经提前帮我们导入好了相关依赖
 
-@SpringBootApplication
+## Configuration 类
+
+Spring Boot倾向于通过Java代码来进行配置的定义。 虽然也可以使用XML来配置 `SpringApplication` ，但还是建议你通过 `@Configuration` 类来进行配置。 通常，可以把启动类是作为主要的 `@Configuration` 类
+
+### 导入额外的 Configuration 类
+
+不需要把所有的 `@Configuration` 放在一个类中。 `@Import` 注解可以用来导入额外的配置类。 另外，你可以使用 `@ComponentScan` 来自动扫描加载所有Spring组件，包括 `@Configuration` 类
+
+### 导入 XML Configuration
+
+如果你确实需要使用基于XML的配置，我们建议你仍然从 `@Configuration` 类开始，然后通过 `@ImportResource` 注解来加载XML配置文件。
+
+## 自动装配
+
+Spring Boot的自动装配机制会试图根据你所添加的依赖来自动配置你的Spring应用程序。 例如，如果你添加了 `HSQLDB` 依赖，而且你没有手动配置任何DataSource Bean，那么Spring Boot就会自动配置内存数据库。
+
+需要将 `@EnableAutoConfiguration` 或 `@SpringBootApplication` 注解添加到你的 `@Configuration` 类中，从而开启自动配置功能。
+
+### 非侵入性
+
+自动配置是非侵入性的。 在任何时候，你都可以开始定义你自己的配置来取代自动配置的特定部分。 例如，如果你添加了你自己的 `DataSource` bean，默认的嵌入式数据库支持就会“退步”从而让你的自定义配置生效。
+
+如果你想知道在应用中使用了哪些自动配置，你可以在启动命令后添加 `--debug` 参数。 这个参数会为核心的logger开启debug级别的日志，会在控制台输出自动装配项目以及触发自动装配的条件。
+
+### 禁用指定的自动装配类
+
+如果你想禁用掉项目中某些自动装配类，你可以在 `@SpringBootApplication` 注解的 `exclude` 属性中指定，例如：
+
+~~~java
+@SpringBootApplication(exclude = { DataSourceAutoConfiguration.class })
+public class MyApplication {
+
+}
+~~~
+
+如果要禁用的自动装配类不在classpath上（没有导入），那么你可以在注解的 `excludeName` 属性中指定类的全路径名称。 `exclude` 和 `excludeName` 属性在 `@EnableAutoConfiguration` 中也可以使用。 最后，你也可以在配置文件中通过 `spring.autoconfigure.exclude[]` 配置来定义要禁用的自动配置类列表
+
+## Spring Bean 和 依赖注入
+
+你可以使用任何标准的Spring技术来定义你的Bean以及依赖注入关系。 推荐使用构造函数注入，并使用 `@ComponentScan` 注解来扫描Bean。
+
+如果你按照上面的建议构造你的代码（将你的启动类定位在顶级包中），你可以在启动类添加 `@ComponentScan` 注解，也不需要定义它任何参数， 你的所有应用组件（`@Component`、`@Service`、`@Repository`、`@Controller` 和其他）都会自动注册为Spring Bean。
+
+也可以直接使用 `@SpringBootApplication` 注解（该注解已经包含了 `@ComponentScan`）。
+
+## `@SpringBootApplication`
 
 一个 `@SpringBootApplication` 注解就可以用来启用这三个功能，如下。
 
-- `@EnableAutoConfiguration`：启用Spring Boot的自动配置机制。
+- `@EnableAutoConfiguration`：启用Spring Boot的自动装配机制
 - `@ComponentScan`：对应用程序所在的包启用 `@Component` 扫描。
 - `@SpringBootConfiguration`：允许在Context中注册额外的Bean或导入额外的配置类。这是Spring标准的 `@Configuration` 的替代方案
-
-
-

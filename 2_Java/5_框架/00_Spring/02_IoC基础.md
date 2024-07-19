@@ -298,7 +298,7 @@ System.out.println(person.getPets().getName());
 
 ## BeanFactory分层
 
-BeanFactory可以通过实现HierarchicalBeanFactory接口实现分层
+`BeanFactory`可以通过实现`HierarchicalBeanFactory`接口实现分层
 
 容器A在初始化的时候，可以首先加载容器B中的所有对象定义，然后再加载自身的对象定义，这样，容器B就成为了容器A的父容器，容器A可以引用容器B中的所有对象定义：  
 
