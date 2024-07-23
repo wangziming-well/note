@@ -365,12 +365,13 @@ beans标签最主要的子标签是bean标签，用以声明容器中的bean，�
   **bean对象的加载顺序:**
 
   * 没有依赖关系时，bean对象加载进容器的顺序为`<bean>`的声明顺序
-
-
-  * 如果使用`<ref>`的元素明确指定对象的依赖关系，spring会自动根据依赖关系制定bean的加载顺序策略
-
-
-  * 而在有的需求中,bean对象之间没有显式的依赖关系，但需要让容器在实例化对象A之前首先实例化对象B,此时就可以通过该属性显式地指定依赖关系
+  
+  
+    * 如果使用`<ref>`的元素明确指定对象的依赖关系，spring会自动根据依赖关系制定bean的加载顺序策略
+  
+  
+    * 而在有的需求中,bean对象之间没有显式的依赖关系，但需要让容器在实例化对象A之前首先实例化对象B,此时就可以通过该属性显式地指定依赖关系
+  
 
 
 * `parent`：值为容器中的beanName 以指定继承关系,设置后将继承父bean 的所有property标签属性，如果子bean 有同名property ，将覆盖父bean
@@ -378,9 +379,10 @@ beans标签最主要的子标签是bean标签，用以声明容器中的bean，�
 * `abstract`：值为`true`或`false`，指定bean是否为抽象的，如果是抽象的，将不会被加载进容器中
 
   * 当bean是抽象bean时，可以不用指定 bean 的 class 属性
-
-
-  * 抽象bean配合parent可以将bean定义模板化
+  
+  
+    * 抽象bean配合parent可以将bean定义模板化
+  
 
 
 * `lazy-init`，默认情况下，ApplicationContext容器在初始化时，会实例化所有的bean，可以通过`lazy-init`控制该行为，当`lazy-init`为`true`时，该bean会只有在被用到时才会被实例化(类似与单例模式的懒汉式)
@@ -413,7 +415,7 @@ spring提供了两种基本的scope类型:
 
 如果spring整合了web，那么针对web的域，spring还提供了额外的scope类型：
 
-* `request`Spring 容 器 ， 即XmlWebApplicationContext会 为 每 个 HTTP 请 求 创建 一 个 全 新的RequestProcessor对象供当前请求使用，当请求结束后，该对象实例的生命周期即告结束。
+* `request`Spring 容 器 ， 即XmlWebApplicationContext会为每个HTTP请求创建一个全新的RequestProcessor对象供当前请求使用，当请求结束后，该对象实例的生命周期即告结束。
 * `session`Spring容器会为每个独立的session创建属于它们自己的全新的UserPreferences对象实例
 
 ## 自动绑定
@@ -602,7 +604,7 @@ spring提供功能丰富的子标签，以方便注入集合，列表，map等�
 * `<ref>` 功能同ref属性
 
   * `bean `指定要注入的bean对象
-  * `parent`指定父容器中定义的队形
+  * `parent`指定父容器中定义的bean
 
 * `<idref>` 类似于value，但多了一层检查，值必须属于容器中的beanName集合
 
@@ -687,7 +689,7 @@ public class DemoReplacer implements MethodReplacer {
 
 ## 方法注入
 
-在大多数场景中，容器中的大部分bean都是单例的，当一个单例bean依赖于另一个单例bean、或者一个非单例bean依赖于另一个非单例bean时，可以直接将一个bean定义为另一个bean的属性来处理这种依赖关系。
+在大多数场景中，容器中的大部分bean都是单例的，当一个单例bean依赖于另一个单例bean、或者一个非单例bean依赖于另一个非单例bean时，可以直接将一个bean关联为另一个bean的属性来处理这种依赖关系。
 
 但是，这种方法在依赖关系的两个bean生命周期不同的时候就会出现问题，例如一个单例bean A需要使用非单例bean B，可能每次在A上调用方法上都需要B，但是为了线程安全或者其他考虑，每次调用时都需要请求一个新的B实例。因为容器只创建一次单例Bean A，所以只有一次设置属性的机会，此时容器无法每次为A提供B的新实例。
 
@@ -791,12 +793,6 @@ public abstract class CommandManager {
 	<lookup-method name="createCommand" bean="myCommand"/>
 </bean>
 ~~~
-
-
-
-
-
-
 
 ### ObjectFactoryCreatingFactoryBean
 
