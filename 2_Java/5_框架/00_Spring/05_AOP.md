@@ -44,7 +44,7 @@ AOP能将日记记录、安全检查、事务管理等系统需求（这样的�
 
 静态AOP的Aspect直接以字节码的形式编译到类中，不会对系统的运行造成任何性能损失
 
-缺点是不够灵活，如果横切关注点要改变织入到系统的位置，就需要重新求改Aspect定义未见，然后使用编译器重新编译Aspect并重新织入到系统中
+缺点是不够灵活，如果横切关注点要改变织入到系统的位置，就需要重新修改Aspect定义文件，然后使用编译器重新编译Aspect并重新织入到系统中
 
 ### 动态AOP
 
@@ -106,7 +106,7 @@ Java 程序的class 都是通过相应的类加载器（ClassLoader）加载到J
 
 只要允许，程序执行过程中的任何时点都可以称为横切逻辑的织入点，所有这些执行时点都是Joinpoint
 
-下面时较为常用的Joinpoint类型：
+下面是较为常用的Joinpoint类型：
 
 * 方法调用(Method Call) ：方法被调用时所处的程序执行点，是在调用对象上的执行点
 * 方法执行(Method Call execution)：方法内部执行开始时点，是在被调用到的方法逻辑执行的时点
@@ -159,7 +159,7 @@ Advice之于Aspect，就像 Mehtod之于Class
 
 * Around Advice ：对附加其上的Joinpoint进行包裹，可以在Joinpoint之前和之后都指定相应的逻辑
 
-* Introduction : 与之前的几种Advice不同，它不是根据横切逻辑在Joinpoint出的执行时机来区分的，而是根据它可以完成的功能而区别与其他Advice类型
+* Introduction : 与之前的几种Advice不同，它不是根据横切逻辑在Joinpoint处的执行时机来区分的，而是根据它可以完成的功能而区别与其他Advice类型
 
   Introduction可以为原有的对象添加新的特性或者行为
 
@@ -183,8 +183,6 @@ Spring AOP使用一组类来完成最终的织入操作，ProxyFactory类则是S
 
 符合Pointcut所指定的条件，将在织入过程中被织入横切逻辑的对象，称为目标对象(Target)
 
-
-
 # Spring AOP原理
 
 Spring AOP是Spring核心框架的重要组成部分，与Spring IOC容器和Spring框架对其他JavaEE服务的集成 构成的Spring框架的核心
@@ -201,16 +199,16 @@ Spring AOP属于动态AOP采用动态代理机制和字节码生成技术实现�
 
 ![代理模式](https://gitee.com/wangziming707/note-pic/raw/master/img/%E4%BB%A3%E7%90%86%E6%A8%A1%E5%BC%8F.png)
 
-* ISubject: 该几口是对被访问者或者访问者资源的抽象
+* ISubject: 该接口是对被访问者或者访问者资源的抽象
 * RealSubject:被访问者或者被访问资源的具体实现类
 * ProxySubject:被访问者或者被访问资源的代理实现类，该类持有ISubject接口的一个具体实例
-* Client:代表访问者的抽象角色，Client将会访问ISubject类型的对象或者资源，再代理场景中，Client无法直接访问RealSubject获取资源，而是通过ProxySubject
+* Client:代表访问者的抽象角色，Client将会访问ISubject类型的对象或者资源，在代理场景中，Client无法直接访问RealSubject获取资源，而是通过ProxySubject
 
 在代理模式中，ProxySubject常常在RealSubject提供的资源基础上添加一些逻辑功能
 
 在AOP中，Target就是 RealSubject，在为这个Target创建代理对象时，可以将横切逻辑添加到这个代理对象中。
 
-但是，这样这样静态代理的方式，即使Joinpoint相同，如果对应的Target类型不同，那么就需要针对的所有的Target类型，创建对应的代理对象，但是实际上，这些代理对象所要添加的横切逻辑时一样的，
+我们可以发现，这样静态代理的方式，即使Joinpoint相同，如果对应的Target类型不同，那么就需要针对的所有的Target类型，创建对应的代理对象，即使这些代理对象所要添加的横切逻辑是一样的。这样会导致资源的浪费。
 
 ## 动态代理
 
@@ -218,15 +216,17 @@ Spring AOP属于动态AOP采用动态代理机制和字节码生成技术实现�
 
 JDK提供了一种动态代理的规范：`java.lang.reflect.Proxy`类和`java.lang.reflect.InvocationHandler`接口
 
-可以通过Proxy类的newProxyInstance方法获取代理对象实例，它的方法签名如下：
+### 接口介绍
+
+可以通过`Proxy`类的`newProxyInstance()`方法获取代理对象实例，它的方法签名如下：
 
 ~~~java
 public static Object newProxyInstance(ClassLoader loader,Class<?>[] interfaces,InvocationHandler h)
 ~~~
 
-需要传入RealSubject的ClassLoader,和RealSubject的接口类定义和RealSubject的InvocationHandler
+需要传入被代理对象的`ClassLoader`,和被代理对象的接口类定义和的`InvocationHandler`
 
-InvocationHandler定义如下：
+`InvocationHandler`定义如下：
 
 ~~~java
 public interface InvocationHandler {
@@ -236,9 +236,29 @@ public interface InvocationHandler {
 }
 ~~~
 
-在invoke方法中调用被代理类的实际资源方法，并进行一些额外的处理
+`newProxyInstance()`将生成一个代理对象，当代理对象发生方法调用时，这个代理对象会请求`InvocationHandler`，让它来进行真正的方法调用处理。实际的方法调用处理是在`InvocationHandler.invoke()`中进行的。
 
-下面是实例：
+我们来解释一下`invoke()`方法的入参，假设`newProxyInstance()`方法返回一个对象`Object pro`，这个对象发生了方法调用`pro.doSomething(a)`,那么它会导致`InvocationHandler.invoke()`方法被调用，  `InvocationHandler.invoke()`的入参和返回值解释如下：
+
+* `Object proxy`：是发起请求的代理对象，这里就是`pro`
+* `Method method`：导致当前`invoke`方法被调用的代理对象的方法，这里是`doSomething()`方法
+* `Object[] args`：导致当前`invoke`方法被调用的代理对象的方法入参，这里是`a`
+* `return`：会成为代理对象的方法的返回值
+
+所以，`newProxyInstance()`生成的代理对象的每个方法的方法体都类似下面代码：
+
+~~~java
+InvocationHandler h;  //newProxyInstance()方法传入的InvocationHandler
+
+public Object doSomething(Object[] args){
+
+    return h.invoke(this,getCurrentMethod() ,args );
+}
+~~~
+
+### 示例
+
+下面是使用动态代理的一个示例：
 
 定义被代理对象和接口：
 
@@ -255,7 +275,7 @@ public class Target implements ITarget {
 }
 ~~~
 
-定义ITarget的InvocationHandler
+定义ITarget的`InvocationHandler`
 
 ~~~java
 public class MyInvocationHandler implements InvocationHandler {
@@ -290,9 +310,11 @@ ITarget iTarget =(ITarget) Proxy.newProxyInstance(
 iTarget.request();
 ~~~
 
+如果我们在`MyInvocationHandler`中传入多个被代理对象，那么就实现了使用一个通用的代理对象来代理多个被代理对象。就可以实现横切逻辑的复用。
+
 这样通过动态代理的方式，就实现了AOP
 
-InvocationHandler是实现横切逻辑的地方，是AOP中的Advice
+`InvocationHandler`是实现横切逻辑的地方，是AOP中的Advice
 
 该种方式实现的AOP要求目标类型必须实现相应的Interface
 

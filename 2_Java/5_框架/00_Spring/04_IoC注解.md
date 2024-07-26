@@ -652,7 +652,7 @@ Spring提供了一些注解，让我们只用Java代码就能配置Spring容器�
 
 `@Bean`注解用来指示当前方法是用来实例化、配置并初始化一个新对象，这个新对象会被Spring的IoC容器管理的。`@Bean`注解与XML配置中的`<bean/>`标签起着相同的作用。可以在任何`@Component`类中使用`@Bean`，但最好搭配`@Configuration`类使用
 
-用`@Configuration`注解一个类，表示它的主要目的是作为bean定义的来源。此外，@Configuration类允许通过在同一类中调用其他@Bean方法来定义bean之间的依赖关系，一个简单示例如下：
+用`@Configuration`注解一个类，表示它的主要目的是作为bean定义的来源。此外，`@Configuration`类允许通过在同一类中调用其他@Bean方法来定义bean之间的依赖关系，一个简单示例如下：
 
 ~~~java
 @Configuration
@@ -673,13 +673,13 @@ public class AppConfig {
 </beans>
 ~~~
 
-## ``AnnotationConfigApplicationContext``
+## `AnnotationConfigApplicationContext`
 
 `AnnotationConfigApplicationContext`类可以接收`@Configuration`类作为输入，此外还可以接受普通的`@Component`类
 
 当`@Configuration`类被作为输入提供时，`@Configuration`类本身会被注册为一个bean，而且该类中所有声明的`@Bean`方法也都将被注册为bean.
 
-当提供了`@Component`和时，它们会被注册为bean，并假设在必要的地方在这些类中使用了依赖注入元数据，如`@Autowired`
+当`@Component`类和JSR-330类作为`AnnotationConfigApplicationContext`的输入时，它们会被注册为bean，并假设在必要的地方在这些类中使用了依赖注入元数据，如`@Autowired`
 
 ### 注册组件
 
