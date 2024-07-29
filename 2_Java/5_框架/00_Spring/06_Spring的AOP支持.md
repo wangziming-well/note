@@ -10,106 +10,101 @@ Spring AOP的AOP方法与其他大多数AOP框架不同。其目的不是提供�
 
 Spring AOP的设计目的不是与AspectJ竞争，以提供一个全面的AOP解决方案。Spring AOP等基于代理的框架和AspectJ等完整的框架都很有价值，它们是互补的，而不是竞争的。Spring将Spring AOP和IoC与AspectJ无缝集成，以便在基于Spring的应用架构中实现AOP的所有用途。这种整合并不影响Spring AOP API或AOP联盟的API。Spring AOP仍然是向后兼容的。
 
-# @AspectJ形式的AOP
+# 基于@AspectJ的AOP支持
 
-Spring2.0发布后，Spring AOP 支持新的使用方式
-
-* 支持AspectJ5发布的@AspectJ形式的AOP实现方式，可以直接使用POJO来定义Aspect以及相关的Advice，并使用一套标准的注解来标注这些POJO，SpringAOP会根据注解信息查找相关的Aspect定义，并将其声明的横切逻辑织入当前系统
-* 简化了XML配置方式。使用新的基于XSD的配置方式，可以使用aop独有的命名空间
-
-@AspectJ代表一种定义Aspect的风格，这种方式是从AspectJ引入的，但最终的实现机制还是SpringAOP的代理模式
+`@AspectJ` 指的是将aspect作为带有注解的普通Java类来声明的一种风格。这种风格是从AspectJ项目引入的，但最终的实现机制还是SpringAOP的代理模式，是纯粹的Spring AOP，不依赖AspectJ编译器或织入器（weaver）
 
 简单的POJO+@Aspect就是一个@AspectJ形式的Aspect
 
-## 使用方式
+## 启用@AspectJ的支持
 
-可以通过POJO和注解标注的方式定义Aspect：
+根据`@AspectJ`配置Spring AOP后，Spring会根据Bean是否被这些切面关注而自动代理。也就是说Spring会为需要注入横切逻辑的Bean生成一个代理来拦截方法调用。
+
+`@AspectJ`支持可以通过XML或者Java风格的配置来启用。在此之前，需要保证项目中引入了`aspectjweaver.jar`库
+
+### Java配置启用`@AspectJ`支持
+
+在`@Configuration`类上添加 `@EnableAspectJAutoProxy` 注解以启用`@AspectJ`支持，如下所示：
 
 ~~~java
-@Aspect
-@Component
-public class LogAspect {
-    @Pointcut("execution(* *..pojo.*.*(..))")
-    public void pointcutName(){}
-
-    @Around("pointcutName()")
-    public Object beforeExecute(ProceedingJoinPoint joinPoint) throws Throwable {
-        System.out.println("方法执行前");
-        Object proceed = joinPoint.proceed();
-        System.out.println("方法执行前");
-        return proceed;
-    }
+@Configuration
+@EnableAspectJAutoProxy
+public class AppConfig {
 }
 ~~~
 
-* `@Aspect`标记当前类为aspect
-* `@Pointcut`将pointcut绑定到当前方法上
-* `@Around @After @Before` 标记当前方法为横切逻辑
+### XML配置启用`@AspectJ`支持
 
-定义好Aspect后，我们可以使用如下方式织入：
-
-### 编程方式织入
-
-我们在介绍Weaver是，在继承体系中有一个`AspectJProxyFactory`没有介绍，它就是适用于@AspectJ方式的织入器的，具体织入过程如下：
-
-~~~java
-AspectJProxyFactory weaver = new AspectJProxyFactory();
-weaver.setTarget(new Target());
-weaver.addAspect(LogAspect.class);
-ITarget proxy = weaver.getProxy();
-proxy.execute();
-~~~
-
-织入方式和ProxyFactory差不多
-
-### 自动代理织入
-
-在介绍AutoProxy自动代理是，继承体系中有一个`AspectJAwareAdvisorAutoProxyCreator`没有介绍，它就是适用于@AspectJ方式的自动代理类，只需要将其注册到容器中：
+使用xsd形式的配置方式，使用使用 `aop:aspectj-autoproxy` 元素开启`@AspectJ`支持：
 
 ~~~xml
-<bean class="org.springframework.aop.aspectj.annotation.AnnotationAwareAspectJAutoProxyCreator"/>
-<bean id="target" class="com.wzm.spring.pojo.impl.Target"/>
-<bean class="com.wzm.spring.aspectj.LogAspect"/>
-~~~
-
-或者使用xsd形式的配置方式：
-
-~~~xml
-<!-- 扫描aspect和target类-->
-<context:component-scan base-package="com.wzm.spring.pojo,com.wzm.spring.aspectj"/>
 <!-- 开启aspectj自动代理-->
 <aop:aspectj-autoproxy/>
 ~~~
 
-## @AspectJ形式的Pointcut
+当然在使用`<aop>`命名空间前需要在XML配置文件的顶部添加aop相关的schema
 
-在`@Aspect`所标注的Aspect定义类内使用`@Pointcut`注解，指定AspectJ形式的Pointcut表达式后，将注解标注到某个方法上即可
+## Aspect的声明
 
-@AspectJ形式的Pointcut声明有如下两个部分：
+启用`@AspectJ`支持后，任何在容器中定义的bean，如果其类被`@Aspect`注解注释，就会被Spring自动检测到，并用于配置Spring AOP。例如：
 
-* Pointcut Expression
-* Pointcut Signature
+~~~java
+import org.aspectj.lang.annotation.Aspect;
 
-### Pointcut Expression
+@Aspect
+@Component
+public class NotVeryUsefulAspect {
+}
+~~~
 
-Pointcut Expression：切入点表达式的载体为`@Pointcut`，该注解是方法级别的，所以表达式也只能在某个方法上声明；Pointcut Expression所附着的方法称为该Pointcut Expression的Pointcut Signature(切入点签名)
+需要注意，单独`@Aspect`注解并不会让当前类被Spring的组键扫描自动检测到，需要再单独添加一个单独的 `@Component` 注解
 
-Pointcut Expression由两部分组成：
+在Spring AOP中，切面本身不能成为其他切面的advice的目标。类上的 `@Aspect` 注解将其标记为一个切面，因此，会将其排除在自动代理之外。
 
-* Pointcut Desinator(Pointcut标识符)。表明该Pointcut将以怎样的行为来匹配表达式
-* 表达式匹配模式，在Pointcut标识符之内可以指定具体的匹配模式
+## Pointcut的声明
 
-Pointcut Expression 支持`&& || !`逻辑运算
+Pointcuts确定advice的连接点，从而使我们能够控制 advice 的运行时间。Spring AOP只支持Spring Bean的方法执行类型的Joinpoint，所以可以把pointcut看作是对Spring Bean上的方法执行的匹配。
 
-#### Pointcut Desinator
+一个Pointcut声明有如下两个部分：
+
+* Pointcut Expression：切点表达式
+* Pointcut Signature：由名称和任意参数组成的切入点签名
+
+在AOP的 `@AspectJ` 注解式中，一个pointcut签名是由一个常规的方法定义提供的，而pointcut表达式是通过使用 `@Pointcut` 注解来表示的（作为pointcut签名的方法必须是一个 `void` 返回类型）
+
+下面例子可以清楚地区分切点签名和切点表达式。下面的例子定义了一个名为 `anyOldTransfer` 的切点，它匹配任何名为 `transfer` 的方法的执行
+
+~~~java
+@Pointcut("execution(* transfer(..))") // the pointcut expression
+private void anyOldTransfer() {} // the pointcut signature
+~~~
+
+Pointcut Expression的载体为`@Pointcut`，该注解是方法级别的，所以表达式也只能在某个方法上声明；Pointcut Expression所附着的方法称为该Pointcut Expression的Pointcut Signature(切入点签名)
+
+而Pointcut Expression由两部分组成：
+
+* Pointcut Designator(Pointcut标识符)。表明该Pointcut将以怎样的行为来匹配表达式
+* 表达式匹配模式，在Pointcut指示符之内可以指定具体的匹配模式
+
+例如对于下边pointcut表达式,execution为Pointcut标识符，`public * *(..)`为表达式匹配模式
+
+~~~java
+execution(public * *(..))
+~~~
+
+### Pointcut标识符
 
 AspectJ的Pointcut表达式可用的Pointcut标识符很丰富，基本包含所有的Joinpoint类型的表述，但是SpringAOP只支持方法级别的Joinpoint，所以可以使用的标识符只有少数的几个：
 
-##### execution
+#### execution
 
-execution:匹配拥有指定方法签名的Joinpoint，使用execution标识符的Pointcut表达式的规定格式如下：
+execution匹配拥有指定方法签名的Joinpoint
+
+使用execution标识符的表达式匹配模式的规定格式如下：
 
 `execution(modifiers-pattern? ret-type-pattern declariong-type-pattern? name-pattern(param-pattern) throws-pattern?)`
+
+其中：
 
 * `?`表示可选匹配
 * `modifiers-pattern`匹配访问权限类型 可省略
@@ -118,7 +113,7 @@ execution:匹配拥有指定方法签名的Joinpoint，使用execution标识符�
 * `name-pattern(param-pattern)`匹配方法名(参数)
 * `throws-pattern`匹配异常 可省略
 
-以上匹配可以由符号表示含义：
+以上匹配可以使用如下符号：
 
 * `*`表示相邻的多个任意字符
 
@@ -130,42 +125,13 @@ execution:匹配拥有指定方法签名的Joinpoint，使用execution标识符�
   * 在类名后，表示当前类及其子类
   * 在接口后，表示当前接口及其实现类
 
-示例：
+#### within
 
-~~~java
-举例：
-execution(public * *(..)) ;
-指定切入点为：任意公共方法。
-execution(* set*(..)) ;
-指定切入点为：任何一个以“set”开始的方法。
-execution(* com.xyz.service.*.*(..)) ;
-指定切入点为：定义在 service 包里的任意类的任意方法。
-execution(* com.xyz.service..*.*(..));
-指定切入点为：定义在 service 包或者子包里的任意类的任意方法。“..”出现在类名中时，后
-面必须跟“*”，
-表示包、子包下的所有类。
-execution(* *..service.*.*(..));
-指定所有包下的 serivce 子包下所有类（接口）中所有方法为切入点
-execution(public void com.bjpn.service.UserService.addUser(String ));
-~~~
-
-##### within
-
-within标识符只接受类型声明，它将会匹配指定类型下所有的Joinpoint
+within标识符只接受类型声明，它将会匹配指定类下所有的Joinpoint
 
 因为SpringAOP只支持方法级别的Joinpoint，所以使用within指定某个类后，它将匹配指定类所声明的所有方法执行
 
-示例：
-
-~~~java
-举例
-within(com.demo.spring.*);
-匹配com.demo.spring包下所有类型内部的方法级别的Joinpoint
-within(com.demo.spring..*);
-匹配com.demo.spring包以及子包下所有类型内部的方法级别的Joinpoint
-~~~
-
-##### this&target
+#### this&target
 
 在AspectJ中：
 
@@ -176,7 +142,7 @@ within(com.demo.spring..*);
 
 SpringAOP中的this和target标识符语义有别于AspectJ中的两个标识符的原始语义：
 
-* this代指目标对象的代理对象
+* this代指目标对象的代理对象，在Spring中也就是容器中bean 的实际类型
 * target代指目标对象
 
 实际上，从代理模式来看，代理对象通常和目标对象的类型是相同的，因为
@@ -204,15 +170,15 @@ public class Target implements ITarget{
 
 通常this和target标志符都在Pointcut表达式中于其他标志符结合使用，进一步加强匹配的限定规则
 
-##### args
+#### args
 
-该标志符用来匹配拥有指定参数类型、指定参数数量的方法级Joinpoint
+该标志符用来匹配拥有指定参数类型Joinpoint
 
 与execution标志符可以直接匹配方法参数类型签名不同，args的会在运行时动态检查参数类型
 
 比如对于表达式`args(com.demo.spring.User)`，即使方法签名是`public boolean login(Object user)`，只要在运行时传入的是User实例，表达式仍然可以捕捉到该Joinpoint
 
-##### 注解类标识符
+#### 注解类标识符
 
 注解类标识符，将匹配被指定注解标识的类/方法，并根据不同注解标识符进行不同规则的匹配
 
@@ -257,38 +223,82 @@ public class Foo {
 }
 ~~~
 
-### Pointcut Signature
+#### bean
 
-Pointcut Signature：在这里是一个方法定义，它是Poincut Expression的载体，Pointcut Signature 所在的方法定义要求返回类型必须是void
-
-方法的范围修饰符在aspect中语义与java相同：
-
-* public 型的Pointcut Signature可以在其他Aspect定义中引用
-* private型的Pointcut Signature只能在当前Aspect定义中引用
-
-可以将Pointcut Signature作为相应Pointcut Expression的标识符，在Pointcut Expression的定义中取代重复的Pointcut表达式，示例如下：
+Spring AOP还支持一个额外的名为 `bean` 的pointcut标识符，这个标识符匹配具有指定的beanName的bean，其形式如下：
 
 ~~~java
-@Pointcut("execution(void mehtod1())")
-public void method1Execution(){}
-
-@Pointcut("method1Execution()")
-private void stillMethodExecution(){}
+bean(idOrNameOfBean)
 ~~~
 
-### 原理
+`idOrNameOfBean` 标记可以是任何Spring Bean的名称。可以使用 `*` 字符的有限通配符支持
 
-@AspectJ形式声明的Pointcut表达式，在SpringAOP内部会被解析为`AspectJExpressionPointcut`实例，它的继承体系如下:
+### 组合切点表达式
 
-![AspectJExpressionPointcut](https://gitee.com/wangziming707/note-pic/raw/master/img/AspectJExpressionPointcut.png)
+可以通过使用 `&&`、`||` 和 `!` 来组合 pointcut 表达式。也可以通过名称来引用pointcut表达式。下面例子显示了他们的运用：
 
-在`AspectJProxyFactory`或者`AnnotationAwareAspectJAutoProxyCreator`通过反射或者Aspect中@Pointcut定义的AspectJ形式的Pointcut定义后，会构造一个对应的`AspectJExpressionPointcut`实例,其内部持有通过反射获得的Pointcut表达式
+~~~java
+package com.xyz;
 
-`AspectJExpressionPointcut`是`Pointcut`的实现，也属于SpringAOP的`Pointcut`定义之一，
+@Aspect
+public class Pointcuts {
 
-仍然通过ClassFilter 和 MethodMatcher来进行Joinpoint的匹配，只是具体匹配委托给了AspectJ类库
+    @Pointcut("execution(public * *(..))")
+    public void publicMethod() {}
 
-## @AspectJ形式的Advice
+    @Pointcut("within(com.xyz.trading..*)")
+    public void inTrading() {}
+
+    @Pointcut("publicMethod() && inTrading()")
+    public void tradingOperation() {}
+}
+~~~
+
+如果不在同一个Aspect上，可以通过通过引用 `@Aspect` 类的全称名称和 `@Pointcut` 方法的名称，来引用pointcut，例如下面在另一个类中引用了`Pointcuts`类的切点
+
+~~~java
+@Aspect
+public class A {
+
+    @Pointcut("com.xyz.Pointcuts.publicMethod() && com.xyz.Pointcuts.inTrading()")
+    public void tradingOperation() {} (3)
+}
+~~~
+
+### 示例
+
+~~~java
+execution(public * *(..));
+指定切入点为：任意公共方法。
+execution(* set*(..)) ;
+指定切入点为：任何一个以“set”开始的方法。
+execution(* com.xyz.service.*.*(..)) ;
+指定切入点为：定义在 service 包里的任意类的任意方法。
+execution(* com.xyz.service..*.*(..));
+指定切入点为：定义在 service 包或者子包里的任意类的任意方法。“..”出现在类名中时，后
+面必须跟“*”，
+表示包、子包下的所有类。
+execution(* *..service.*.*(..));
+指定所有包下的 serivce 子包下所有类（接口）中所有方法为切入点
+execution(public void com.bjpn.service.UserService.addUser(String ));
+举例
+within(com.demo.spring.*);
+匹配com.demo.spring包下所有类下的所有方法
+within(com.demo.spring..*);
+匹配com.demo.spring包以及子包下所有类的所有方法
+this(com.xyz.service.AccountService);
+匹配实现了 AccountService 接口的代理的所有方法
+target(com.xyz.service.AccountService);
+匹配实现了 AccountService 接口的目标对象的所有方法
+args(java.io.Serializable);
+匹配在运行时传递的参数是 Serializable 的方法
+@target(org.springframework.transaction.annotation.Transactional);
+匹配目标对象有 @Transactional 注解的类的所有方法
+~~~
+
+## Advice的声明
+
+Advice 承载横切逻辑代码，与一个切点表达式相关联，在切点匹配的方法执行之前、之后或周围（around）运行。
 
 @AspectJ形式的Advice就是在@Aspect标注的Aspect定义类中的被Advice注解标注的普通方法
 
@@ -326,62 +336,33 @@ public Object beforeExecute() {
 }
 ~~~
 
-#### 访问方法参数
+### `@AfterReturning`
 
-我们可能会需要在Advice定义中访问Joinpoint处的方法参数，可以通过如下两种方式：
-
-* `Joinpoint`:可以将BeforeAdvice的方法的第一个参数声明为`JoinPoint`类型，通过它可以获取Joinpoint处方法的参数值。或者方法的其他信息：
-
-  ~~~java
-  @Before("pointcut()")
-  public void beforeAdvice(JoinPoint joinPoint){
-      Object[] args = joinPoint.getArgs();
-  	...
-  }
-  ~~~
-
-* `args`绑定：`args`标志符除了可以指定方法参数类型，还可以指定参数名称
-
-  当指定的是参数名称时，它会将这个参数名称绑定到对象的Advice方法
-
-  ~~~java
-  @Before("pointcut() && args(count)")
-  public void beforeAdvice(int count){
-      ...
-  }
-  ~~~
-
-  * args指定的参数名称必须和Advice定义所在方法的参数名称相同
-  * Advice定义所在方法的参数类型也会参与匹配，上述例子不会匹配`String count`
-
-上述两种访问方法参数的方式可以同时使用，但JoinPoint必须在第一个参数位置
-
-**拓展使用：**
-
-* 除了 Around Advice 和 Introduction 外，其他的Advice类型都可以在Advice定义所在方法的第一个参数位置声明JoinPoint类型的参数
-
-* 除了 execution标志符不会直接指定对象类型之外，其他的标志符都可以直接指定对象类型；
-
-  这些标志符和`args`一样，他们也可以指定参数名称，作用和`args`指定参数并绑定到Advice上是一样的
-
-### `@AfterThrowing`
-
-`@AfterThrowing`有一个独有属性`throwing`，它限定了Advice定义方法的参数名----必须和该属性值相同；并将相应的异常绑定的具体的方法参数上
-
-示例:
+当一个匹配的方法执行正常返回时，After returning advice 运行：
 
 ~~~java
-@AfterThrowing(pointcut = "execution(* *..AfterThrowingTarget.*(..))",throwing = "e")
-public void advice(RuntimeException e){
-    System.out.println(e.getMessage());
+@Aspect
+public class AfterReturningExample {
+
+    @AfterReturning("execution(* com.xyz.dao.*.*(..))")
+    public void doAccessCheck() {
+        // ...
+    }
 }
 ~~~
 
-使用JoinPoint也可以完成同样的事情
 
-### `@AfterReturning`
 
-`@AfterReturning`有一个独有属性`returning`,它将方法返回值绑定到Advice定义的所在方法：
+`@AfterReturning`有一个独有属性`returning`,它将方法返回值绑定到Advice定义的所在方法入参，`returning` 属性中使用的名称必须与advice方法中的参数名称相对应。当一个方法执行返回时，返回值会作为相应的参数值传递给advice方法。
+
+~~~java
+@AfterReturning(pointcut = "within(com.wzm.spring.aspectj.entity.AfterReturningTarget)",returning = "result")
+public void advice(Object result){
+    ...
+}
+~~~
+
+`returning` 子句也限制了匹配，只匹配那些返回指定类型的值的方法执行（在这种情况下是 `Object`，它匹配任何返回值），如果需要限制返回值类型，可以参考如下例子：
 
 ~~~java
 @AfterReturning(pointcut = "within(com.wzm.spring.aspectj.entity.AfterReturningTarget)",returning = "result")
@@ -390,17 +371,63 @@ public void advice(String result){
 }
 ~~~
 
+### `@AfterThrowing`
+
+当一个匹配的方法执行通过抛出异常退出时，After throwing advice 运行。你可以通过使用 `@AfterThrowing` 注解来声明它，如下例所示。
+
+~~~java
+@Aspect
+public class AfterThrowingExample {
+
+    @AfterThrowing("execution(* com.xyz.dao.*.*(..))")
+    public void doRecoveryActions() {
+        // ...
+    }
+}
+~~~
+
+`@AfterThrowing`有一个独有属性`throwing`，并将相应的异常绑定的具体的方法参数上，例如:
+
+~~~java
+@AfterThrowing(pointcut = "execution(* *..AfterThrowingTarget.*(..))",throwing = "e")
+public void advice(DataAccessException e){
+    System.out.println(e.getMessage());
+}
+~~~
+
+在 `throwing` 属性中使用的名称必须与advice方法中的参数名称相对应。当一个方法的执行通过抛出一个异常退出时，该异常将作为相应的参数值传递给advice方法。
+
+`throwing` 子句也限制了匹配，只能匹配那些抛出指定类型的异常的方法执行（本例中是 `DataAccessException`）。
+
 ### `@After`
 
-不管Joinpoint处方法是抛出异常，还是正常返回，都能触发After Advice 的执行，该类型的Advice适合做一些网络连接、数据库资源的释放
+不管Joinpoint处方法是抛出异常，还是正常返回，都能触发After Advice 的执行。After advice必须准备好处理正常和异常的返回条件。它通常被用于释放资源和类似的目的。
+
+~~~java
+@Aspect
+public class AfterFinallyExample {
+
+    @After("execution(* com.xyz.dao.*.*(..))")
+    public void doReleaseLock() {
+        // ...
+    }
+}
+~~~
 
 ### `@AroundAdvice`
 
-之前提过，`@Before @AfterReturning @AfterThrowing @After`所标注的方法的第一个参数可以为`JoinPoint`类型
+被`@AroundAdvice`注释的advice方法有以下要求：
 
-但对于`@AroundAdvice`来说，它的第一个参数必须是`ProceedingJoinPoint`类型
+* 方法返回类型最好是`Object`
+* 方法的第一个参数必须是 `ProceedingJoinPoint` 类型
 
-通常情况下，我们需要通过`ProceedingJoinPoint`的`proceed()`方法继续调用链的执行
+在 advice 方法的body中，一般必须在 `ProceedingJoinPoint` 上调用 `proceed()`，以使关注点底层方法运行。
+
+如果在没有参数的情况下调用 `proceed()` ，会导致调用者的原始参数在底层方法被调用时被提供给它。除此之外有一个重载的 `proceed()` 方法，它接受一个参数数组（`Object[]`）。当底层方法被调用时，数组中的值将被用作该方法的参数。
+
+around advice 返回的值是方法的调用者看到的返回值。
+
+请注意， `proceed` 可以被调用一次，多次，或者根本就不在 around advice 的 body 中调用。所有这些都是合法的。
 
 示例：
 
@@ -426,7 +453,68 @@ public Object advice(ProceedingJoinPoint joinPoint,String message) throws Throwa
 
 除了使用`args`标志符，也可以使用ProceedingJoinPoint来获取方法参数
 
-### `@DeclareParents`
+### Advice参数
+
+可以在advice签名中声明你需要的参数
+
+#### 访问当前的 `JoinPoint`
+
+任何 advice method 都可以声明一个 `org.aspectj.lang.JoinPoint` 类型的参数作为其第一个参数。请注意，around advice 方法需要声明一个 `ProceedingJoinPoint` 类型的第一个参数，它是 `JoinPoint` 的一个子类。
+
+`JoinPoint` 接口提供了许多有用的方法。例如：
+
+- `getArgs()`: 返回方法的参数。
+- `getThis()`: 返回代理对象。
+- `getTarget()`: 返回目标对象。
+- `getSignature()`: 返回正在被 advice 的方法的描述。
+- `toString()`: 打印对所 advice 的方法的有用描述。
+
+一个示例：
+
+~~~java
+@Before("pointcut()")
+public void beforeAdvice(JoinPoint joinPoint){
+    Object[] args = joinPoint.getArgs();
+	...
+}
+~~~
+
+#### 向 Advice 传递参数
+
+`args`标志符除了可以指定方法参数类型，还可以指定参数名称
+
+当指定的是参数名称时，它会将这个参数名称绑定到对象的Advice方法
+
+~~~java
+@Before("pointcut() && args(count)")
+public void beforeAdvice(int count){
+    ...
+}
+~~~
+
+* args指定的参数名称必须和Advice定义所在方法的参数名称相同
+* Advice定义所在方法的参数类型也会参与匹配，上述例子不会匹配`String count`
+
+上述两种访问方法参数的方式可以同时使用，但JoinPoint必须在第一个参数位置
+
+**拓展使用：**
+
+* 除了 Around Advice 和 Introduction 外，其他的Advice类型都可以在Advice定义所在方法的第一个参数位置声明JoinPoint类型的参数
+
+* 除了 execution标志符不会直接指定对象类型之外，其他的标志符都可以直接指定对象类型；
+
+  这些标志符和`args`一样，他们也可以指定参数名称，作用和`args`指定参数并绑定到Advice上是一样的
+
+### Advice的执行顺序
+
+对于多个Advice，如果它们匹配同一个Joinpoint，他们的执行顺序有一定的规则：
+
+* 在同一个Aspect定义中，Advice的执行顺序由声明顺序决定,先声明的拥有高优先级
+  * 对于Before Advice 高优先级的先运行
+  * 对于After Advice 高优先级的后运行
+* 在不同的Aspect定义中，根据Ordered接口的规范决定优先级`getOrder()`返回值小的优先级高
+
+## Introduction
 
 @DeclareParents指定Introduction类型的Advice
 
@@ -451,14 +539,7 @@ public class IntroductionAspect {
 }
 ~~~
 
-### Advice的执行顺序
 
-对于多个Advice，如果它们匹配同一个Joinpoint，他们的执行顺序有一定的规则：
-
-* 在同一个Aspect定义中，Advice的执行顺序由声明顺序决定,先声明的拥有高优先级
-  * 对于Before Advice 高优先级的先运行
-  * 对于After Advice 高优先级的后运行
-* 在不同的Aspect定义中，根据Ordered接口的规范决定优先级`getOrder()`返回值小的优先级高
 
 # 基于Schema的AOP
 
