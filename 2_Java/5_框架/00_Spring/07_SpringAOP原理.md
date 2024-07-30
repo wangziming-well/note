@@ -1,12 +1,14 @@
 
 
-# Spring AOP原理
+# Spring AOP和代理
 
 Spring AOP是Spring核心框架的重要组成部分，与Spring IOC容器和Spring框架对其他JavaEE服务的集成 构成的Spring框架的核心
 
 Spring AOP采用 Java作为AOP的实现语言(AOL)，在Java语言的基础之上，Spring AOP对AOP的概念进行了适当的抽象和实现
 
-Spring AOP属于动态AOP采用动态代理机制和字节码生成技术实现。而动态代理是通过代理模式实现的(Proxy Pattern)
+Spring AOP属于动态AOP采用动态代理机制和字节码生成技术实现。
+
+本节我们先了解代理的几种实现，然后讨论Spring AOP使用的代理策略
 
 ## 代理模式
 
@@ -218,17 +220,100 @@ Target target =(Target) enhancer.create();
 target.print();
 ~~~
 
+## Spring代理策略
+
+Spring AOP使用JDK动态代理或CGLIB来为特定的目标对象创建代理。JDK动态代理是内置于JDK中的，而CGLIB是一个普通的开源类定义库（重新打包到 `spring-core` 中）。
+
+如果要代理的目标对象至少实现了一个接口，就会使用JDK动态代理。目标类型实现的所有接口都被代理了。如果目标对象没有实现任何接口，就会创建一个CGLIB代理。
+
+要强制使用 CGLIB 代理，可以：
+
+* 如果使用schema支持，那么将 `<aop:config>` 元素的 `proxy-target-class` 属性的值设为 `true`
+
+  ~~~xml
+  <aop:config proxy-target-class="true">
+      <!-- other beans defined here... -->
+  </aop:config>
+  ~~~
+
+* 如果使用`@AspectJ`支持，那么将 `<aop:aspectj-autoproxy>` 元素的 `proxy-target-class` 属性设置为 `true`
+
+  ~~~xml
+  <aop:aspectj-autoproxy proxy-target-class="true"/>
+  ~~~
+
+  或者将`@EnableAspectJAutoProxy`注解的`proxyTargetClass`属性设为`true`:
+
+  ~~~java
+  @EnableAspectJAutoProxy(proxyTargetClass = true)
+  ~~~
+
+## 代理实现AOP的问题
+
+基于代理实现的AOP意味着想要AOP生效，想要advice能够拦截方法调用，那么调用方在调用方法时，必须调用代理对象的方法，就像如下代码：
+
+~~~java
+public class Main {
+
+    public static void main(String[] args) {
+        ProxyFactory factory = new ProxyFactory(new SimplePojo());
+        factory.addInterface(Pojo.class);
+        factory.addAdvice(new RetryAdvice());
+
+        Pojo pojo = (Pojo) factory.getProxy();
+        // this is a method call on the proxy!
+        pojo.foo();
+    }
+}
+~~~
+
+这意味着在目标对象中如果存在自我调用，并且涉及的两个方法都被advice关注，如`this.foo()`、`this.bar()`，那么这样的方法调用不会触发方法调用相关的advice运行。
+
+这个问题最好的解决方案是重构代码，使自我调用不再发生。而另一种方法具有很强的代码侵入性，让客户端类和Spring高度耦合：
+
+~~~java
+public class SimplePojo implements Pojo {
+
+    public void foo() {
+        // this works, but... gah!
+        ((Pojo) AopContext.currentProxy()).bar();
+    }
+
+    public void bar() {
+        // some logic...
+    }
+}
+~~~
+
+这完全将你的代码与Spring AOP耦合在译器，而且它使类本身意识到它是在AOP上下文中使用的，这与AOP背道而驰。它还需要在创建代理时进行一些额外的配置：
+
+~~~java
+public class Main {
+
+    public static void main(String[] args) {
+        ProxyFactory factory = new ProxyFactory(new SimplePojo());
+        factory.addInterface(Pojo.class);
+        factory.addAdvice(new RetryAdvice());
+        factory.setExposeProxy(true);
+
+        Pojo pojo = (Pojo) factory.getProxy();
+        // this is a method call on the proxy!
+        pojo.foo();
+    }
+}
+~~~
 
 
-# SpringAOP概念实体
 
-## Joinpoint
 
-通过之前描述的SpringAOP的实现方式，我们可以看出SpringAOP只支持方法执行类型的Joinpoint，但这样已经能够应付大部分的需求了，如果想要更强大的AOP支持，可以使用AspectJ之类的AOP产品
+
+# SpringAOP API
+
+本节讨论低级别的Spring AOP API
 
 ## Pointcut
 
-Spring中定义了接口`Pointcut`作为其AOP框架中所有PointCut的最顶级抽象，其定义如下：
+Spring中定义了`org.springframework.aop.Pointcut` 接口作为其AOP框架中所有PointCut的最顶级抽象，其接口如下：
 
 ~~~java
 public interface Pointcut {
@@ -237,18 +322,16 @@ public interface Pointcut {
 
 	MethodMatcher getMethodMatcher();
 
-	Pointcut TRUE = TruePointcut.INSTANCE;
-
 }
 ~~~
 
-定义了两个方法用来捕获系统中的Pointcut
+用于为特定的类和方法提供advice
 
-并提供了一个`TruePointcut`实例，如果`Pointcut`类型为`TruePointcut`，默认会对系统中的所有对象和对象上的所有方法进行匹配。
+将 `Pointcut` 接口分成两部分，允许重用类和方法匹配部分以及细粒度的组合操作（比如与另一个方法匹配器进行 "联合"）
 
 ### ClassFilter
 
-ClassFilter接口的作用是对Joinpoint所处的对象进行Class级别的匹配，其定义如下：
+ClassFilter接口用来和目标类的类型进行匹配，其定义如下：
 
 ~~~java
 @FunctionalInterface
@@ -256,16 +339,15 @@ public interface ClassFilter {
 
 	boolean matches(Class<?> clazz);
 
-	ClassFilter TRUE = TrueClassFilter.INSTANCE;
 
 }
 ~~~
 
-matches 传入一个Class，当方法返回true时，表示该Class匹配Pointcut所规定的类型
+如果 `matches()` 方法返回 `true`，表示传入的目标类是匹配的。
 
 ### MethodMatcher
 
-MethodMatcher对Joinpoint所处的方法进行匹配，定义如下：
+`MethodMatcher`对目标类方法进行匹配，接口如下：
 
 ~~~java
 public interface MethodMatcher {
@@ -275,8 +357,6 @@ public interface MethodMatcher {
 	boolean isRuntime();
 
 	boolean matches(Method method, Class<?> targetClass, Object... args);
-
-	MethodMatcher TRUE = TrueMethodMatcher.INSTANCE;
 
 }
 ~~~
@@ -335,9 +415,9 @@ public abstract class DynamicMethodMatcher implements MethodMatcher {
 
 所以该方法覆写了`matches(Method method, Class<?> targetClass) `方法，让其默认返回true，这样当调用DynamicMethodMatcher进行匹配时，会直接调用进行校验参数的 matches方法
 
-### 常用Pointcut
+### Pointcut实现
 
-spring提供了许多Pointcut实现，以供满足不同的匹配需求，以下给出常用的四线
+spring提供了许多Pointcut实现，以供满足不同的匹配需求，以下给出常用的四种
 
 * `NameMatchMethodPointcut`通过方法名进行匹配
 
@@ -359,19 +439,52 @@ spring提供了许多Pointcut实现，以供满足不同的匹配需求，以下
 
 String提供了Advice接口作为AOP Advice的顶级抽象，Advice实现了将被织入到Pointcut规定的Joinpoint处的横切逻辑。在Spring中，Advice按照自身实例(instance)能否在目标对象类的所有实例中共享这一标准，可以划分为：per-class类型的Advice和per-instance类型的Advice
 
-### per-class
+### Advice生命周期
 
-per-class类型的Advice是指：该类型的Advice的实例可以在目标对象类的所有实例之间共享
+每个 advice 都是一个Spring Bean。一个 advice 实例可以在所有 advice 对象中共享，也可以对每个 advice 对象是唯一的。
 
-这种类型的Advice通常只是提供方法拦截的功能，不会为目标对象保持任何状态或者添加新的特性
+* per-class advice 的实例可以在目标对象类的所有实例之间共享。这些advice不依赖于被代理对象的状态或添加新的状态。只拦截方法
+* per-instance:每个目标对象实例都需要一个对应的advice，适用于introduction类型的advice
+
+在Spring AOP中，除了introduction advice是 per-instance的，其他所有advice都是per-class的
 
 per-class类型的Advice类型接口的继承关系如下：
 
 ![perClassAdvice](https://gitee.com/wangziming707/note-pic/raw/master/img/perClassAdvice.png)
 
+### Around Advice
+
+Spring并没有直接定义对应的Around Advice接口，而是使用了AOP Alliance的标准接口`MethodInterceptor`:
+
+~~~java
+public interface MethodInterceptor extends Interceptor {
+	Object invoke(MethodInvocation invocation) throws Throwable;
+}
+~~~
+
+`invoke()` 方法的 `MethodInvocation` 参数暴露了被调用的方法、目标连接点、AOP 代理以及方法的参数。`invoke()` 方法应该返回调用的结果：连接点方法的返回值。下面是一个简单的实现示例：
+
+~~~java
+public class DebugInterceptor implements MethodInterceptor {
+
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        System.out.println("Before: invocation=[" + invocation + "]");
+        Object rval = invocation.proceed();
+        System.out.println("Invocation returned");
+        return rval;
+    }
+}
+~~~
 
 
-#### MethodBeforeAdvice
+
+通过 `MethodInterceptor.invoke()`方法的`MethodInvocation`参数，我们可以控制相应Joinpoint的拦截行为：
+
+通过调用`MethodInvocation`的`proceed()`方法，可以让程序执行继续沿着调用链传播。如果在invoke方法中没有调用`proceed()`方法，程序将在当前`MethodInterceptor`处停止
+
+
+
+### Before Advice
 
 Before Advice所实现的横切逻辑将在相应的Joinpoint之前执行
 
@@ -385,11 +498,28 @@ public interface MethodBeforeAdvice extends BeforeAdvice {
 }
 ~~~
 
-在before方法中提供横切逻辑
+在before方法中提供横切逻辑。下面的例子显示了Spring中的before建议，它计算了所有方法的调用。
 
-#### `ThrowsAdvice`
+~~~java
+public class CountingBeforeAdvice implements MethodBeforeAdvice {
 
-String 中定义的`ThrowsAdvice `对应的 AOP概念中的AfterThrowingAdvice
+    private int count;
+
+    public void before(Method m, Object[] args, Object target) throws Throwable {
+        ++count;
+    }
+
+    public int getCount() {
+        return count;
+    }
+}
+~~~
+
+
+
+### Throws Advice
+
+String 中定义的`ThrowsAdvice `对应的 AOP概念中的After Throwing Advice
 
 该接口没有定义任何方法，是标志接口，但在实现该接口时，方法定义要遵循如下规则：
 
@@ -397,13 +527,54 @@ String 中定义的`ThrowsAdvice `对应的 AOP概念中的AfterThrowingAdvice
 public void afterThrowing([Method method, Object[] args,Object target,] Exception ex)
 ~~~
 
-前三个参数可以省略，可以根据拦截的`Throwable`的不同类型，重载定义多个`afterThrowing`方法，
+前三个参数可以省略，只有最后一个参数是必须的。方法签名可以有一个或四个参数，这取决于advice方法是否需要访问方法和参数。
 
-框架将会使用Java 反射机制调用这些方法
+可以根据拦截的`Throwable`的不同类型，重载定义多个`afterThrowing`方法
 
-#### `AfterReturningAdvice`
+例如：如果抛出了 `RemoteException`（包括来自子类的），将调用以下 advice：
 
-`AfterReturningAdvice`接口定义如下：
+~~~java
+public class RemoteThrowsAdvice implements ThrowsAdvice {
+
+    public void afterThrowing(RemoteException ex) throws Throwable {
+        // Do something with remote exception
+    }
+}
+~~~
+
+如果抛出一个 `ServletException`，下面的advice会被调用:
+
+~~~java
+public class ServletThrowsAdviceWithArguments implements ThrowsAdvice {
+
+    public void afterThrowing(Method m, Object[] args, Object target, ServletException ex) {
+        // Do something with all arguments
+    }
+}
+~~~
+
+这个例子中advice就可以访问被调用的方法、方法参数和目标对象
+
+如果需要在同一个advice中处理多种异常，可以像下面那样重载方法：
+
+~~~java
+public static class CombinedThrowsAdvice implements ThrowsAdvice {
+
+    public void afterThrowing(RemoteException ex) throws Throwable {
+        // Do something with remote exception
+    }
+
+    public void afterThrowing(Method m, Object[] args, Object target, ServletException ex) {
+        // Do something with all arguments
+    }
+}
+~~~
+
+**注意**:如果一个 throws-advice 方法自己抛出了一个异常，它就会覆盖原来的异常（也就是说，它改变了抛给用户的异常）。但是注意，新的异常必须与原方法签名兼容
+
+###  After Returning Advice
+
+Spring 中的 after returning advice 必须实现 `org.springframework.aop.AfterReturningAdvice` 接口：
 
 ~~~java
 public interface AfterReturningAdvice extends AfterAdvice {
@@ -415,23 +586,25 @@ public interface AfterReturningAdvice extends AfterAdvice {
 
 通过`AfterReturningAdvice`我们可以访问当前Joinpoint的方法返回值、方法、方法参数以及所在的目标对象。
 
-#### MethodInterceptor
-
-Spring并没有直接定义对应的Around Advice接口，而是使用了AOP Alliance的标准接口`MethodInterceptor`:
+以下的after returning advice 对所有没有抛出异常的成功方法调用进行统计：
 
 ~~~java
-public interface MethodInterceptor extends Interceptor {
-	Object invoke(MethodInvocation invocation) throws Throwable;
+public class CountingAfterReturningAdvice implements AfterReturningAdvice {
+
+    private int count;
+
+    public void afterReturning(Object returnValue, Method m, Object[] args, Object target)
+            throws Throwable {
+        ++count;
+    }
+
+    public int getCount() {
+        return count;
+    }
 }
 ~~~
 
-通过 `MethodInterceptor.invoke`方法的`MethodInvocation`参数，我们可以控制相应Joinpoint的拦截行为：
-
-通过调用`MethodInvocation`的`proceed()`方法，可以让程序执行继续沿着调用链传播。如果在invoke方法中没有调用`proceed()`方法，程序将在当前`MethodInterceptor`处停止
-
-我们可以在`proceed()`方法(也就是Joinpoint处的逻辑)执行前后插入相应的逻辑，甚至捕获`proceed()`方法可能抛出的异常，这就是它能履行Around Advice职责的原因
-
-### per-instance
+### Introduction Advice
 
 per-instance类型的Advice不会在目标类的所有实例之间共享，会为不同的实例对象保存它们各自的状态和相关逻辑
 
@@ -481,7 +654,7 @@ public interface DynamicIntroductionAdvice extends Advice {
 
 ~~~java
 Tester tester = new Tester();
-        DelegatingIntroductionInterceptor advice = new DelegatingIntroductionInterceptor(tester);
+DelegatingIntroductionInterceptor advice = new DelegatingIntroductionInterceptor(tester);
 ~~~
 
 将`tester`交给`DelegatingIntroductionInterceptor`,这样在织入时，会将tester的方法织入到目标对象中
@@ -559,7 +732,7 @@ SpringAOP提供的weaver都继承了`ProxyCreatorSupport`：
 Spring AOP 提供的织入器都会继承`ProxyCreatorSupport`，获取它提供的AOP织入的公用逻辑支持
 
 * `ProxyCreatorSupport`继承了`AdvisedSupport`，它提供了生成代理的必要信息
-* `ProxyCreatorSupport`内部持有了`AopProxyFactory`，通过它获取`AopProxy`；`AopProxy`用于创建对象
+* `ProxyCreatorSupport`内部持有了`AopProxyFactory`，通过它获取`AopProxy`；`AopProxy`用于获取代理对象
 
 #### `AopProxy`
 
@@ -884,7 +1057,7 @@ System.out.println(proxy2.getCounter());
 
 因为`DelegatePerTargetObjectIntroductionInterceptor`的特性，即使是公用一个Interceptor，它也会为每个代理对象保存单独的状态，所以，上面代理输出结果，1，2，1
 
-### AutoProxy
+## AutoProxy
 
 SpringAOP给出了自动代理(AutoProxy)机制，可以帮助我们解决使用`ProxyFactoryBean`配置工作量比较大的问题,要使用自动代理，需要使用ApplicationContext，自动代理体系继承关系如下：
 
@@ -899,7 +1072,7 @@ SpringAOP给出了自动代理(AutoProxy)机制，可以帮助我们解决使用
 
 如果要实现自定义的AutoProxyCreator，比如实现基于注解的自动代理；可以在`AbstractAutoProxyCreator`或者`AbstractAdvisorAutoProxyCreator`的基础上进行扩展；重写`BeanPostProcessor`的拦截方法
 
-#### `BeanNameAutoProxyCreator`
+### `BeanNameAutoProxyCreator`
 
 `BeanNameAutoProxyCreator`内部有两个属性：
 
@@ -925,7 +1098,7 @@ SpringAOP给出了自动代理(AutoProxy)机制，可以帮助我们解决使用
 </bean>
 ~~~
 
-#### `DefaultAdvisorAutoProxyCreator`
+### `DefaultAdvisorAutoProxyCreator`
 
 只需要在ApplicationContext中注册该bean，它就会自动进行扫描容器中的advisor，并进行自动织入
 
@@ -1010,19 +1183,3 @@ public interface TargetSource extends TargetClassAware {
 * `ThreadLocalTargetSource`
 
   为不同的线程提供不同的目标对象，是基于ThreadLocal的简单封装
-
-
-
-
-
-# Spring@AspectJ原理
-
-@AspectJ形式声明的Pointcut表达式，在SpringAOP内部会被解析为`AspectJExpressionPointcut`实例，它的继承体系如下:
-
-![AspectJExpressionPointcut](https://gitee.com/wangziming707/note-pic/raw/master/img/AspectJExpressionPointcut.png)
-
-在`AspectJProxyFactory`或者`AnnotationAwareAspectJAutoProxyCreator`通过反射或者Aspect中@Pointcut定义的AspectJ形式的Pointcut定义后，会构造一个对应的`AspectJExpressionPointcut`实例,其内部持有通过反射获得的Pointcut表达式
-
-`AspectJExpressionPointcut`是`Pointcut`的实现，也属于SpringAOP的`Pointcut`定义之一，
-
-仍然通过ClassFilter 和 MethodMatcher来进行Joinpoint的匹配，只是具体匹配委托给了AspectJ类库

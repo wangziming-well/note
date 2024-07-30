@@ -44,7 +44,7 @@ public class AppConfig {
 
 当然在使用`<aop>`命名空间前需要在XML配置文件的顶部添加aop相关的schema
 
-## Aspect的声明
+## Aspect
 
 启用`@AspectJ`支持后，任何在容器中定义的bean，如果其类被`@Aspect`注解注释，就会被Spring自动检测到，并用于配置Spring AOP。例如：
 
@@ -61,14 +61,14 @@ public class NotVeryUsefulAspect {
 
 在Spring AOP中，切面本身不能成为其他切面的advice的目标。类上的 `@Aspect` 注解将其标记为一个切面，因此，会将其排除在自动代理之外。
 
-## Pointcut的声明
+## Pointcut
 
 Pointcuts确定advice的连接点，从而使我们能够控制 advice 的运行时间。Spring AOP只支持Spring Bean的方法执行类型的Joinpoint，所以可以把pointcut看作是对Spring Bean上的方法执行的匹配。
 
 一个Pointcut声明有如下两个部分：
 
 * Pointcut Expression：切点表达式
-* Pointcut Signature：由名称和任意参数组成的切入点签名
+* Pointcut Signature：由名称和任意参数组成的切点签名
 
 在AOP的 `@AspectJ` 注解式中，一个pointcut签名是由一个常规的方法定义提供的，而pointcut表达式是通过使用 `@Pointcut` 注解来表示的（作为pointcut签名的方法必须是一个 `void` 返回类型）
 
@@ -92,7 +92,7 @@ Pointcut Expression的载体为`@Pointcut`，该注解是方法级别的，所�
 execution(public * *(..))
 ~~~
 
-### Pointcut标识符
+### Pointcut表达式
 
 AspectJ的Pointcut表达式可用的Pointcut标识符很丰富，基本包含所有的Joinpoint类型的表述，但是SpringAOP只支持方法级别的Joinpoint，所以可以使用的标识符只有少数的几个：
 
@@ -296,7 +296,7 @@ args(java.io.Serializable);
 匹配目标对象有 @Transactional 注解的类的所有方法
 ~~~
 
-## Advice的声明
+## Advice
 
 Advice 承载横切逻辑代码，与一个切点表达式相关联，在切点匹配的方法执行之前、之后或周围（around）运行。
 
@@ -481,69 +481,101 @@ public void beforeAdvice(JoinPoint joinPoint){
 
 #### 向 Advice 传递参数
 
-`args`标志符除了可以指定方法参数类型，还可以指定参数名称
-
-当指定的是参数名称时，它会将这个参数名称绑定到对象的Advice方法
+`args`标志符除了可以指定方法参数类型，还可以指定参数名称，此时advice方法必须有相同参数名称的入参。advice 方法被调用时，相应的参数值会被传递。例如：
 
 ~~~java
-@Before("pointcut() && args(count)")
-public void beforeAdvice(int count){
-    ...
+@Before("execution(* com.xyz.dao.*.*(..)) && args(account,..)")
+public void validateAccount(Account account) {
+    // ...
 }
 ~~~
 
-* args指定的参数名称必须和Advice定义所在方法的参数名称相同
-* Advice定义所在方法的参数类型也会参与匹配，上述例子不会匹配`String count`
+pointcut 表达式的 `args(account,..)` 部分有两个作用：
 
-上述两种访问方法参数的方式可以同时使用，但JoinPoint必须在第一个参数位置
+* 进一步限定连接点的范围：连接点方法至少需要一个参数，并且传递给该参数的参数是一个 `Account` 的实例。
+* 使实际的 `Account` 对象通过 `account` 参数传递给 advice 方法
 
-**拓展使用：**
+在通过名称来引用pointcut表达式时，如果引用的表达式中有类似`args(account,..)`这样的参数声明，那么引用时需要在引用的方法名称后加上参数：
 
-* 除了 Around Advice 和 Introduction 外，其他的Advice类型都可以在Advice定义所在方法的第一个参数位置声明JoinPoint类型的参数
+~~~java
+@Pointcut("execution(* com.xyz.dao.*.*(..)) && args(account,..)")
+private void accountDataAccessOperation(Account account) {}
 
-* 除了 execution标志符不会直接指定对象类型之外，其他的标志符都可以直接指定对象类型；
+@Before("accountDataAccessOperation(account)")
+public void validateAccount(Account account) {
+    // ...
+}
+~~~
 
-  这些标志符和`args`一样，他们也可以指定参数名称，作用和`args`指定参数并绑定到Advice上是一样的
+代理对象（`this`）、目标对象（`target`）和注解（`@within`、`@target`、`@annotation` 和 `@args`）都可以用类似的方式(用参数名代替类型名)绑定。
+
+一个`@annotation`的示例，首先定义一个注解：
+
+~~~java
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+public @interface Auditable {
+    AuditCode value();
+}
+~~~
+
+下面显示了与 `@Auditable` 方法的执行相匹配的 advice：
+
+~~~java
+@Before("com.xyz.Pointcuts.publicMethod() && @annotation(auditable)") (1)
+public void audit(Auditable auditable) {
+    AuditCode code = auditable.value();
+    // ...
+}
+~~~
+
+`JoinPoint`参数和`args`绑定参数两种访问方法参数的方式可以同时使用，但JoinPoint必须在第一个参数位置
+
+
 
 ### Advice的执行顺序
 
-对于多个Advice，如果它们匹配同一个Joinpoint，他们的执行顺序有一定的规则：
+Advice可以通过在在切面类中实现 `org.springframework.core.Ordered` 接口或用 `@Order` 注解来指定他们的优先级。给定两个切面，从 `Ordered.getOrder()` 返回较低值的切面（或注解值）具有较高的优先权。
 
-* 在同一个Aspect定义中，Advice的执行顺序由声明顺序决定,先声明的拥有高优先级
-  * 对于Before Advice 高优先级的先运行
-  * 对于After Advice 高优先级的后运行
-* 在不同的Aspect定义中，根据Ordered接口的规范决定优先级`getOrder()`返回值小的优先级高
+两个相同类型的Advice在同一个连接点运行时，会根据优先级来确定先后顺序。
+
+* 在进入连接点时首先运行优先级高的advice，即对于Before Advice，优先级高的先运行。
+* 在退出连接点时最后运行优先级高的advice，即对于After Advice， 高优先级的后运行。
 
 ## Introduction
 
-@DeclareParents指定Introduction类型的Advice
+Introduction（在AspectJ中被称为类型间声明）使一个切面能够声明advice对象实现一个给定的接口，并代表这些对象提供该接口的实现。可以让目标对象有一个新的父接口，从而获得新的行为，所以这种方式也叫增强。
 
-该注解只能标注Aspect类中的实例变量
+`@DeclareParents`指定Introduction类型的Advice,该注解只能标注Aspect类中的实例变量，这样实例变量的类型会增强到匹配到的目标类上。也就是目标类的代理类实际上会多出一个实例变量类型的父接口。而这个父接口具体的实现由`@DeclareParents`的`defaultImpl`属性指定。
 
-Introduction类型的Advice可以将新添加的行为逻辑以新的接口定义添加到目标对象上
-
-实例变量的类型对应的就是新增加的接口类型
-
-示例：
+例如，给定一个名为 `UsageTracked` 的接口和一个名为 `DefaultUsageTracked` 的接口的实现，下面这个切面声明所有服务接口的实现者也实现 `UsageTracked` 接口
 
 ~~~java
 @Aspect
-@Component
-public class IntroductionAspect {
+public class UsageTracking {
 
-    @DeclareParents(
-            value = "com.wzm.spring.aspectj.entity.IntroductionTarget",
-            defaultImpl = Counter.class)
-    ICounter counter;
+    @DeclareParents(value="com.xyz.service.*+", defaultImpl=DefaultUsageTracked.class)
+    public static UsageTracked mixin;
+
+    @Before("execution(* com.xyz..service.*.*(..)) && this(usageTracked)")
+    public void recordUsage(UsageTracked usageTracked) {
+        usageTracked.incrementUseCount();
+    }
 
 }
 ~~~
 
+这样目标类可以直接当作`UsageTracked`来使用，例如：
 
+~~~java
+UsageTracked usageTracked = context.getBean("myService", UsageTracked.class);
+~~~
 
 # 基于Schema的AOP
 
-要使用基于Schema的AOP，IoC容器的配置文件应该使用基于Schema的XML，同时在文件头中增加针对AOP的命名空间声明：
+Spring也提供了对使用 `aop` 命名空间标签定义切面的支持。它支持与使用 `@AspectJ` 风格时完全相同的 pointcut 表达式和advice种类。
+
+要使用本节描述的 `aop` 命名空间标签，你需要导入 `spring-aop` schema，即对配置文件头部进行如下声明：
 
 ~~~xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -560,7 +592,7 @@ public class IntroductionAspect {
 </beans>
 ~~~
 
-在spring-aop规定的命名空间下，可以使用标签`<aop:config>`来进行aop配置，它只有一个属性`proxy-target-class`用以控制是使用基于类的代理还是基于接口的代理
+在spring-aop规定的命名空间下，所有的aop配置都必须在标签`<aop:config>`中进行，它只有一个属性`proxy-target-class`用以控制是使用基于类的代理还是基于接口的代理
 
 它内部有三个子元素，结构如下：
 
@@ -571,22 +603,169 @@ public class IntroductionAspect {
 
 它们在config标签中的定义顺序必须如上排序
 
-## `<aop:pointcut>`
+## Aspect
 
-`<aop:config>`内部可以声明一个或者多个`<aop:pointcut>`，可以被`<aop:advisor>`或者`<aop:aspect>`引用
+在使用schema支持时，一个切面仍然是一个普通的Java对象，在Spring 容器中需要作为bean被引用。这个bean的方法将承载横切逻辑代码。作为advice被引用。
 
-它有如下属性：
+可以通过使用 `<aop:aspect>` 元素来声明一个切面，并通过使用 `ref` 属性来引用支持 Bean，如下例所示。
 
-* `id`：指定当前Pointcut定义的标志id
-* `expression`指定当前Pointcut的 Pointcut Expression
+~~~xml
+<aop:config>
+    <aop:aspect id="myAspect" ref="aBean">
+        ...
+    </aop:aspect>
+</aop:config>
 
-**注意：**
+<bean id="aBean" class="...">
+    ...
+</bean>
+~~~
 
- Pointcut Expression可以用 `&& || !`来进行逻辑运算，但在xml文件中禁止使用`&&`字符，所以我们可以用`and or not`来替代
+本例中aBean就是作为aspect的java对象。
 
-## `<aop:advisor>`
+## Pointcut
 
-用以定义Advisor，也就是SpringAOP中的Aspect，它有如下属性：
+可以在一个 `<aop:config>` 元素中声明一个命名的 pointcut，让 pointcut 的定义在几个切面和advice之间共享：
+
+~~~xml
+<aop:config>
+    <aop:pointcut id="businessService" expression="execution(* com.xyz.service.*.*(..))" />
+</aop:config>
+~~~
+
+也可以在一个切面中声明pointcut:
+
+~~~xml
+<aop:config>
+    <aop:aspect id="myAspect" ref="aBean">
+        <aop:pointcut id="businessService" expression="execution(* com.xyz.service.*.*(..))"/>
+        ...
+    </aop:aspect>
+</aop:config>
+~~~
+
+与 `@AspectJ` 切面的方式相同，通过使用基于schema的定义风格来声明的 pointcuts 可以绑定传递参数，例如下面这个 pointcut 收集了 `this` 对 象作为连接点上下文并将其传递给advice
+
+~~~xml
+<aop:config>
+    <aop:aspect id="myAspect" ref="aBean">
+        <aop:pointcut id="businessService" expression="execution(* com.xyz.service.*.*(..)) &amp;&amp; this(service)"/>
+        <aop:before pointcut-ref="businessService" method="monitor"/>
+        ...
+    </aop:aspect>
+</aop:config>
+~~~
+
+其advice定义如下：
+
+~~~java
+public void monitor(Object service) {
+    // ...
+}
+~~~
+
+在组合point的子表达式时，可以使用 `and`、`or` 和 `not` 关键字来代替 `&&`、`||` 和 `!`，分别。例如，前面的pointcut可以更好地写成如下：
+
+~~~xml
+<aop:config>
+    <aop:aspect id="myAspect" ref="aBean">
+        <aop:pointcut id="businessService"
+            expression="execution(* com.xyz.service.*.*(..)) and this(service)"/>
+        <aop:before pointcut-ref="businessService" method="monitor"/>
+        ...
+    </aop:aspect>
+</aop:config>
+~~~
+
+## Advice
+
+基于schema的AOP支持使用了与 @AspectJ 风格相同的五种advice，而且它们的语义完全相同，可以使用下面标签声明advice，注意这些标签只能在`<aop:aspect>`中声明：
+
+* `<aop:beofre>`
+* `<aop:after-returning>`
+  * `returning`指定返回值的参数名,该值需要与方法声明中的参数名称相同
+* `<aop:after-throwing>`
+  * `throwing`:指定异常的参数名称，该值要与方法声明中的参数名称相同
+* `<aop:after>`
+* `<aop:around>`
+
+以上Advice标签都具有以下属性：
+
+* `method `：标识一个提供 advice body 的方法。这个方法必须为当前advice所在的aspect所引用的bean定义(即`<aop:aspect>`标签的ref属性所指定的bean)
+* `arg-names`:指定Advice对应的方法的参数名 多个参数名用逗号隔开
+* `pointcut-ref`:指定 引用的`<aop:pointcut>`的id
+* `pointcut`:指定Pointcut表达式
+
+示例：
+
+~~~xml
+<bean id="aspectDemo" class="com.wzm.spring.schema.AspectDemo"/>
+<aop:config>
+    <aop:aspect id="aspectDemo" ref="aspectDemo">
+        <aop:pointcut id="p" expression="execution(* *..Target.*(..))"/>
+        <aop:before method="doBefore" pointcut-ref="p" arg-names="joinpoint"/>
+        <aop:after-returning method="doAfterReturning" pointcut-ref="p" returning="result"/>
+        <aop:after-throwing method="doAfterThrowing" pointcut-ref="p" throwing="e"/>
+        <aop:after method="doAfter" pointcut-ref="p"/>
+        <aop:around method="doAround" pointcut-ref="p"/>
+    </aop:aspect>
+</aop:config>
+~~~
+
+`AspectDemo`的声明如下：
+
+~~~java
+public class AspectDemo {
+
+    public void doBefore(JoinPoint joinpoint){System.out.println("doBefore:"+joinpoint.getTarget());}
+
+    public void doAfterReturning(Object result){System.out.println("doAfterReturning:"+result);}
+
+    public void doAfterThrowing(RuntimeException e){System.out.println("doAfterThrowing:"+e.getMessage());}
+
+    public void doAfter(JoinPoint joinPoint){System.out.println("doAfter:"+joinPoint.getTarget());}
+
+    public void doAround(JoinPoint joinPoint){System.out.println("doAround:"+joinPoint.getTarget());}
+
+}
+~~~
+
+## Introduction
+
+可以通过在 `aop:aspect` 里面使用 `aop:declaration-parents` 元素来做一个introduction,`<aop:declare-parents>`属性如下：
+
+* `type-matching`:指定将要对那些目标对象进行Introduction逻辑织入
+* `implement-interface`：指定新增加的Introduction行为的接口定义类型
+* `default-impl`:指定增加的Introduction行为的接口定义的默认实现类
+
+一个示例：
+
+~~~xml
+<aop:aspect id="usageTrackerAspect" ref="usageTracking">
+    <aop:declare-parents
+        types-matching="com.xyz.service.*+"
+        implement-interface="com.xyz.service.tracking.UsageTracked"
+        default-impl="com.xyz.service.tracking.DefaultUsageTracked"/>
+    <aop:before
+        pointcut="execution(* com.xyz..service.*.*(..))
+            and this(usageTracked)"
+            method="recordUsage"/>
+</aop:aspect>
+~~~
+
+支持 `usageTracking` bean的类将包含以下方法。
+
+~~~java
+public void recordUsage(UsageTracked usageTracked) {
+    usageTracked.incrementUseCount();
+}
+~~~
+
+## Advisor
+
+"advisor" 的概念来自于Spring中定义的AOP支持，在AspectJ中并没有直接的对应。advisor就像一个小的独立的切面，它有一个单一的advice。advice本身由一个bean表示，并且必须实现 Spring 的 Advice Type中描述的advice接口之一。advisor可以利用AspectJ的pointcut表达式。
+
+`<aop:advisor>`用以定义Advisor，它有如下属性：
 
 * id：指定当前Advisor定义的标志id
 * pointcut-ref：指定当前Advisor对应的Pointcut的对象引用，或者`<aop:advisor>`的id
@@ -614,63 +793,33 @@ public class IntroductionAspect {
 </aop:config>
 ~~~
 
-## `<aop:aspect>`
+其中`MyMethodInterceptor`定义如下:
 
-通过`<aop:aspect>`，可以基于POJO对象定义Aspect    
-
-它有以下属性：
-
-* `id`Aspect定义在配置文件中的id
-* `ref`指向Aspect定义对应的容器内的bean定义
-* `order`Aspect定义对应的顺序号
-
-它内部可以有如下标签：
-
-### Pointcut
-
-* `<aop:pointcut>`和 `<aop:config>`内的`<aop:pointcut>`一样，不过只能在`<aop:aspect>`内部被引用
-
-### Advice
-
-* `<aop:beofre>`
-* `<aop:after-returning>`
-  * `returning`指定返回值的参数名,该值需要与方法声明中的参数名称相同
-* `<aop:after-throwing>`
-  * `throwing`:指定异常的参数名称，该值要与方法声明中的参数名称相同
-* `<aop:after>`
-* `<aop:around>`
-* `<aop:declare-parents>`
-  * `type-matching`:指定将要对那些目标对象进行Introduction逻辑织入
-  * `implement-interface`：指定新增加的Introduction行为的接口定义类型
-  * `default-impl`:指定增加的Introduction行为的接口定义的默认实现类
-
-**注意：**
-
-除了`<aop:declare-parents>`外，其他Advice标签都具有以下属性：
-
-* `method `：指定Advice对应的方法
-* `arg-names`:指定Advice对应的方法的参数名 多个参数名用逗号隔开
-* `pointcut-ref`:指定 引用的`<aop:pointcut>`的id
-* `pointcut`:指定Pointcut表达式
-
-以绑定pointcut和附着方法
-
-示例：
-
-~~~xml
-<bean id="aspectDemo" class="com.wzm.spring.schema.AspectDemo"/>
-<aop:config>
-    <aop:aspect id="aspectDemo" ref="aspectDemo">
-        <aop:pointcut id="p" expression="execution(* *..Target.*(..))"/>
-        <aop:before method="doBefore" pointcut-ref="p" arg-names="joinpoint"/>
-        <aop:after-returning method="doAfterReturning" pointcut-ref="p" returning="result"/>
-        <aop:after-throwing method="doAfterThrowing" pointcut-ref="p" throwing="e"/>
-        <aop:after method="doAfter" pointcut-ref="p"/>
-        <aop:around method="doAround" pointcut-ref="p"/>
-        <aop:declare-parents types-matching="com.wzm.spring.pojo.impl.Target"
-                             implement-interface="com.wzm.spring.pojo.ICounter"
-                             default-impl="com.wzm.spring.pojo.impl.Counter"/>
-    </aop:aspect>
-</aop:config>
+~~~java
+public class MyMethodInterceptor implements MethodInterceptor {
+    @Override
+    public Object invoke(MethodInvocation invocation) throws Throwable {
+        System.out.println("执行前");
+        Object proceed = invocation.proceed();
+        System.out.println("执行后");
+        return proceed;
+    }
+}
 ~~~
 
+`org.aopalliance.intercept.MethodInterceptor`间接实现了`org.aopalliance.aop.Advice`接口
+
+实际上Advisor常与 transactional advice 一起使用：
+
+~~~xml
+<aop:config>
+    <aop:pointcut id="businessService" expression="execution(* com.xyz.service.*.*(..))"/>
+    <aop:advisor pointcut-ref="businessService" advice-ref="tx-advice" />
+</aop:config>
+
+<tx:advice id="tx-advice">
+    <tx:attributes>
+        <tx:method name="*" propagation="REQUIRED"/>
+    </tx:attributes>
+</tx:advice>
+~~~
