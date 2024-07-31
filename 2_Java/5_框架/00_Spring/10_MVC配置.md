@@ -1,0 +1,111 @@
+# SpringMVC Config
+
+对SpringMVC进行配置，以控制SpringMVC的流程行为
+
+SpringMVC提供了两种配置方式
+
+* 使用MVC XML命名空间的进行配置
+* 使用MVC Java编码配置
+
+他们首先提供了一套适用于大部分应用程序的默认配置，并允许我们进行自定义配置以覆盖这些默认配置
+
+## MVC XML Configuration
+
+可以使用`<mvc:annotation-driven>`标签以启用xml配置:
+
+~~~xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/mvc
+       http://www.springframework.org/schema/mvc/spring-mvc.xsd 
+       http://www.springframework.org/schema/context 
+       https://www.springframework.org/schema/context/spring-context.xsd">
+    <mvc:annotation-driven/>
+</beans>
+~~~
+
+如果不指定`<mvc:annotation-driven>`的属性和子标签，那么SpringMVC将使用默认配置，我们可以指定`mvc:annotation-driven`的子标签和属性以改变默认行为。
+
+`<mvc:annotation-driven>`属性：
+
+* `enable-matrix-variables`:启用解析URL的矩阵变量
+* `validator`:指定`DataBinder`在进行数据校验时使用的 `Validator`实例
+* `conversion-service`:指定`DataBinder`在进行数据转化和格式化时使用的`ConversionService`
+* `content-negotiation-manager`:指定SpringMVC用来确定请求的媒体类型的`ContentNegotiationManager`
+* `ignore-default-model-on-redirect`:指定重定向场景中是否启用默认model
+* `message-codes-resolver`：指定`DataBinder`在生成`BindingResult`时解析error code所使用的`MessageCodesResolver`
+
+`<mvc:annotation-driven>`子标签：
+
+* `<mvc:argument-resolvers>`指定用于解析自定义参数的`HandlerMethodArgumentResolver`，该配置不会覆盖默认的参数解析器
+* `<mvc:async-support>`：异步请求配置
+* `<mvc:message-converters>`：配置自定义的` HttpMessageConverter` 
+* `<mvc:path-matching>`：自定义与路径匹配和URL处理相关的行为
+* `<mvc:return-value-handlers>`：自定义返回值处理器
+
+## MVC Java Configuration
+
+使用`@EnableWebMvc`注解，并实现`WebMvcConfigurer`的普通类，可以实现配置SpringMVC
+
+~~~java
+@EnableWebMvc
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    //实现WebMvcConfigurer方法以配置SpringMVC
+}
+~~~
+
+WebMvcConfigurer可配置的方法如下:
+
+~~~java
+public interface WebMvcConfigurer {
+	//配置PathHelper和PathMatcher
+	default void configurePathMatch(PathMatchConfigurer configurer) ;
+	//配置ContentNegotiationManager
+	default void configureContentNegotiation(ContentNegotiationConfigurer configurer);
+	//配置异步支持
+	default void configureAsyncSupport(AsyncSupportConfigurer configurer);
+	//配置默认Servlet Handler
+	default void configureDefaultServletHandling(DefaultServletHandlerConfigurer configurer) ;
+
+	default void addFormatters(FormatterRegistry registry);
+
+	default void addInterceptors(InterceptorRegistry registry) ;
+
+	default void addResourceHandlers(ResourceHandlerRegistry registry);
+
+
+	default void addCorsMappings(CorsRegistry registry);
+
+
+	default void addViewControllers(ViewControllerRegistry registry) ;
+
+
+	default void configureViewResolvers(ViewResolverRegistry registry);
+
+
+	default void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers);
+
+
+	default void addReturnValueHandlers(List<HandlerMethodReturnValueHandler> handlers);
+
+	default void configureMessageConverters(List<HttpMessageConverter<?>> converters);
+
+	default void extendMessageConverters(List<HttpMessageConverter<?>> converters);
+
+	default void configureHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers) ;
+
+	default void extendHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers);
+
+
+	@Nullable
+	default Validator getValidator();
+
+	default MessageCodesResolver getMessageCodesResolver();
+}
+~~~
+
