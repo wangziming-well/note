@@ -1,6 +1,6 @@
-# SpringMVC概述
 
-## MVC
+
+# MVC设计模式
 
  MVC是一种设计模式，常用于开发web应用程序的框架中。MVC的意思是Model-View-Controller（模型-视图-控制器）。它将web应用程序分为三个主要组件：模型、视图和控制器。每个组件都负责不同的功能，但又相互关联，以便应用程序可以正确地工作。
 
@@ -12,17 +12,154 @@
 
 MVC设计模式是Web开发中的一种重要的设计模式，它能够提供良好的结构化方式，使得Web应用程序的不同部分更易于维护和扩展，提高了应用程序的质量和可靠性。
 
-## SpringMVC组件
+# DispatcherServlet
 
-SpringMVC是请求驱动的MVC模式的Web框架，使用单一控制器处理web请求，它有以下主要组件：
+Spring MVC和其他许多Web框架一样，是围绕前端控制器模式设计。Spring MVC的前端控制器就是 `DispatcherServlet`，它接受所有请求，并为请求处理提供共享算法，实际的请求处理工作由 `DispatcherServlet`委派给可配置的委托组件执行。
 
-* DispatcherServlet负责接收并处理所有的Web请求，争对具体的处理逻辑，它会委派给下一级控制器实现，即Controller
+一方面`DispatcherServlet` 和其他Servlet一样，遵循 `Servlet` 规范，使用Java配置或在 `web.xml` 中进行声明和映射。
 
-* HandlerMapping 负责管理Web请求到具体的处理类之间的映射关系。当请求到达DispatcherServlet后，DispatcherServlet将会寻求具体的HandlerMapping 实例，获取对应当前请求发具体处理类，即Controller
-* Controller：Web请求的具体请求者，是DispatcherServlet的次级控制器
-* ModelAndView：当Controller的处理方法完成后，将返回它的实例，它包含如下两部分信息：
-  * 视图的逻辑名称(或者具体的视图实例)。DispatcherServlet将根据该视图的逻辑名称来决定为用户显示哪个视图。
-  * 模型数据。视图渲染过程中需要将这些模型数据并入视图的显示中
+另一方面`DispatcherServlet `使用Spring配置来发现它在请求映射、视图解析、异常处理等方面需要的委托组件。这些组件由`WebApplicationContext`的ioc容器管理。
+
+所以想要SpringMVC可用，需要向servlet注册一个`DispatcherServlet` ，并且为`DispatcherServlet`创建并绑定一个`WebApplicationContext`。
+
+并且在默认情况下，`DispatcherServlet`会将与之关联的`WebApplicationContext`绑定到所在的ServletContext中。注册的属性名为`FrameworkServlet.SERVLET_CONTEXT_PREFIX`前缀拼接上`DispatcherServlet`的servlet名称
+
+下面介绍通过`web.xml`配置和Java配置 来注册`DispatcherServlet` 
+
+## web.xml配置
+
+可以直接在Servlet的 `web.xml` 配置文件中注册和初始化`DispatcherServlet`:
+
+~~~xml
+<web-app>
+	<!--向servlet注册DispatcherServlet -->
+    <servlet>
+        <servlet-name>app</servlet-name>
+        <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+        <!--指定与DispatcherServlet绑定的WebApplicationContext的xml配置文件位置 -->
+        <init-param>
+            <param-name>contextConfigLocation</param-name>
+            <param-value>classpath:springmvc.xml</param-value>
+        </init-param>
+        <!--保证前端控制器第一时间启动 -->
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>app</servlet-name>
+        <url-pattern>/app/*</url-pattern>
+    </servlet-mapping>
+</web-app>
+
+~~~
+
+## Java配置
+
+可以用下面Java代码配置注册并初始化 `DispatcherServlet`，这些代码会在Servlet容器启动时并发现并执行。
+
+~~~java
+public class MyWebApplicationInitializer implements WebApplicationInitializer {
+
+    @Override
+    public void onStartup(ServletContext servletContext) {
+
+        // 加载WebApplicationContext
+        AnnotationConfigWebApplicationContext context = new AnnotationConfigWebApplicationContext();
+        context.register(AppConfig.class);
+
+        // 创建并注册DispatcherServlet
+        DispatcherServlet servlet = new DispatcherServlet(context);
+        ServletRegistration.Dynamic registration = servletContext.addServlet("app", servlet);
+        registration.setLoadOnStartup(1);
+        registration.addMapping("/app/*");
+    }
+}
+~~~
+
+## Context层次结构
+
+一般情况下，有一个单一的`DispatcherServlet`和与之绑定的单一的  `WebApplicationContext`就足够了。 
+
+但是应用程序中在多个`DispatcherServlet`(（或其他 `Servlet`）)时，此时就会有多个对应的 `WebApplicationContext`。一些作为基础设置的Bean可能每个`DispatcherServlet`都需要，如果向每个`WebApplicationContext`中注册，那么不仅麻烦，而且浪费。那么定义一个公共的父 `WebApplicationContext`是最佳的选择。
+
+Root `WebApplicationContext`就是这样的父容器。 它通常包含基础设施Bean，例如需要在多个 `Servlet` 实例中共享的数据存储库和业务服务。这些Bean会被子`WebApplicationContext`继承以供不同的`Servlet`使用。下图显示了这种关系：
+
+![mvc-context-hierarchy](https://gitee.com/wangziming707/note-pic/raw/master/img/mvc-context-hierarchy.png)
+
+### ContextLoaderListener
+
+可以通过`ContextLoaderListener`初始化并注册根`WebApplicationContext`。
+
+`ContextLoaderListener`作为Servlet的标准监听器，会在Web容器初始化时创建并注册根`WebApplicationContext`
+
+如果创建`ContextLoaderListener`时没有通过构造器提供`WebApplicationContext`实例。那么`ContextLoaderListener`默认会自己创建一个`XmlWebApplicationContext`,并通过ServletContext的初始化参数`contextConfigLocation`指定的位置获取XML配置文件加载到`XmlWebApplicationContext`中
+
+### web.xml配置
+
+所以，如果需要根`WebApplicationContext`，只需要在servlet的web.xml配置中注册一个`ContextLoaderListener`并指定初始化参数`contextConfigLocation`即可：
+
+~~~xml
+<web-app>
+    <listener>
+        <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+    </listener>
+
+    <context-param>
+        <param-name>contextConfigLocation</param-name>
+        <param-value>/WEB-INF/root-context.xml</param-value>
+    </context-param>
+
+    <servlet>
+        <servlet-name>app1</servlet-name>
+        <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+        <init-param>
+            <param-name>contextConfigLocation</param-name>
+            <param-value>/WEB-INF/app1-context.xml</param-value>
+        </init-param>
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>app1</servlet-name>
+        <url-pattern>/app1/*</url-pattern>
+    </servlet-mapping>
+
+</web-app>
+~~~
+
+### Java配置
+
+我们可以直接实现`WebApplicationInitializer`接口来完成mvc的Java配置，但实际上Spring MVC提供了现成的`WebApplicationInitializer`抽象实现，能够帮助我们完成大部分工作。其中包括了创建并设置根 `WebApplicationContext` 
+
+下面的例子配置了一个 `WebApplicationContext` 的层次结构：
+
+~~~java
+public class MyWebAppInitializer extends AbstractAnnotationConfigDispatcherServletInitializer {
+
+    @Override
+    protected Class<?>[] getRootConfigClasses() {
+        return new Class<?>[] { RootConfig.class };
+    }
+
+    @Override
+    protected Class<?>[] getServletConfigClasses() {
+        return new Class<?>[] { App1Config.class };
+    }
+
+    @Override
+    protected String[] getServletMappings() {
+        return new String[] { "/app1/*" };
+    }
+}
+~~~
+
+`AbstractAnnotationConfigDispatcherServletInitializer`会在其`onStartup()`方法(该方法会在容器创建时被servlet调用)中为创建注册根 `WebApplicationContext` 做了下面几个动作：
+
+* 如果`getRootConfigClasses()`方法返回不为空，那么创建一个`AnnotationConfigWebApplicationContext`,并注册配置类
+* 创建一个`ContextLoaderListener`并在构造器中传递上一步创建的`WebApplicationContext`
+* 将`ContextLoaderListener`注册到`ServletContext`中
+
+所以如果不想注册根 `WebApplicationContext` ，只需要重写`getRootConfigClasses() `方法返回值为nu'l'l
+
+
 
 #  搭建SpringMVC应用程序
 
@@ -125,15 +262,11 @@ DispatcherServlet在启动后将加载该配置文件，并构建相应的WebApp
   		<param-name>contextConfigLocation</param-name>
   		<param-value>classpath:dispatcher-servlet.xml</param-value>
 	</init-param>
-    <!--保证前端控制器第一时间启动 -->
+   
     <load-on-startup>1</load-on-startup>
 </servlet>
 <servlet-mapping>
 	<servlet-name>dispatcherServlet</servlet-name>
-    <!--过滤请求uri
-      第一种：/  代表过滤所有
-      第二种:*.action   *.do   *.jsp    配置具体的后缀
-    -->
 	<url-pattern>/</url-pattern>
 </servlet-mapping>
 ~~~
@@ -1309,3 +1442,19 @@ tomcat会优先处理更具体精确的路径，所以tomcat收到请求后，�
 <!-- 由springmvc对请求进行分类，如果是静态资源，则交给DefaultServlet处理 -->
 <mvc:default-servlet-handler/>
 ~~~
+
+
+
+# TEMP
+
+## SpringMVC组件
+
+Spring Web MVC是建立在Servlet API上的原始Web框架，从一开始就包含在Spring框架中。 SpringMVC是请求驱动的MVC模式的Web框架，使用单一控制器处理web请求，它有以下主要组件：
+
+* DispatcherServlet负责接收并处理所有的Web请求，争对具体的处理逻辑，它会委派给下一级控制器实现，即Controller
+
+* HandlerMapping 负责管理Web请求到具体的处理类之间的映射关系。当请求到达DispatcherServlet后，DispatcherServlet将会寻求具体的HandlerMapping 实例，获取对应当前请求发具体处理类，即Controller
+* Controller：Web请求的具体请求者，是DispatcherServlet的次级控制器
+* ModelAndView：当Controller的处理方法完成后，将返回它的实例，它包含如下两部分信息：
+  * 视图的逻辑名称(或者具体的视图实例)。DispatcherServlet将根据该视图的逻辑名称来决定为用户显示哪个视图。
+  * 模型数据。视图渲染过程中需要将这些模型数据并入视图的显示中
