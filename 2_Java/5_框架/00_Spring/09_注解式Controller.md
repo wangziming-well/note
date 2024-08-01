@@ -1,67 +1,59 @@
 # 基于注解的Controller
 
-在之前对SpringMVC组件的讨论中，Handler处理器可以是任何形式的，只要为自定义的Handler配置对应的HandlerMapping和HandlerAdapter，就能够将其集成到SpringMVC的工作流程中。
-
-SpringMVC提供的基于注解的Controller也是这样，提供了相应的基于注解的HandlerMapping和HandlerAdapter实现，就能为用户提供相应的注解开发支持,在之前的讨论中，我们已经提到过这样的实现:
-
-* RequestMappingHandlerMapping
-* RequestMappingHandlerAdapter
-
-基于以上组件，SpringMVC提供了注解`@Controller`、`@RequestMapping`，通过注释来声明基于注解的Controller,告知SpringMVC框架该类是注释的Handler:
+Spring MVC提供了一个基于注解的编程模型，通过`@Controller`、`@RequestMapping`注解来表达请求映射、请求输入、异常处理等内容。注解的控制器具有灵活的方法签名，不需要继承基类，也不需要实现特定的接口。下面例子声明一个由注解定义的Controller：
 
 ~~~java
 @Controller
-public class AnnotatedController {
-    @RequestMapping( "/accept")
-    public String accept(){
-        System.out.println("收到请求");
+public class HelloController {
+    @RequestMapping("/hello")
+    public String handle(Model model) {
+        model.addAttribute("message", "Hello World!");
         return "index";
     }
 }
 ~~~
 
-并配置以下内容:
+示例中方法接受一个 `Model`，并返回一个 `String` 的视图名称，但这不是固定了，可以指定灵活的方法入参和返回值，后面会详细介绍。
 
-~~~xml
-<mvc:annotation-driven/>
-<context:component-scan base-package="com.wzm.spring"/>
-~~~
+这样，一个`@Controller`方法注释的类中的每个`@RequestMapping`注释的方法都对应一个handler请求处理器，所以被`@RequestMapping`注释的方法也可以叫处理器方法或者处理方法(Handler Method)
 
-启动mvc的注解驱动，并将刚刚注释的类交给ioc容器管理即可
+## 注册`@Controller`
 
-这样，一个`@Controller`方法注释的类中的每个`@RequestMapping`注释的方法都对应一个handler，叫做处理器方法(Handler Method)
+`@Controller`类作为组件需要注册到`DispatcherServlet`绑定的`WebApplicationContext`中。
 
-# 基本Handler Method
+因为`@Controller`有元注解`@Component`,所以它允许自动检测。
 
-我们可以使用`@Controller`和`@RequestMapping`注解注释以声明一个基于注解的Controller
-
-因为一个`@RequestMapping`注释的方法在SpringMVC就对应一个Controller，所以被`@RequestMapping`注释的方法也可以叫处理器方法或者处理方法(Handler Method)
-
-## `@Controller`
-
-想要让一个普通的pojo类成为SpringMVC框架下的handler处理器，必须使用`@Controller`注解注释该类
-
-`@Controller`的定义如下:
+要实现对这种 `@Controller` Bean的自动检测，可以为Java配置添加组件扫描：
 
 ~~~java
-@Target({ElementType.TYPE})
-@Retention(RetentionPolicy.RUNTIME)
-@Documented
-@Component
-public @interface Controller {
+@Configuration
+@ComponentScan("org.example.web")
+public class WebConfig {
 
-	@AliasFor(annotation = Component.class)
-	String value() default "";
-
+    // ...
 }
-
 ~~~
 
-可以看到它被`@Component`注解注释，所有被注释了`@Controller`注解的类，同样可以被扫描管理到Spring的ioc容器中，而不需要额外使用其他注解
+或者使用等效的XML配置：
 
-除此之外，`RequestMappingHandlerMapping`在收到Web请求时，匹配的就是所有容器中被`@Controller`注释的对象
+~~~xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:p="http://www.springframework.org/schema/p"
+    xmlns:context="http://www.springframework.org/schema/context"
+    xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        https://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/context
+        https://www.springframework.org/schema/context/spring-context.xsd">
 
-## `@RequsetMapping`
+    <context:component-scan base-package="org.example.web"/>
+    <!-- ... -->
+</beans>
+~~~
+
+# `@RequsetMapping`
 
 只拥有一个`@Controller`注解，不能让`RequestMappingHandlerMapping`知道应该将Web请求映射到哪个Controller上，需要`@RequsetMapping`提供必要的映射信息。
 
