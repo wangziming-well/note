@@ -109,3 +109,58 @@ public interface WebMvcConfigurer {
 }
 ~~~
 
+
+
+
+
+# SpringMVC读取静态资源
+
+在配置SpringMVC的中央控制器DispatcherServlet时，我们设置的url-pattern是`/`,这意味着浏览器的所有请求都会被中央控制器拦截处理，包括动态资源和静态资源的请求
+
+但中央处理器只能处理类似.jsp .actiond 的动态资源，无法处理 .html .js .css 的静态资源，这导致了tomcat无法读取静态资源给浏览器
+
+有三个方法方案：
+
+1. 使用tomcat自带的default Servlet处理
+2. 在SpringMVC中配置静态资源路径
+3. 在SpringMVC中设置静态资源的处理方式：交给default Servlet
+
+## 使用Defalut Servlet
+
+直接在web.xml文件中配置默认servlet路径:
+
+~~~xml
+  <!--配置默认servlet-->
+  <servlet-mapping>
+    <servlet-name>default</servlet-name>
+    <url-pattern>/images/*</url-pattern>
+    <url-pattern>/static/*</url-pattern>
+    <url-pattern>/photo/*</url-pattern>
+    <url-pattern>/laydate/*</url-pattern>
+    <url-pattern>*.js</url-pattern>
+    <url-pattern>*.css</url-pattern>
+  </servlet-mapping>
+~~~
+
+tomcat会优先处理更具体精确的路径，所以tomcat收到请求后，会先匹配default的路径，如果是default路径指定的url pattern 则会交给default处理，如果在指定的路径范围，才会再交给DispatcherServlet处理
+
+## 在SpringM配置静态资源路径
+
+在SpringMVC的核心配置文件中：
+
+~~~xml
+<!-- 以下路径不会被当控制器拦截，当静态资源处理 -->
+<mvc:resources mapping="/images/*" location="/images/" />
+<mvc:resources mapping="/css/*" location="/css/" />
+<mvc:resources mapping="/js/*" location="/js/" />
+~~~
+
+## SpringMVC交还给default Servlet处理
+
+在SpringMVC核心配置文件中：
+
+~~~xml
+<!-- 由springmvc对请求进行分类，如果是静态资源，则交给DefaultServlet处理 -->
+<mvc:default-servlet-handler/>
+~~~
+
