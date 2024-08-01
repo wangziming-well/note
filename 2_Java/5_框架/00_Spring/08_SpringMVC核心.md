@@ -18,11 +18,16 @@ Spring MVC和其他许多Web框架一样，是围绕前端控制器模式设计�
 
 一方面`DispatcherServlet` 和其他Servlet一样，遵循 `Servlet` 规范，使用Java配置或在 `web.xml` 中进行声明和映射。
 
-另一方面`DispatcherServlet `使用Spring配置来发现它在请求映射、视图解析、异常处理等方面需要的委托组件。这些组件由`WebApplicationContext`的ioc容器管理。
+另一方面`DispatcherServlet `使用Spring配置来发现它在请求映射、视图解析、异常处理等方面需要的委托组件。这些组件由`WebApplicationContext`容器管理。
+
+`WebApplicationContext`扩展了`ApplicationContext`，在其基础上提供了web应用的支持:
+
+* 支持web相关的bean的scope: session和request
+* 提供获取当前应用程序的`ServletContext`的方法
 
 所以想要SpringMVC可用，需要向servlet注册一个`DispatcherServlet` ，并且为`DispatcherServlet`创建并绑定一个`WebApplicationContext`。
 
-并且在默认情况下，`DispatcherServlet`会将与之关联的`WebApplicationContext`绑定到所在的ServletContext中。注册的属性名为`FrameworkServlet.SERVLET_CONTEXT_PREFIX`前缀拼接上`DispatcherServlet`的servlet名称
+并且在默认情况下，`DispatcherServlet`会将与之关联的`WebApplicationContext`绑定到所在的`ServletContext`中。注册的属性名为`FrameworkServlet.SERVLET_CONTEXT_PREFIX`前缀拼接上`DispatcherServlet`的servlet名称
 
 下面介绍通过`web.xml`配置和Java配置 来注册`DispatcherServlet` 
 
@@ -74,6 +79,34 @@ public class MyWebApplicationInitializer implements WebApplicationInitializer {
     }
 }
 ~~~
+
+### 发现Java配置的原理
+
+web能够容器发现并执行`WebApplicationInitializer`的实现是因为servlet3.0规范提供了方便第三方框架在容器启动时做一些初始化动作的机制：
+
+* Servlet容器启动时会扫描应用中每个jar包的`META-INF/services/javax.servlet.ServletContainerInitializer`文件，这个文件会指定 `ServletContainerInitializer`的实现类
+* Servlet容器会执行指定 `ServletContainerInitializer`的实现类的`onStartup()`方法
+*  `ServletContainerInitializer`的实现类可以被` @HandlesTypes`的注解注释，该注解声明一些类型，这些类型会作为入参被传入上一步的`onStartup()`方法
+
+在spring-web.jar包中，就存在文件`META-INF/services/javax.servlet.ServletContainerInitializer`，该文件内容为：
+
+~~~java
+org.springframework.web.SpringServletContainerInitializer
+~~~
+
+指定了`SpringServletContainerInitializer`实现，这个实现类简略声明如下：
+
+~~~java
+@HandlesTypes(WebApplicationInitializer.class)
+public class SpringServletContainerInitializer implements ServletContainerInitializer {
+    	@Override
+	public void onStartup(@Nullable Set<Class<?>> webAppInitializerClasses, ServletContext servletContext)
+			throws ServletException {
+		//webAppInitializerClasses就是指定的WebApplicationInitializer类型，方法体主要逻辑就是执行WebApplicationInitializer的onStartup()方法
+	}
+~~~
+
+所以我们能够直接声明`WebApplicationInitializer`的实现，不需要主动注册它到容器，而是等待它被容器扫描发现执行。
 
 ## Context层次结构
 
@@ -127,7 +160,7 @@ Root `WebApplicationContext`就是这样的父容器。 它通常包含基础设
 
 ### Java配置
 
-我们可以直接实现`WebApplicationInitializer`接口来完成mvc的Java配置，但实际上Spring MVC提供了现成的`WebApplicationInitializer`抽象实现，能够帮助我们完成大部分工作。其中包括了创建并设置根 `WebApplicationContext` 
+我们可以直接实现`WebApplicationInitializer`接口来完成mvc的Java配置，但实际上Spring MVC提供了现成的`WebApplicationInitializer`抽象实现，能够帮助我们完成一些通用逻辑。其中包括了创建并设置根 `WebApplicationContext` 
 
 下面的例子配置了一个 `WebApplicationContext` 的层次结构：
 
@@ -157,186 +190,22 @@ public class MyWebAppInitializer extends AbstractAnnotationConfigDispatcherServl
 * 创建一个`ContextLoaderListener`并在构造器中传递上一步创建的`WebApplicationContext`
 * 将`ContextLoaderListener`注册到`ServletContext`中
 
-所以如果不想注册根 `WebApplicationContext` ，只需要重写`getRootConfigClasses() `方法返回值为nu'l'l
+所以如果不想注册根 `WebApplicationContext` ，只需要重写`getRootConfigClasses() `方法返回值为null。
 
+# SpringMVC组件
 
+我们已经知道`DispatcherServlet`在收到请求后会将请求委托给特殊的Bean组件来处理请求。这些特殊的Bean组件会被`WebApplicationContext`管理，并被对应的`DispatcherServlet`检测发现。这些实现SpringMVC框架的标准：
 
-#  搭建SpringMVC应用程序
-
-SpringMVC也是基于servlet的架构，所以SpringMVC的项目结构和servlet一样，只是多出了springioc的配置文件
-
-## 依赖
-
-首先需要引入SpringMVC项目所需的依赖：
-
-~~~xml
-<dependency>
-  <groupId>org.springframework</groupId>
-  <artifactId>spring-context</artifactId>
-  <version>5.2.5.RELEASE</version>
-</dependency>
-<dependency>
-  <groupId>org.springframework</groupId>
-  <artifactId>spring-webmvc</artifactId>
-  <version>5.2.5.RELEASE</version>
-</dependency>
-<dependency>
-  <groupId>javax.servlet</groupId>
-  <artifactId>javax.servlet-api</artifactId>
-  <version>4.0.1</version>
-</dependency>
-~~~
-
-## 配置web.xml
-
-需要配置web.xml文件，将springMVC的需要的组件在servlet容器初始化时，加载到ServletContext中以供使用
-
-### 注册WebApplicationContext
-
-WebApplicationContext继承ApplicationContext，在Spring IoC的基础上扩展提供了web应用的支持:
-
-* 提供web相关的bean的scope: session和request
-* 提供获取当前应用程序的ServletContext的方法
-
-我们可以使用ContextLoaderListener在程序启动时，将WebApplicationContext加载到ServletContext中
-
-ContextLoaderListener继承了ContextLoaderListener，并重写了contextInitialized()方法:
-
-~~~java
-public void contextInitialized(ServletContextEvent event) {
-    initWebApplicationContext(event.getServletContext());
-}
-~~~
-
-在servlet容器启动时，将调用`initWebApplicationContext()`，初始化`WebApplicationContext`，该方法主要做了以下事情:
-
-* 创建`WebApplicationContext`实例
-* 将当前`ServletContext`绑定到`WebApplicationContext`实例中
-* 从`ServletContext`获取初始化参数 :`contextConfigLocation `的值并调用`setConfigLocation()`方法将其设置到`WebApplicationContext`中
-  * 后续将调用`getConfigLocation()`方法获取`configLocation`，获取配置文件位置，将配置文件的定义加载成`Bean Definition`
-  * 如果`configLocations`为空，将使用默认的`configLocation:/WEB-INF/applicationContext.xml`
-* 调用`ServletContext`的`setAttribute()`方法，将`WebApplicationContext`绑定到`ServletContext`中，键为：`WebApplicationContext.class.getName() + ".ROOT"`
-
-从上面过程可以看出，如果我们的springweb容器的ioc配置文件不在默认位置`/WEB-INF/applicationContext.xml`,则需要通过`web.xml`的标签`<context-param>`将contextConfigLocation加载到servletContext中，值应该为springweb容器配置文件的实际位置
-
-综上，要在程序启动时加载`WebApplicationContext`,需要在web.xml文件中配置:
-
-~~~xml
-<context-param>
-	<param-name>contextConfigLocation</param-name>
-    <!--可以配置多个文件，可用以下分隔符分开：",; \t\n"-->
-	<param-value>classpath:springmvc.xml</param-value>
-</context-param>
-<listener>
-	<listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
-</listener>
-~~~
-
-可以通过`WebApplicationContextUtils`类中的方法获取当前`ServletContext`中绑定的`WebApplicationContext`,
-
-就不需要知道`WebApplicationContext`在`ServletContext`中的key了:
-
-~~~java
-public static WebApplicationContext getWebApplicationContext(ServletContext sc)
-~~~
-
-### 注册DispatcherServlet
-
-DispatcherServlet时SpringMVC框架Web应用程序的前端控制器，负责几乎所有对应当前Web应用程序的Web请求的处理。
-
-DispatcherServlet使用了外部化的配置文件，用来配置Spring MVC框架在处理Web请求过程中所涉及的各个组件，包括:HandlerMapping的定义、Controller定义、ViewResolver定义等。该配置文件和普通的SpringIoc配置文件一样。
-
-DispatcherServlet在启动后将加载该配置文件，并构建相应的WebApplicationContext，该WebApplicationContext将之前通过ContextLoaderListener加载的顶层WebApplicationContext(ROOT WebApplicationContext)作为父容器。
-
-默认情况下，该配置文件的路径为`/WEB-INF/<servlet-name>-servlet.xml`
-
-其中`<servlet-name>`为DispatcherServlet在servlet容器中的servlet名称，即web.xml中定义DispatcherServlet的`<servlet-name>`的值
-
-当然，我们也可以通过在初始化DispatcherServlet时传入参数`contenxtConfigLocation`来自定义DispatcherServlet对应的配置文件的路径
-
-~~~xml
-<servlet>
-	<servlet-name>dispatcherServlet</servlet-name>
-	<servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
-	<init-param>
-  		<param-name>contextConfigLocation</param-name>
-  		<param-value>classpath:dispatcher-servlet.xml</param-value>
-	</init-param>
-   
-    <load-on-startup>1</load-on-startup>
-</servlet>
-<servlet-mapping>
-	<servlet-name>dispatcherServlet</servlet-name>
-	<url-pattern>/</url-pattern>
-</servlet-mapping>
-~~~
-
-## 配置WebApplicationContext配置文件
-
-需要在DispatcherServlet的对应的WebApplicationContext的配置文件中，配置好SpringMVC框架需要的组件，如HandlerMapping、Controller、ViewResolver等。
-
-### 注册HandlerMapping
-
-DispatcherServlet在接收到Web请求后，将寻找相应的HandlerMapping进行Web请求到具体的Controller实现的匹配。
-
-所以需要为DispatcherServlet提供一个具体的HandlerMapping的实现。
-
-SpringMVC框架默认提供了多个HandlerMapping的实现。我们现在先注册一个BeanNameUrlHandlerMapping到WebApplicationContext中
-
-~~~xml
-<bean id="handlerMapping" class="org.springframework.web.servlet.handler.BeanNameUrlHandlerMapping"/>
-~~~
-
-实际上，如果没有配置任何HandlerMapping，SpringMVC也会默认使用BeanNameUrlHandlerMapping。
-
-BeanNameUrlHandlerMapping会将url的路径映射到对应的beanName 为请求路径的Controller上。
-
-### 注册Controller
-
-在注册Controller之前，我们需要先简单实现一个Controller类:
-
-~~~java
-public class DemoController extends AbstractController {
-    @Override
-    protected ModelAndView handleRequestInternal(HttpServletRequest request, HttpServletResponse response) throws Exception {
-        System.out.println("收到请求");
-        return null;
-    }
-}
-~~~
-
-继承AbstractController并覆盖其handleRequestInternal方法。
-
-然后注册到对应的ioc容器中:
-
-~~~java
-<bean name="/demo" class="com.wzm.spring.controller.DemoController"/>
-~~~
-
-假设该web的前缀为:`http://localhost:8080/spring/`
-
-那么这个controller对应的路径就为`http://localhost:8080/spring/demo`
-
-### 注册ViewResover
-
-DispatcherServlet需要ViewResover通过ModelAndView中的逻辑视图名查找相应的视图实现。
-
-虽然现在不需要用到，但至少要注册一个，否则DispatcherServlet会报错
-
-~~~xml
-<bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
-    <property name="prefix" value="/WEB-INF/jsp/"/>
-    <property name="suffix" value=".jsp"/>
-</bean>
-~~~
-
-定义了视图的前后缀；
-
-这样假设视图的逻辑名称为`demo`，那么视图解析器将查找路径`/WEB-INF/jsp/demo.jsp`对应的视图
-
-# SpringMVC核心组件
-
-SpringMVC提供了许多组件以支持SpringMVC的Web应用程序运行和避免重复开发。
+| Bean 类型                                 | 说明                                                         |
+| :---------------------------------------- | :----------------------------------------------------------- |
+| `HandlerMapping`                          | 将一个请求和一个用于前后处理的拦截器链一起映射到一个处理程序（handler）。 |
+| `HandlerAdapter`                          | 帮助 `DispatcherServlet` 调用映射到请求的处理程序（handler），不管处理程序实际上是如何被调用的。例如，调用一个有注解的controller需要解析注解的问题。`HandlerAdapter` 的主要目的是将 `DispatcherServlet` 从这些细节中屏蔽掉。 |
+| `HandlerExceptionResolver`                | 解决异常的策略，可能将它们映射到处理程序、HTML error 视图或其他目标。 |
+| `ViewResolver`                            | 将处理程序返回的基于 `String` 的逻辑视图名称解析为实际的 `View`（视图），并将其渲染到响应。 |
+| `LocaleResolver`, `LocaleContextResolver` | 解析客户端使用的 `Locale`，可能还有他们的时区，以便能够提供国际化的视图。 |
+| `ThemeResolver`                           | 解析你的web应用可以使用的主题（theme）--例如，提供个性化的布局。 |
+| `MultipartResolver`                       | 在一些 multipart 解析库的帮助下，解析一个 multipart 请求（例如，浏览器表单文件上传）的抽象。 |
+| `FlashMapManager`                         | 存储和检索 "输入" 和 "输出" `FlashMap`，可用于将属性从一个请求传递到另一个请求，通常跨越重定向。 |
 
 ## HandlerMapping
 
@@ -352,15 +221,15 @@ public interface HandlerMapping {
 }
 ~~~
 
-定义非常简单，`getHandler()`方法根据HttpServletRequest 获取 HandlerExecutionChain 以获取处理器
+定义非常简单，`getHandler()`方法根据`HttpServletRequest `获取 `HandlerExecutionChain `以获取处理器
 
-SpringMVC提供了许多HandlerMapping的实现:
+SpringMVC提供了许多`HandlerMapping`的实现:
 
-*  BeanNameUrlHandlerMapping
+*  `BeanNameUrlHandlerMapping`
 
-* SimpleUrlHandlerMapping
-* ControllerClassNameHandlerMapping
-* RequestMappingHandlerMapping
+* `SimpleUrlHandlerMapping`
+* `ControllerClassNameHandlerMapping`
+* `RequestMappingHandlerMapping`:支持 `@RequestMapping` 注解的方法
 
 ### BeanNameUrlHandlerMapping
 
