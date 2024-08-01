@@ -55,80 +55,38 @@ public class WebConfig {
 
 # `@RequsetMapping`
 
-只拥有一个`@Controller`注解，不能让`RequestMappingHandlerMapping`知道应该将Web请求映射到哪个Controller上，需要`@RequsetMapping`提供必要的映射信息。
+ `@RequestMapping` 可以注释到`@Contorller`方法上，告知`DispatcherServlet`当前方法是一个Handler，并声明URL请求路径和Handler方法的映射关系。`@RequestMapping`提供各种属性，用以通过URL、HTTP方法、请求参数、header和媒体类型（meida type）与请求匹配映射。
 
-`@RequsetMapping`可以应用到方法级别和类级别上，定义如下:
+也可以在`@Controller`类上注释 `@RequsetMapping`,来表达共享映射。
+
+一个示例：
 
 ~~~java
-@Target({ElementType.TYPE, ElementType.METHOD})
-@Retention(RetentionPolicy.RUNTIME)
-@Documented
-@Mapping
-public @interface RequestMapping {
-	String name() default "";
-	@AliasFor("path")
-	String[] value() default {};
-	@AliasFor("value")
-	String[] path() default {};
-	RequestMethod[] method() default {};
-	String[] params() default {};
-	String[] headers() default {};
-	String[] consumes() default {};
-	String[] produces() default {};
+@RestController
+@RequestMapping("/persons")
+class PersonController {
+
+    @GetMapping("/{id}")
+    public Person getPerson(@PathVariable Long id) {
+        // ...
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public void add(@RequestBody Person person) {
+        // ...
+    }
 }
 ~~~
 
-* `value/path`：指定匹配映射的url路径:
+## 方法匹配
 
-  * 即支持完全匹配，也支持ant风格的路径匹配(`*`、`**`、`?`通配符)
+`@RequestMapping`的`method`属性指定匹配映射的HTTP请求方法：
 
-  * 类级别的`@RequsetMapping`是类中所有方法级别的`@RequestMapping`的主映射，方法级别的映射路径前会加上类级别的映射路径，例如:
+* 值为`RequestMethod`枚举:`GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE, TRACE.`
+* 当在类级别设置`method`时，该类方法级别的`method`值将继承类级别上的`method`值，在方法级别上设置`method`值将覆盖继承的值
 
-    ~~~java
-    @Controller
-    @RequestMapping("/annotation")
-    public class AnnotatedController {
-        @RequestMapping( "/accept")
-        public String accept(){
-            System.out.println("收到请求");
-            return "index";
-        }
-    }
-    ~~~
-
-    accept()方法对应的映射为`/annotation/accept`
-
-  * 在方法级别时，`path`支持使用相对路径，在刚才的路径中，`accept`和`/accept`效果一样
-
-* `method`:指定匹配映射的HTTP请求方法：
-
-  * 值为`RequestMethod`枚举:`GET, POST, HEAD, OPTIONS, PUT, PATCH, DELETE, TRACE.`
-  * 当在类级别设置`method`时，该类方法级别的`method`值将继承类级别上的`method`值，在方法级别上设置`method`值将覆盖继承的值
-
-* `params`：指定匹配映射的HTTP请求参数:
-
-  * 值为形式为`myParam=myValue`表达式的字符串表示匹配指定的键值
-  * 表达式可以用`!=`表示不匹配指定的键值对
-  * 表达式可以是`myParam`或者`!myParam`表示匹配或者不匹配指定的键
-  * 当在类级别上设置`params`属性时，该类所有的方法级别的`params`将自动继承它，可以通过在方法上指定`params`值来覆盖继承的值
-
-* `headers`:指定匹配映射的HTTP请求首部:
-
-  * 值为形式为`My-Header=myValue`表达式的字符串表示匹配指定请求首部的键值
-  * 和`params`一样，可以用`!=` 和`My-Header`表示不匹配指定的键值，或者匹配指定的键
-  * 支持通配符`*`
-
-* `consumes`:指定匹配映射的HTTP请求`Content-Type`值
-
-  * 值可以为MediaType中指定的值
-  * 支持使用`!`表示不匹配指定的`Content-Type`值
-
-* `produces`：指定匹配映射HTTP请求的`Accept`值
-
-  * 值可以为MediaType中指定的值
-  * 支持使用`!`表示不匹配指定的`Accept`值
-
-另外SpringMVC提供了子注解:
+ `@RequestMapping` 有限定HTTP方法的变体：
 
 - `@GetMapping`
 - `@PostMapping`
@@ -136,24 +94,159 @@ public @interface RequestMapping {
 - `@DeleteMapping`
 - `@PatchMapping`
 
-他们与`@RequsetMapping`不同之处只在`method`值已经预先固定
+这些注解和 `@RequestMapping`唯一不同之处在于固定了其`method`属性
+
+## URI路径匹配
+
+ `@RequsetMapping`的`value/path`属性指定匹配映射的url路径:
+
+即支持完全匹配，也支持ant风格的路径匹配(`*`、`**`、`?`通配符)。它支持捕获 pattern，例如 `{*spring}`。 `**` 在匹配多个路径段，但只允许在 pattern 的末端使用。
+
+一些示例 pattern：
+
+- `"/resources/ima?e.png"` - 匹配路径段中的一个字符
+- `"/resources/*.png"` - 匹配一个路径段中的零个或多个字符
+- `"/resources/**"` - 匹配多个路径段
+- `"/projects/{project}/versions"` - 匹配一个路径段并将其作为一个变量捕获
+- `"/projects/{project:[a-z]+}/versions"` - 匹配并捕获一个带有正则的变量
+
+### 共享映射
+
+类级别的`@RequsetMapping`是类中所有方法级别的`@RequestMapping`的主映射，方法级别的映射路径前会加上类级别的映射路径，例如:
+
+~~~java
+@Controller
+@RequestMapping("/annotation")
+public class AnnotatedController {
+    @RequestMapping( "/accept")
+    public String accept(){
+        System.out.println("收到请求");
+        return "index";
+    }
+}
+~~~
+
+accept()方法对应的映射为`/annotation/accept`
+
+在方法级别时，`path`支持使用相对路径，在刚才的路径中，`accept`和`/accept`效果一样
+
+### URI变量
+
+捕获的URI变量可以用 `@PathVariable` 访问。例如：
+
+~~~java
+@GetMapping("/owners/{ownerId}/pets/{petId}")
+public Pet findPet(@PathVariable Long ownerId, @PathVariable Long petId) {
+    // ...
+}
+~~~
+
+可以在类和方法层面上声明URI变量，如下例所示：
+
+~~~java
+@Controller
+@RequestMapping("/owners/{ownerId}")
+public class OwnerController {
+
+    @GetMapping("/pets/{petId}")
+    public Pet findPet(@PathVariable Long ownerId, @PathVariable Long petId) {
+        // ...
+    }
+}
+~~~
+
+URI变量会自动转换为适当的类型，简单的类型（`int`、`long`、`Date` 等）是默认支持。也可以注册对任何其他数据类型的支持。后面在类型转换和`DataBinder`时会详细讲解。
+
+可以明确地命名URI变量（例如，`@PathVariable("customId")`），但是如果名称相同，并且你的代码是用 `-parameters` 编译器标志编译的，你可以不考虑这个细节。
+
+语法 `{varName:regex}` 用正则表达式声明一个URI变量，例如，给定 URL `"/spring-web-3.0.5.jar"`，以下方法可以提取名称、版本和文件扩展名：
+
+~~~java
+@GetMapping("/{name:[a-z-]+}-{version:\\d\\.\\d\\.\\d}{ext:\\.[a-z]+}")
+public void handle(@PathVariable String name, @PathVariable String version, @PathVariable String ext) {
+    // ...
+}
+~~~
+
+## Content-Type匹配
+
+`@RequsetMapping`的`consumes`属性指定匹配映射的HTTP请求`Content-Type`值
+
+* 值可以为MediaType中指定的值
+* 支持使用`!`表示不匹配指定的`Content-Type`值
+
+例如：
+
+~~~java
+@PostMapping(path = "/pets", consumes = "application/json")
+public void addPet(@RequestBody Pet pet) {
+    // ...
+}
+~~~
+
+以在类的层次上声明一个共享的 `consumes` 属性。此时方法级 `consumes` 属性覆盖而不是扩展类级声明。
+
+## Accept匹配
+
+`@RequsetMapping`的`produces`属性指定匹配映射HTTP请求的`Accept`值
+
+* 值可以为MediaType中指定的值
+* 支持使用`!`表示不匹配指定的`Accept`值
+
+~~~java
+@GetMapping(path = "/pets/{petId}", produces = "application/json")
+@ResponseBody
+public Pet getPet(@PathVariable String petId) {
+    // ...
+}
+~~~
+
+以在类的层次上声明一个共享的 `produces` 属性。此时方法级 `produces` 属性覆盖而不是扩展类级声明。
+
+## header和参数匹配
+
+`@RequsetMapping`的`params`属性指定匹配映射的HTTP请求参数:
+
+* 值为形式为`myParam=myValue`表达式的字符串表示匹配指定的键值
+* 表达式可以用`!=`表示不匹配指定的键值对
+* 表达式可以是`myParam`或者`!myParam`表示匹配或者不匹配指定的键
+* 当在类级别上设置`params`属性时，该类所有的方法级别的`params`将自动继承它，可以通过在方法上指定`params`值来覆盖继承的值
+
+示例：
+
+~~~java
+@GetMapping(path = "/pets/{petId}", params = "myParam=myValue")
+public void findPet(@PathVariable String petId) {
+    // ...
+}
+~~~
+
+`@RequsetMapping`的`headers`属性指定匹配映射的HTTP请求首部:
+
+* 值为形式为`My-Header=myValue`表达式的字符串表示匹配指定请求首部的键值
+* 和`params`一样，可以用`!=` 和`My-Header`表示不匹配指定的键值，或者匹配指定的键
+* 支持通配符`*`
+
+示例：
+
+~~~java
+@GetMapping(path = "/pets/{petId}", headers = "myHeader=myValue") 
+public void findPet(@PathVariable String petId) {
+    // ...
+}
+~~~
 
 # Handler Method参数
 
-@RequestMapping注释的方法参数可以有很多选择，
-
-* 可以使用特定类型的参数，RequestMappingHandlerAdapter会对特定的参数类型进行赋值或者其他操作，
-* 可以使用注解注释参数，指示通知RequestMappingHandlerAdapter对该参数进行特定操作
-
-以供Handler Method内部使
+`@RequestMapping` 处理器方法有一个灵活的签名，可以从一系列支持的 controller 方法参数和返回值中选择。
 
 可以作为Handler Method参数的类型和可以注释Handler Method方法参数的注解如下表:
 
 | 方法参数                                                     | 说明                                                         |
 | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | `WebRequest`, `NativeWebRequest`                             | SpringMVC提供的对request参数、request、session属性的通用访问，是对ServletAPI的封装 |
-| `ServletRequest`, <br />`ServletResponse`                    | ServletAPI，也可以使用具体的实现如:`HttpServletRequest `, `MultipartRequest`, `MultipartHttpServletRequest`等 |
-| `HttpSession`、`PushBuilder`、`Principal`、`HttpMethod`、`Locale`、`TimeZone`、`ZoneId`、`InputStream`、`Reader`、`OutputStream`、`Writer` | RequestMappingHandlerAdapter会从requestAPI获取对应的对象     |
+| `ServletRequest`, <br />`ServletResponse`                    | 选择任意特定的 request 或 response 类型，如:`HttpServletRequest `, 或Spring提供的`MultipartRequest`, `MultipartHttpServletRequest`等 |
+| `HttpSession`、`PushBuilder`、`Principal`、`HttpMethod`、`Locale`、`TimeZone`、`ZoneId`、`InputStream`、`Reader`、`OutputStream`、`Writer` | Servlet API暴露的对象和SpringMVC提供的对象                   |
 | `@PathVariable`                                              | 用以访问URI的模板变量                                        |
 | `@RequestParam`                                              | 用该注解注释以绑定Servlet的request域中的参数(请求参数或者form表单中的参数) |
 | `@RequestHeader`                                             | 用以访问请求的请求首部信息                                   |
@@ -175,7 +268,7 @@ public @interface RequestMapping {
 @RequestMapping注释的方法返回值同样有以下两种：
 
 * 可以使用特定类型的参数
-* 可以使用注解注释参数，指示通知RequestMappingHandlerAdapter对该参数进行特定操作
+* 可以使用注解注释方法以声明特殊的返回值
 
 以帮助`RequestMappingHandlerAdapter`完成最终的ModelAndView
 
@@ -1169,4 +1262,6 @@ public StreamingResponseBody demo5(){
     };
 }
 ~~~
+
+# 类型转换和数据绑定
 
