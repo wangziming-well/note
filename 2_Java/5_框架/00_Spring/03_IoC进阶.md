@@ -150,7 +150,7 @@ springIoC配置：
 
 ### `CustomEditorConfigurer  `
 
-`CustomEditorConfigurer  `辅助性地将后期会用到的信息注册到容器，对`BeanDefinition`没有做任何变动  
+`CustomEditorConfigurer`辅助性地将后期会用到的信息注册到容器，对`BeanDefinition`没有做任何变动  
 
 spring容器通过一般通过XML配置文件来配置bean对象的类型,而XML只能记载字符串,但最终要转换为对象类型
 
@@ -160,7 +160,7 @@ Spring内部通过JavaBean的`PropertyEditor`来帮助进行String类型到其�
 
 `CustomEditorConfigurer`可以完成PropertyEditor到容器的注册
 
-但现在主要通过`PropertyEditorRegistrar  `来注册`PropertyEditor`
+但现在主要通过`PropertyEditorRegistrar`来注册`PropertyEditor`
 
 ## Bean实例化阶段
 
@@ -779,5 +779,4 @@ Spring ioc容器中，在bean对象的创建阶段，如果两个或者多个单
 * 辅助单例缓存：正在构建的单例bean
 
 这个方案能够在循环依赖场景下延迟AOP代理对象的生成时机：新增一个缓存三，并在缓存三中放入bean对应的`ObjectFactory`工厂对象。这样在实例化对象后就将对应的`ObjectFactory`放入缓存三,只有在循环依赖的情况下，会提前获取`ObjectFactory`对象并生成代理对象。否则正常情况下，代理对象的生成时机仍然放在bean构建完毕，放入缓存一前。
-
 

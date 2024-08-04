@@ -236,9 +236,11 @@ public void findPet(@PathVariable String petId) {
 }
 ~~~
 
-# Handler Method参数
+# Handler Method
 
 `@RequestMapping` 处理器方法有一个灵活的签名，可以从一系列支持的 controller 方法参数和返回值中选择。
+
+## 参数
 
 可以作为Handler Method参数的类型和可以注释Handler Method方法参数的注解如下表:
 
@@ -263,7 +265,7 @@ public void findPet(@PathVariable String petId) {
 | `@RequestAttribute`                                          | 绑定request属性到方法参数上                                  |
 | 其他参数                                                     | 如果一个方法参数于表中以上参数都不匹配，并且它是一个简单类型(由BeanUtils#isSimpleProperty定义)，那么这个参数将被视为一个`@RequestParam`参数，否则他将被是为一个`@ModelAttribute`参数 |
 
-# Handler Method返回值
+## 返回值
 
 @RequestMapping注释的方法返回值同样有以下两种：
 
@@ -290,76 +292,53 @@ public void findPet(@PathVariable String petId) {
 | `StreamingResponseBody`                                      | 可以通过`StreamingResponseBody`来异步响应输出流              |
 | Other return values                                          | 如果返回值用以上方式都无法解析，那么它将被是为一个Model属性。如果返回值是一个简单类型(BeanUtils#isSimpleProperty)，那么将无法解析。 |
 
+
+
 #  Handler Method可用注解
 
 ## `@RequestParam`
 
-用该注解注释以绑定Servlet的request域中的参数(请求参数或者form表单中的参数)
-
-如果取的是post请求的请求体参数，要求请求体的格式为`application/x-www-form-urlencoded`或者`multipart/form-data`
+用该注解注释将Servlet的request域中的参数(请求参数或者form表单中的参数)绑定到处理器方法的方法参数。例如：
 
 ~~~java
-@RequestMapping("/requestParam/demo?param=test")
-public void requestParam(@RequestParam("param") String param){
+@Controller
+@RequestMapping("/pets")
+public class EditPetForm {
+
+    @GetMapping
+    public String setupForm(@RequestParam("petId") int petId, Model model) { (1)
+        Pet pet = this.clinic.loadPet(petId);
+        model.addAttribute("pet", pet);
+        return "petForm";
+    }
     // ...
 }
 ~~~
 
-* 可以注释在类型为Array或者List的参数上，以解析同一参数名称的多个参数值。
+如果目标方法参数类型不是 `String`，那么将自动进行类型转换。
 
-  ~~~java
-  // url: /requestParam/demo1?list=1,2,3,4,5
-  @RequestMapping("/requestParam/demo1")
-  public void requestParam(@RequestParam("list") List<String> strings){
-      System.out.println(strings.size());
-  }
-  ~~~
+使用该注解的方法参数是必须的，如果绑定失败将报错。可以通过将`@RequestParam` 注解的 `required` 属性设置为 `false` 或者用 `java.util.Optional` 包装器声明该参数来指定方法参数是可选的。
 
-* 如果注释的参数类型不是String，而是其他简单类型(由BeanUtils#isSimpleProperty定义)，SpringMVC将自动尝试使用类型转换
+可以注释在类型为Array或者List的参数上，可以为同一个参数名解析多个参数值:
 
-  * 简单类型包括：基本数据类型及其包装类、Enum、CharSequence、Number、Date、Temporal、URI、URL、Locale、Class
+~~~java
+// url: /requestParam/demo1?list=1,2,3,4,5
+@RequestMapping("/requestParam/demo1")
+public void requestParam(@RequestParam("list") List<String> strings){
+    System.out.println(strings.size());
+}
+~~~
 
-  ~~~java
-  @RequestMapping("/demo")
-  public void handle(@RequestParam("date") @DateTimeFormat(pattern="yyyy-MM-dd") Date date){
-      System.out.println(date);
-  }
-  ~~~
+如果 `@RequestParam` 声明在`Map<String, String> `或者` MultiValueMap<String, String> `上,并且注解没有指定参数名，那么参数将接受所有的request域中的键值对:
 
-* 如果启用了`MultipartResolver`，它会将格式为`multipart/form-data`的请求体解析为普通的请求参数
-
-  这样`@RequestParam`就可以注释`MultipartFile`类型的参数以接收上传的文件:
-
-  ~~~java
-  @PostMapping("/requestParam/demo2")
-  public void requestParam(@RequestParam("file")MultipartFile file,
-                           @RequestParam("username") String username){
-      System.out.println(file.getSize());
-      System.out.println(username);
-  }
-  ~~~
-
-  也可以将参数声明为`List<MultipartFile>`以接受同一参数名的多个文件值
-
-  ~~~java
-  @PostMapping("/requestParam/demo3")
-  public void requestParams(@RequestParam("file") List<MultipartFile> files){
-      for (MultipartFile file :files){
-          System.out.println(file.getSize());
-      }
-  }
-  ~~~
-
-* 如果该注解指定的参数为` Map<String, String> `或者` MultiValueMap<String, String> `,并且注解没有指定参数名，那么参数将接受所有的request域中的键值对:
-
-  ~~~java
-  @PostMapping("/requestParam/demo4")
-  public void requestParams(@RequestParam Map<String,String> maps){
-      for (Map.Entry<String,String> entry:maps.entrySet()){
-          System.out.println(entry.getKey()+"---"+entry.getValue());
-      }
-  }
-  ~~~
+~~~java
+@PostMapping("/requestParam/demo4")
+public void requestParams(@RequestParam Map<String,String> maps){
+    for (Map.Entry<String,String> entry:maps.entrySet()){
+        System.out.println(entry.getKey()+"---"+entry.getValue());
+    }
+}
+~~~
 
 **注意：**使用`@RequestParam`注解是可选的，对于任何简单类型的参数，如果没有任何相关的注解，那么默认将采用`@RequestParam`声明的绑定方式，从ServletRequest域中尝试绑定对应参数名的键
 
@@ -429,7 +408,20 @@ public void handle(@PathVariable Map<String,String> maps){
 
 ## `@RequestHeader`
 
-用以访问HTTP请求的请求首部
+该注解将请求头与处理器方法参数绑定。
+
+考虑请求有如下header：
+
+~~~http
+Host                    localhost:8080
+Accept                  text/html,application/xhtml+xml,application/xml;q=0.9
+Accept-Language         fr,en-gb;q=0.7,en;q=0.3
+Accept-Encoding         gzip,deflate
+Accept-Charset          ISO-8859-1,utf-8;q=0.7,*;q=0.7
+Keep-Alive              300
+~~~
+
+下面的例子获取 `Accept-Encoding` 和 `Keep-Alive` header 的值：
 
 ~~~java
 @GetMapping("/demo")
@@ -440,9 +432,9 @@ public void handle(
 }
 ~~~
 
-除了直接指定请求首部的值，还可以绑定如下类型参数以访问所有的请求首部参数:
+如果目标方法参数类型不是 `String`，那么将自动进行类型转换。
 
- `Map<String, String>`、`MultiValueMap<String, String>`、 `HttpHeaders`,如:
+当注释的参数类型为 `Map<String, String>`、`MultiValueMap<String, String>`、 `HttpHeaders`时，所有的header将会被绑定到参数Map中。如:
 
 ~~~java
 @GetMapping("/demo")
@@ -452,6 +444,10 @@ public void handle(@RequestHeader HttpHeaders headers){
     }
 }
 ~~~
+
+支持将逗号分隔的字符串转换为数组或字符串的集合或类型转换系统已知的其他类型。例如，用 `@RequestHeader("Accept")` 注解的方法参数可以是 `String` 类型，也可以是 `String[]` 或 `List<String>`。
+
+
 
 ## `@CookieValue`
 
@@ -464,7 +460,9 @@ public void handle(@CookieValue("JSESSIONID") String cookie) {
 }
 ~~~
 
-也可以直接绑定`Cookie`类型的参数:
+如果目标方法参数类型不是 `String`，那么将自动进行类型转换。
+
+所以可以直接绑定`Cookie`类型的参数:
 
 ~~~java
 @GetMapping("/demo")
@@ -479,59 +477,92 @@ public void handle(@CookieValue("JSESSIONID") Cookie cookie) {
 
 ### 注释在方法参数上
 
-`@ModelAttribute`注释在方法入参时:
+`@ModelAttribute`注释在方法入参时，可以用来访问model中的一个属性对象。
 
-可以解析`form-data`或者`x-www-form-urlencoded`格式的请求体中参数
+如果model中不存在该属性对象，会先让它实例化再访问。实例化对象时，这个对象的属性值会被Servlet请求参数的值填充，其中属性字段名称和参数的名称相匹配。这就是**数据绑定**。这样就不需要解析单个表单字段了。
 
-可以从model中访问或者创建一个对象，然后通过`WebDataBinder`将该对象和请求参数进行绑定
+~~~java
+@PostMapping("/owners/{ownerId}/pets/{petId}/edit")
+public String processSubmit(@ModelAttribute Pet pet) {
+    // method logic...
+}
+~~~
 
-* 先从Model中获取指定的参数类型，由`@ModelAttribute`注解的value/name值指定绑定的model属性名，如果不指定，默认由参数类型获取:
-  * 如User类默认绑定的属性名是user
+`@ModelAttribute`的具体工作流程如：
 
-  * 如`List<User>`类默认绑定的属性名是userList
+* 获取model attribute 对象类型实例，这个实例通过以下几种方式获取：
 
-* 如果获取不到，则实例化参数类型
+    * 从Model中获取实例，model 属性名由`@ModelAttribute`的`value/name`值指定，如果不指定，则默认为参数名。如上例中，model属性名为pet。
 
-* 从ServletRequest域中获取对应的字段，绑定到参数实例中。这被称为参数绑定。
+    * 如果类级别的 `@SessionAttributes` 注解中有列 model attribute ，那么从HTTP session 中获取实例
+    * 通过 `Converter` 获得实例， model attribute 名称与请求值的名称相匹配，如路径变量或请求参数
+    * 通过默认构造函数进行实例化获取实例
+    * 通过 “primary constructor” 进行实例化，参数与Servlet请求参数相匹配。参数名称是通过JavaBeans的 `@ConstructorProperties` 或通过字节码中的运行时参数名称确定的。
 
+
+* 获取model attribute 实例后，则进行数据绑定:`WebDataBinder` 将Servlet请求参数名（查询参数和表单字段）与model attribute实例上的字段名相匹配。必要时会应用类型转换填充字段。
 * 最后将参数绑定后的参数实例也添加到Model中暴露给视图
 
+**使用`Converter<String,T>`来提供参数对象实例**：
+
+当model attribute名称(`@ModelAttribute`的value值或者所在的参数名)与请求值(如路径变量或者请求参数)名称相匹配时,并且有一个从`String`到model attribute 类型的`Converter`时，就可以通过类型转换来提供model attribute实例。
+
+例如model attribute 名是 `account`，与URI路径变量 `account` 相匹配，并且有一个注册的 `Converter<String, Account>` 可以从数据存储中加载 `Account`：
+
 ~~~java
-@PostMapping("/modelAttribute/demo")
-public void modelAttribute(@ModelAttribute User user, Model model){
-    System.out.println(user);
-    User u =(User) model.getAttribute("user");
-    System.out.println(u);
+@PutMapping("/accounts/{account}")
+public String save(@ModelAttribute("account") Account account) {
+    // ...
 }
 ~~~
 
-在实例化参数类型后，会应用参数绑定，将ServletRequest参数名匹配到目标参数类型的字段名
-
-参数绑定可能会出现异常，为了在方法内部处理异常，可以同时定义`BindingResult`类型的参数，在方法内部访问绑定结果:
+参数绑定可能会出现异常，会抛出一个 `BindException`，为了在处理器方法内部检查这个异常，可以在使用`@ModelAttribute`参数同时使用一个`BindingResult`类型的参数，在方法内部访问绑定结果:
 
 ~~~java
-@PostMapping("/modelAttribute/demo1")
-public void modelAttribute(@ModelAttribute User user, BindingResult bindingResult){
-    System.out.println(user);
-    System.out.println(bindingResult.hasErrors());
+@PostMapping("/owners/{ownerId}/pets/{petId}/edit")
+public String processSubmit(@ModelAttribute("pet") Pet pet, BindingResult result) {
+    if (result.hasErrors()) {
+        return "petForm";
+    }
+    // ...
 }
 ~~~
 
-如果只想要访问Model中的属性，而不想进行参数绑定，可以指定`@ModelAttribute`注解的属性`binding=false`。
+在某些情况下，可能需要只访问一个model attribute而不进行数据绑定。此时可以将`Model`注入处理器方法直接访问它，或者可以指定`@ModelAttribute`注解的属性`binding=false`：
 
 ~~~java
 @ModelAttribute
-public User setModel(){
-    return new User("test","test");
+public AccountForm setUpForm() {
+    return new AccountForm();
 }
 
-@PostMapping("/modelAttribute/demo2")
-public void modelAttribute(@ModelAttribute(binding = false) User user){
-    System.out.println(user);
+@ModelAttribute
+public Account findAccount(@PathVariable String accountId) {
+    return accountRepository.findOne(accountId);
+}
+
+@PostMapping("update")
+public String update(@Valid AccountForm form, BindingResult result,
+        @ModelAttribute(binding=false) Account account) {
+    // ...
 }
 ~~~
 
-**注意:**使用`@ModelAttribute`是可选的，默认请求下，任何不是简单类型( 由BeanUtils#isSimpleProperty定义)的参数，并且该参数没有被其他参数处理器处理过，那么该参数就会被视为被`@ModelAttribute`注解注释了。
+可以使用 `jakarta.validation.Valid` 注解或Spring的 `@Validated` 注解在数据绑定后进行验证：
+
+~~~java
+@PostMapping("/owners/{ownerId}/pets/{petId}/edit")
+public String processSubmit(@Valid @ModelAttribute("pet") Pet pet, BindingResult result) {
+    if (result.hasErrors()) {
+        return "petForm";
+    }
+    // ...
+}
+~~~
+
+
+
+**注意:**使用`@ModelAttribute`是可选的，默认请求下，任何不是简单类型( 由`BeanUtils#isSimpleProperty`定义)的参数，并且该参数没有被其他参数处理器处理过，那么该参数就会被视为被`@ModelAttribute`注解注释了。
 
 ### 注释在方法体上
 
@@ -574,7 +605,11 @@ public String modelAttribute(){
 
 ## `@SessionAttributes`
 
-`@SessionAttributes`用于在请求之间的HTTP Servlet Session中存储model属性：
+`@SessionAttributes`用于在请求之间的HTTP Servlet Session中存储model attributes。这是一个类型级别的注解，声明指定的Model属性会被存储在HTTP Session中，以便在多个请求之间共享数据。
+
+Model属性被添加到Session中后会一直存在，除非有处理器方法调用`SessionStatus.setComplete()`方法来清除存储。
+
+例如：
 
 ~~~java
 @Controller
@@ -597,6 +632,10 @@ public class SessionAttributesController {
     }
 }
 ~~~
+
+示例中`/add`处理器会将请求的`User`实例放入`Model`中，因为`@SessionAttributes`声明，这个`User`实例也会同时被存储到Session域中。
+
+当`/delete`请求发起后，session中的`User`实例才会被清除。
 
 ## ` @SessionAttribute`
 
@@ -1263,5 +1302,8 @@ public StreamingResponseBody demo5(){
 }
 ~~~
 
-# 类型转换和数据绑定
 
+
+# 验证和类型转换和数据绑定
+
+TODO
