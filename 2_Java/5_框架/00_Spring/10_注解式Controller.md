@@ -1301,9 +1301,3 @@ public StreamingResponseBody demo5(){
     };
 }
 ~~~
-
-
-
-# 验证和类型转换和数据绑定
-
-TODO
