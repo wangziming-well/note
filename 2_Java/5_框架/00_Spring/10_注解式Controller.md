@@ -298,7 +298,7 @@ public void findPet(@PathVariable String petId) {
 
 ## `@RequestParam`
 
-用该注解注释将Servlet的request域中的参数(请求参数或者form表单中的参数)绑定到处理器方法的方法参数。例如：
+用该注解注释将前端的请求参数(请求参数或者form表单中的参数)绑定到处理器方法的方法参数。例如：
 
 ~~~java
 @Controller
@@ -306,7 +306,7 @@ public void findPet(@PathVariable String petId) {
 public class EditPetForm {
 
     @GetMapping
-    public String setupForm(@RequestParam("petId") int petId, Model model) { (1)
+    public String setupForm(@RequestParam("petId") int petId, Model model) {
         Pet pet = this.clinic.loadPet(petId);
         model.addAttribute("pet", pet);
         return "petForm";
@@ -317,7 +317,7 @@ public class EditPetForm {
 
 如果目标方法参数类型不是 `String`，那么将自动进行类型转换。
 
-使用该注解的方法参数是必须的，如果绑定失败将报错。可以通过将`@RequestParam` 注解的 `required` 属性设置为 `false` 或者用 `java.util.Optional` 包装器声明该参数来指定方法参数是可选的。
+使用该注解的方法参数是必须的，如果请求里没有这个参数，则会报错400 Bad Request。可以通过将`@RequestParam` 注解的 `required` 属性设置为 `false` 或者用 `java.util.Optional` 包装器声明该参数来指定方法参数是可选的。
 
 可以注释在类型为Array或者List的参数上，可以为同一个参数名解析多个参数值:
 
@@ -328,6 +328,26 @@ public void requestParam(@RequestParam("list") List<String> strings){
     System.out.println(strings.size());
 }
 ~~~
+
+可以注释在`MultipartFile`上，解析前端上传的文件：
+
+~~~java
+@PostMapping("/form")
+public String handleFormUpload(@RequestParam("name") String name,
+        @RequestParam("file") MultipartFile file) {
+
+    if (!file.isEmpty()) {
+        byte[] bytes = file.getBytes();
+        // store the bytes somewhere
+        return "redirect:uploadSuccess";
+    }
+    return "redirect:uploadFailure";
+}
+~~~
+
+
+
+
 
 如果 `@RequestParam` 声明在`Map<String, String> `或者` MultiValueMap<String, String> `上,并且注解没有指定参数名，那么参数将接受所有的request域中的键值对:
 
@@ -639,7 +659,7 @@ public class SessionAttributesController {
 
 ## ` @SessionAttribute`
 
-从Servlet的session域中获取已经存在的属性(之前的请求创建的，或者Filter和HandlerIntercepter创建的)
+从Servlet的session域中获取已经存在的属性(之前的请求创建的，或者`Filter`和`HandlerIntercepter`创建的)
 
 ~~~java
 @GetMapping("/sessionAttribute/demo")
@@ -750,34 +770,52 @@ public class RedirectController {
     }
 
     @GetMapping("/target/{param}")
-    public void redirect(@PathVariable("param") String param, int number, HttpServletRequest request){
-        System.out.println(request.getRequestURI());
-        Map<String, String[]> parameterMap = request.getParameterMap();
-        for (Map.Entry<String, String[]> entry: parameterMap.entrySet()){
-            System.out.println(entry.getKey()+"---"+ Arrays.toString(entry.getValue()));
-        }
-        System.out.println(param);
-        System.out.println(number);
+    public void redirect( @PathVariable String param,HttpServletRequest request){
+        System.out.println("URL:"+ request.getRequestURL()+"?"+request.getQueryString());
     }
 }
 ~~~
 
-但是有时候我们不希望有些参数出现在URI中，就可以使用Model的子接口:`RedirectAttributes`,同样可以传递参数，且不会出现在URI中:
+例如对于上面的`@Controller`，访问`/redirect`会在`/target`输出以下内容：
+
+~~~http
+URL:http://127.0.0.1:8080/spring/target/test?number=123
+~~~
+
+可以看到在源处理器中作为model的`number`属性重定向后变成了查询参数暴露到了URL中
+
+对于一些敏感数据，最好不要暴露到URL上。此时可以在源处理器上使用`Model`的子接口:`RedirectAttributes`，通过`RedirectAttributes.addFlashAttribute()`添加的model属性不会在重定向中暴露到URL上：
 
 ~~~java
 @Controller
 public class RedirectController {
     @GetMapping("/redirect")
-    public String demo(RedirectAttributes redirectAttributes) {
+    public String demo(RedirectAttributes redirectAttributes){
         redirectAttributes.addAttribute("param","test");
-        return "redirect:/target";
+        redirectAttributes.addFlashAttribute("number",123);
+        return "redirect:/target/{param}";
     }
-    @GetMapping("/target")
-    public void redirect(String param) {
-        System.out.println(param);
+
+    @GetMapping("/target/{param}")
+    public void redirect( @PathVariable String param,HttpServletRequest request,@ModelAttribute("number") String number){
+        System.out.println("URL:"+ request.getRequestURL()+"?"+request.getQueryString());
+        System.out.println("param="+param+";number=" + number);
     }
 }
 ~~~
+
+此时访问的输出为：
+
+~~~http
+URL:http://127.0.0.1:8080/spring/target/test;jsessionid=10C5153B017B24FA4E3E6685D423A171?null
+param=test;number=123
+~~~
+
+`addFlashAttribute()`添加的属性需要通过`@ModelAttribute`获取
+
+
+
+
 
 ## `HttpEntity`
 
