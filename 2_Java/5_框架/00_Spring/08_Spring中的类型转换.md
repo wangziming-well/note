@@ -705,7 +705,18 @@ public class CustomerValidator implements Validator {
 }
 ~~~
 
-# Java Bean校验
+# JSR-303数据校验
+
+JSR-303是Java为Bean数据合法性校验提供的标准框架。`hibernate-validator`包是对该框架的实现，可以引入它来进行数据校验:
+
+~~~xml
+<!-- 实现了jdk的Validator、ConstraintValidator、Constraint接口，提供校验实现 -->
+<dependency>
+    <groupId>org.hibernate.validator</groupId>
+    <artifactId>hibernate-validator</artifactId>
+    <version>6.1.5.Final</version>
+</dependency>
+~~~
 
 Bean Validation为Java应用程序提供了一种通过约束声明和元数据进行验证的通用方法。可以用声明性的验证约束（constraint）来注解domain模型属性，然后由运行时强制执行。Java提供有内置的约束，也允许自定义约束。例如：
 
@@ -722,6 +733,37 @@ public class PersonForm {
 ~~~
 
 Bean Validation 验证器根据声明的约束条件来验证该类的实例。
+
+
+
+JSR-303定义了如下注解规范:
+
+| 注解                        | 代码内容                                                 |
+| --------------------------- | -------------------------------------------------------- |
+| @Null                       | 被注释的元素必须为 null                                  |
+| @NotNull                    | 被注释的元素必须不为 null                                |
+| @AssertTrue                 | 被注释的元素必须为 true                                  |
+| @AssertFalse                | 被注释的元素必须为 false                                 |
+| @Min(value)                 | 被注释的元素必须是一个数字，其值必须大于等于指定的最小值 |
+| @Max(value)                 | 被注释的元素必须是一个数字，其值必须小于等于指定的最大值 |
+| @DecimalMin(value)          | 被注释的元素必须是一个数字，其值必须大于等于指定的最小值 |
+| @DecimalMax(value)          | 被注释的元素必须是一个数字，其值必须小于等于指定的最大值 |
+| @Size(max, min)             | 被注释的元素的大小必须在指定的范围内                     |
+| @Digits (integer, fraction) | 被注释的元素必须是一个数字，其值必须在可接受的范围内     |
+| @Past                       | 被注释的元素必须是一个过去的日期                         |
+| @Future                     | 被注释的元素必须是一个将来的日期                         |
+| @Pattern(value)             | 被注释的元素必须符合指定的正则表达式                     |
+
+hibernate-validator提供的额外注解:
+
+| @代码     | 代码内容                               |
+| --------- | -------------------------------------- |
+| @Email    | 被注释的元素必须是电子邮箱地址         |
+| @Length   | 被注释的字符串的大小必须在指定的范围内 |
+| @NotEmpty | 被注释的字符串的必须非空               |
+| @Range    | 被注释的元素必须在合适的范围内         |
+
+# Spring支持JSR-303
 
 ## 配置Bean Validation Provider
 

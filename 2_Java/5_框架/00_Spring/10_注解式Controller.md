@@ -298,7 +298,9 @@ public void findPet(@PathVariable String petId) {
 
 ## `@RequestParam`
 
-用该注解注释将前端的请求参数(请求参数或者form表单中的参数)绑定到处理器方法的方法参数。例如：
+用该注解注释将前端的请求参数(请求参数或者form表单中的参数，即可以通过`ServletRequest.getParameter()`获取的请求参数)绑定到处理器方法的方法参数。
+
+例如：
 
 ~~~java
 @Controller
@@ -347,8 +349,6 @@ public String handleFormUpload(@RequestParam("name") String name,
 
 
 
-
-
 如果 `@RequestParam` 声明在`Map<String, String> `或者` MultiValueMap<String, String> `上,并且注解没有指定参数名，那么参数将接受所有的request域中的键值对:
 
 ~~~java
@@ -364,7 +364,7 @@ public void requestParams(@RequestParam Map<String,String> maps){
 
 ## `@RequestBody`
 
-使用`HttpMessageConverter`将请求参数序列化为注释的参数类型:
+使用`HttpMessageConverter`将  response对象的body 字符串反序列化为注释的参数类型:
 
 将参数类型进行实例化，并用set方法进行参数绑定
 
@@ -393,8 +393,7 @@ public class User {
 
 ~~~java
 @PostMapping("/requestPart/demo0")
-public void requestPart(@RequestPart("user") User user,
-                        @RequestPart("file") MultipartFile file){
+public void requestPart(@RequestPart("user") User user,@RequestPart("file") MultipartFile file){
     System.out.println(user);
     System.out.println(file.getSize());
 }
@@ -402,9 +401,9 @@ public void requestPart(@RequestPart("user") User user,
 
 **注意:**`@RequestParam`也同样支持`multipart/form-data`的请求，它们之间的区别是:
 
-`@RequestParam`使用Converter进行类型转换，只能转换简单类型
+`@RequestParam`使用`Converter`进行类型转换，只能转换简单类型
 
-@RequestPart使用HttpMessageConverters 进行类型转换，支持转换复杂的参数类型
+`@RequestPart`使用`HttpMessageConverter`进行类型转换，支持转换复杂的参数类型
 
 ## `@PathVariable`
 
@@ -659,7 +658,7 @@ public class SessionAttributesController {
 
 ## ` @SessionAttribute`
 
-从Servlet的session域中获取已经存在的属性(之前的请求创建的，或者`Filter`和`HandlerIntercepter`创建的)
+从Servlet的session域中获取已经存在的属性(在之前的请求，或者`Filter`和`HandlerIntercepter`通过`HttpSession.setAttribute()`设置的)
 
 ~~~java
 @GetMapping("/sessionAttribute/demo")
@@ -670,7 +669,7 @@ public void sessionAttribute(@SessionAttribute("user") User user){
 
 ## `@RequestAttribute`
 
-从Servlet的request域中获取提前创建的已经存在的属性(Filter和HandlerIntercepter创建的)
+从Servlet的request域中获取提前创建的已经存在的属性(例如在`Filter`和`HandlerIntercepter`中通过`ServletRequest.setAttribute()`)
 
 ~~~java
 @GetMapping("/requestAttribute/demo")
@@ -681,6 +680,10 @@ public void requestAttribute(@RequestAttribute("user") User user){
 
 ## `@ResponseBody`
 
+注解在方法体上，表示会通过`HttpMessageConverter`将返回对象序列化为指定指定格式后写入到response对象的body中，通常用来返回json或者XML。
+
+使用此注解之后不会再走视图处理器，而是直接将数据写入到输入流中，它的效果等同于通过response对象输出指定格式的数据。
+
 ```java
 @RequestMapping("/getUser")
 @ResponseBody
@@ -688,6 +691,16 @@ public User user(){
     return new User("test","test");
 }
 ```
+
+上面代码等效于：
+
+~~~java
+@RequestMapping("/getUser")
+@ResponseBody
+public User user(User user, HttpServletResponse response){
+    response.getWriter.write(JSONObject.fromObject(user).toString());
+}
+~~~
 
 该注解也可和`@Controller`组合使用，表示该`@Controller`类中所有方法都隐士注释了`@ResponseBody`
 
@@ -813,10 +826,6 @@ param=test;number=123
 
 `addFlashAttribute()`添加的属性需要通过`@ModelAttribute`获取
 
-
-
-
-
 ## `HttpEntity`
 
 与`@RequestBody`作用类似，解析请求域中键值对，将其序列化为指定的实体类:
@@ -847,6 +856,432 @@ public ResponseEntity<User> getUserByResponseEntity(){
     return ResponseEntity.ok(new User("test","test"));
 }
 ~~~
+
+
+
+# Controller的公共处理
+
+## `@InitBinder`
+
+SpringMVC可以使用`WebDataBinder`完成数据绑定和类型转换，其在Web请求中的下面场合发挥作用：
+
+- 将请求参数（即表单或查询数据）绑定到一个 model 对象。
+- 将基于字符串的请求值（如请求参数、路径变量、header、cookies等）转换为 controller 方法参数的目标类型。
+- 在渲染HTML表单时，将 model 对象值格式化为 `String` 值。
+
+可以用`@InitBinder`访问 `WebDataBinder`，在controller接受请求前，完成一些初始化操作。
+
+`@InitBinder`通常注释在一个`void`返回值、有一个`WebDataBinder`参数的方法，例如：
+
+~~~java
+@Controller
+public class FormController {
+
+    @InitBinder
+    public void initBinder(WebDataBinder binder) {
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        dateFormat.setLenient(false);
+        binder.registerCustomEditor(Date.class, new CustomDateEditor(dateFormat, false));
+    }
+
+    // ...
+}
+
+
+~~~
+
+##  `@ExceptionHandler`
+
+可以在`@Controller`类中定义一个`@ExceptionHandler`方法用来处理来自controller方法的异常，例如：
+
+~~~java
+@Controller
+public class SimpleController {
+
+    // ...
+    @ExceptionHandler
+    public ResponseEntity<String> handle(IOException ex) {
+        // ...
+    }
+}
+~~~
+
+我们称`@ExceptionHandler`注释的方法为异常处理方法。示例中的异常处理方法将拦截`IOException`类型的异常并处理。
+
+注解声明可以缩小要匹配的异常类型，例如：
+
+~~~java
+@ExceptionHandler({FileSystemException.class, RemoteException.class})
+public ResponseEntity<String> handle(IOException ex) {
+    // ...
+}
+~~~
+
+或者：
+
+~~~java
+@ExceptionHandler({FileSystemException.class, RemoteException.class})
+public ResponseEntity<String> handle(Exception ex) {
+    // ...
+}
+~~~
+
+### 支持的参数
+
+`@ExceptionHandler` 方法支持以下参数：
+
+| Method 参数                                                  | 说明                                                         |
+| :----------------------------------------------------------- | :----------------------------------------------------------- |
+| 异常类型                                                     | 用于访问抛出的异常。                                         |
+| `HandlerMethod`                                              | 用于访问引发异常的 controller 方法。                         |
+| `WebRequest`, `NativeWebRequest`                             | 对 request parameter 以及 request 和 session 属性的通用访问，无需直接使用Servlet API。 |
+| `jakarta.servlet.ServletRequest`, `jakarta.servlet.ServletResponse` | 选择任何特定的请求或响应类型（例如，`ServletRequest` 或 `HttpServletRequest` 或 Spring 的 `MultipartRequest` 或 `MultipartHttpServletRequest`）。 |
+| `jakarta.servlet.http.HttpSession`                           | 执行一个 session 的存在。因此，这样的参数永远不会是 `null` 的。 请注意，session 访问不是线程安全的。如果允许多个请求同时访问一个session，请考虑将 `RequestMappingHandlerAdapter` 实例的 `synchronizeOnSession` 标志设置为 `true`。 |
+| `java.security.Principal`                                    | 目前认证的用户—如果知道的话，可能是一个特定的 `Principal` 实现类。 |
+| `HttpMethod`                                                 | 请求的HTTP方法。                                             |
+| `java.util.Locale`                                           | 当前的请求 locale，由最具体的 `LocaleResolver` 决定—实际上就是配置的 `LocaleResolver` 或 `LocaleContextResolver`。 |
+| `java.util.TimeZone`, `java.time.ZoneId`                     | 与当前请求相关的时区，由 `LocaleContextResolver` 决定。      |
+| `java.io.OutputStream`, `java.io.Writer`                     | 用于访问原始 response body，如Servlet API所暴露的。          |
+| `java.util.Map`, `org.springframework.ui.Model`, `org.springframework.ui.ModelMap` | 用于访问 model 的错误响应。总是空的。                        |
+| `RedirectAttributes`                                         | 指定在重定向情况下使用的属性--（即附加到查询字符串中），以及临时存储到重定向后的请求中的Flash attributes。 |
+| `@SessionAttribute`                                          | 用于访问任何 session attribute，与由于类级 `@SessionAttributes` 声明而存储在 session 中的 model attributes 不同。 |
+| `@RequestAttribute`                                          | 用于访问 request attributes。                                |
+
+### 支持的返回值
+
+`@ExceptionHandler` 方法支持以下返回值：
+
+| 返回值                                          | 说明                                                         |
+| :---------------------------------------------- | :----------------------------------------------------------- |
+| `@ResponseBody`                                 | 返回值通过 `HttpMessageConverter` 实例进行转换并写入响应中。 |
+| `HttpEntity<B>`, `ResponseEntity<B>`            | 返回值指定通过 `HttpMessageConverter` 实例转换完整的响应（包括HTTP header 和 body）并写入响应中。 |
+| `ErrorResponse`                                 | 要渲染一个RFC 7807错误响应，并在 body 中提供详细信息         |
+| `ProblemDetail`                                 | 要渲染一个RFC 7807错误响应，并在 body 中提供详细信息         |
+| `String`                                        | 用 `ViewResolver` 实现解析的视图名称，并与隐式 model 一起使用—通过命令对象和 `@ModelAttribute` 方法确定。handler method 也可以通过声明一个 `Model` 参数（如前所述）以编程方式丰富 model。 |
+| `View`                                          | 一个与隐含 model 一起用于渲染的 `View` 实例—通过命令对象和 `@ModelAttribute` 方法确定。handler method 也可以通过声明一个 `Model` 参数（前面已经描述过），以编程方式丰富 model。 |
+| `java.util.Map`, `org.springframework.ui.Model` | 要添加到隐式 model 中的属性，视图名称通过 `RequestToViewNameTranslator` 隐式确定。 |
+| `@ModelAttribute`                               | 一个将被添加到 model 中的属性，其视图名称通过 `RequestToViewNameTranslator` 隐式确定。注意，`@ModelAttribute` 是可选的。见本表末尾的 "任何其他返回值"。 |
+| `ModelAndView` object                           | 要使用的 view 和 model attributes，以及可选的响应状态。      |
+| `void`                                          | 如果一个方法有一个 `ServletResponse` 或者 `OutputStream` 参数，或者 `@ResponseStatus` 注解，那么这个方法的返回类型为 `void` （或者返回值为 `null`），被认为是完全处理了响应。如果 controller 进行了积极的 `ETag` 或 `lastModified` 时间戳检查，也是如此。如果以上都不是 true， `void` 的返回类型也可以表示REST控制器的 “no response body” 或HTML controller 的默认视图名称选择。 |
+| 任何其他返回值                                  | 如果一个返回值没有与上述任何一个匹配，并且不是一个简单的类型（由 `BeanUtils#isSimpleProperty`确定），默认情况下，它被当作一个要添加到模型中的 model attribute。如果它是一个简单的类型，它仍然是未解析的。 |
+
+## ` @ControllerAdvice `
+
+`@ExceptionHandler`, `@InitBinder`, 和 `@ModelAttribute` 方法只在他们所在的`@Controller`类或子类中生效。
+
+如果需要他们在所有指定的controller中生效，那么可以将他们声明在`@ControllerAdvice`中。从名字就可以看出，这是一个针对controller的AOP切面。
+
+`@ControllerAdvice`有元注解 `@Component`，所以 可以通过 组件扫描 注册为Spring Bean。
+
+`@RestControllerAdvice` 有元注解 `@ControllerAdvice` 和 `@ResponseBody` ，意味着`@RestControllerAdvice`的  `@ExceptionHandler` 方法的返回值将通过响应体 message 转换，而不是通过视图。
+
+在启动时，`RequestMappingHandlerMapping` 和 `ExceptionHandlerExceptionResolver` 检测 controller advice bean，并在运行时应用它们。来自 `@ControllerAdvice` 的全局 `@ExceptionHandler` 方法，会在来自 `@Controller` 的局部方法之后被应用。相反地，全局的 `@ModelAttribute` 和 `@InitBinder` 方法会在本地方法之前应用。
+
+`@ControllerAdvice` 注解有一些属性，可以让你缩小它们适用的 controller 和 handler 的范围,例如：
+
+~~~java
+// Target all Controllers annotated with @RestController
+@ControllerAdvice(annotations = RestController.class)
+public class ExampleAdvice1 {}
+
+// Target all Controllers within specific packages
+@ControllerAdvice("org.example.controllers")
+public class ExampleAdvice2 {}
+
+// Target all Controllers assignable to specific classes
+@ControllerAdvice(assignableTypes = {ControllerInterface.class, AbstractController.class})
+public class ExampleAdvice3 {}
+~~~
+
+# 异步请求
+
+SpringMVC支持支持各种形式的异步请求。
+
+## 单一异步返回
+
+### `DeferredResult`
+
+如果Handler Method的返回值是`DeferredResult`，那么在请求在没有超时或者`DeferredResult`对象还没有调用`setResult()`进行响应前，请求不会获得响应，但是Servlet容器线程可以提前结束。
+
+这样`DeferredResult`允许另起线程来进行结果处理(即这种操作提升了服务短时间的吞吐能力)，并`setResult()`，如此以来这个请求不会占用服务连接池太久，如果超时或设置`setResult()`，会立即响应。
+
+一个使用`DeferredResult`，在新线程中处理请求，进行异步响应的示例：
+
+~~~java
+@Controller
+@RequestMapping("/async")
+public class AsynchronousController {
+    @GetMapping("/demo1")
+    @ResponseBody
+    public DeferredResult<String> demo1(){
+        DeferredResult<String> deferredResult = new DeferredResult<>();
+        MyThread myThread = new MyThread(deferredResult);
+        myThread.start();
+        return deferredResult;
+    }
+}
+~~~
+
+最终的结果在`MyThread.run()`方法中处理：
+
+~~~java
+class MyThread extends Thread{
+    private final DeferredResult<String> deferredResult;
+    public MyThread(DeferredResult<String> deferredResult){
+        this.deferredResult = deferredResult;
+    }
+    @SneakyThrows
+    @Override
+    public void run() {
+        Thread.sleep(3000);
+        deferredResult.setResult("123");
+    }
+}
+~~~
+
+生产中通常请求线程池，而不是直接创建线程。
+
+### `Callable`
+
+作用和`DeferredResult`类似，但是`Callable`指定的异步线程的任务是通过SpringMVC配置(AsyncTaskExecutor配置)运行的，不需要手动创建线程。
+
+~~~java
+@GetMapping("/demo")
+@ResponseBody
+public Callable<String> demo2(){
+    return () ->{
+        Thread.sleep(3000);
+        return "132";
+    };
+}
+~~~
+
+如果不设置，默认使用`SimpleAsyncTaskExecutor`来执行异步任务
+
+### SpringMVC处理异步响应
+
+`Servlet`容器提供异步响应机制：
+
+- `ServletRequest` 可以通过调用 `request.startAsync()` 进入异步模式。这样Servlet（以及任何 filter）可以退出方法，而不会触发请求的响应；这样可以在其他线程中处理请求。
+- 对 `request.startAsync()` 的调用返回 `AsyncContext`，你可以用它来进一步控制异步处理。例如，它提供了 `dispatch` 方法，它类似于 Servlet API中的forward，只是它允许应用程序在 Servlet 容器线程上恢复请求处理。
+- `ServletRequest` 提供了对当前 `DispatcherType` 的访问，你可以用它来区分处理初始请求、异步调度、转发和其他调度器类型。
+
+`DeferredResult` 的处理工作如下：
+
+- 控制器返回 `DeferredResult`，并将其保存在一些可以访问的内存队列或列表中。
+- Spring MVC 调用 `request.startAsync()`。
+- 同时，`DispatcherServlet` 和所有配置的 filter 退出请求处理线程，但响应仍然开放。
+- 应用程序从某个线程设置 `DeferredResult`，Spring MVC将请求调度回Servlet容器。
+- `DispatcherServlet` 被再次调用，并以异步产生的返回值恢复处理。
+
+`Callable` 处理的工作方式如下：
+
+- 控制器返回一个 `Callable`。
+- Spring MVC 调用 `request.startAsync()`，并将 `Callable` 提交给 `TaskExecutor`，在一个单独的线程中进行处理。
+- 同时，`DispatcherServlet` 和所有的 filter 退出 Servlet 容器线程，但响应仍然开放。
+- 最终，`Callable` 产生了一个结果，Spring MVC将请求调度回Servlet容器以完成处理。
+- `DispatcherServlet` 被再次调用，并以来自 `Callable` 的异步产生的返回值继续进行处理。
+
+###  `AsyncHandlerInterceptor`
+
+`AsyncHandlerInterceptor`扩展了`HandlerInterceptor`拦截器，相对于普通的拦截器，它提供了一个异步请求中的回调时机：在请求线程已经结束，异步线程开始时，
+
+
+
+## 异步响应流
+
+ `DeferredResult` 和 `Callable` 可以实现一个单一的异步返回值。如果想产生多个异步值，并让这些值写入响应中，可以使用异步响应流。
+
+### `ResponseBodyEmitter`
+
+使用`ResponseBodyEmitter`可以异步返回多个值。产生一个对象流，其中每个对象都被 `HttpMessageConverter `序列化并写入响应中。
+
+```java
+@GetMapping("/demo3")
+public ResponseBodyEmitter demo3(){
+    ResponseBodyEmitter emitter = new ResponseBodyEmitter();
+    EmitterThread thread = new EmitterThread(emitter);
+    thread.start();
+    return emitter;
+}
+```
+
+其中EmitterThread为:
+
+~~~java
+class EmitterThread extends Thread{
+    private final ResponseBodyEmitter emitter;
+    public EmitterThread(ResponseBodyEmitter emitter){
+        this.emitter = emitter;
+    }
+    @SneakyThrows
+    @Override
+    public void run() {
+        emitter.send("123");
+        Thread.sleep(1000);
+        emitter.send("456");
+        Thread.sleep(1000);
+        emitter.send("789");
+        emitter.complete();
+    }
+}
+~~~
+
+也可以将`ResponseBodyEmitter`作为`ResponseEntity`的body，以设置响应头和状态码。
+
+可以用fetchAPI接收响应流：
+
+~~~javascript
+function demo() {
+    let url = "....../async/demo3"
+    fetch(url).then((response) => push(response.body.getReader()));
+}
+
+
+function push(reader) {
+    reader.read().then(({done, value}) => {
+        if (done) {
+            return;
+        }
+        console.log(Uint8ArrayToString(value));
+        $("#content").append(Uint8ArrayToString(value))
+        push(reader);
+    });
+}
+
+function Uint8ArrayToString(fileData){
+    let dataString = "";
+    for (let i = 0; i < fileData.length; i++) {
+        dataString += String.fromCharCode(fileData[i]);
+    }
+    return dataString
+}
+~~~
+
+### `SseEmitter`
+
+`SseEmitter `(`ResponseBodyEmitter`的子类)提供了对服务器发送事件的支持，其中从服务器发送的事件按照W3C SSE(Server-Sent Events)规范格式化。
+
+~~~java
+@GetMapping("/demo4")
+public SseEmitter demo4(){
+    SseEmitter emitter = new SseEmitter();
+    EmitterThread thread = new EmitterThread(emitter);
+    thread.start();
+    return emitter;
+}
+~~~
+
+其中`EmitterThread`和上一个示例一样
+
+需要用sse规定的EventSourceAPI来处理响应:
+
+~~~javascript
+function demo() {
+    let url = "....../async/demo4"
+    const evtSource = new EventSource(url);
+    evtSource.onmessage = function(event) {
+        $("#content").append(event.data)
+    }
+    evtSource.onerror = function (event) {
+        console.log("error")
+        evtSource.close();
+    }
+}
+~~~
+
+### `StreamingResponseBody`
+
+如果不需要消息转化，可以通过`StreamingResponseBody`来直接流向响应的 `OutputStream` 
+
+~~~java
+@GetMapping("/demo5")
+public StreamingResponseBody demo5(){
+    return outputStream -> {
+        for (int i = 0; i < 10; i++) {
+            outputStream.write(Integer.toString(i).getBytes(StandardCharsets.UTF_8));
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    };
+}
+~~~
+
+## 异步配置
+
+异步请求处理功能必须在Servlet容器级别启用。MVC配置也为异步请求暴露了几个选项。
+
+### 配置Servlet容器
+
+Filter 和 Servlet 的声明有一个 `asyncSupported` 标志，需要设置为 `true` 以启用异步请求处理。此外，`Filter` 映射（mappings）的`jakarta.servlet.DispatchType`应该设置 `ASYNC` 
+
+#### web.xml配置
+
+对于`web.xml`配置，需要将`<servlet>`和`<filter>`的子标签`<async-supported>`设置为`true`，并且将`<filter-mapping>`的子标签`<dispatcher>`设置为`true`，例如：
+
+~~~xml
+<servlet>
+    <servlet-name>dispatcherServlet</servlet-name>
+    <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+    <init-param>
+        <param-name>contextConfigLocation</param-name>
+        <param-value>classpath:dispatcher-servlet-annotation.xml</param-value>
+    </init-param>
+    <load-on-startup>1</load-on-startup>
+    <async-supported>true</async-supported>
+</servlet>
+
+<filter>
+    <filter-name>encodingFilter</filter-name>
+    <filter-class>org.springframework.web.filter.CharacterEncodingFilter</filter-class>
+    <async-supported>true</async-supported>
+</filter>
+<filter-mapping>
+    <filter-name>encodingFilter</filter-name>
+    <servlet-name>dispatcherServlet</servlet-name>
+    <dispatcher>ASYNC</dispatcher>
+</filter-mapping>
+~~~
+
+#### Java配置
+
+我们使用`WebApplicationInitializer`接口来完成java配置，只要使用它的一个实现`AbstractAnnotationConfigDispatcherServletInitializer`就会自动完成servlet容器的异步配置：
+
+~~~java
+public class MyWebAppInitializer extends AbstractAnnotationConfigDispatcherServletInitializer {
+
+    @Override
+    protected Class<?>[] getRootConfigClasses() {
+        return null;
+    }
+
+    @Override
+    protected Class<?>[] getServletConfigClasses() {
+        return new Class<?>[] { MyWebConfig.class };
+    }
+
+    @Override
+    protected String[] getServletMappings() {
+        return new String[] { "/" };
+    }
+}
+~~~
+
+### 配置SpringMVC
+
+MVC配置暴露了以下与异步请求处理有关的选项：
+
+- Java 配置：在 `WebMvcConfigurer` 上使用 `configureAsyncSupport `回调。
+- XML 命名空间: 使用 `<mvc:annotation-driven>` 下的 `<async-support>` 元素。
+
+你可以配置以下内容：
+
+- 异步请求的默认超时值，如果没有设置，则取决于底层Servlet容器。
+- `AsyncTaskExecutor`，用于响应式（Reactive）类型流时的阻塞写入，以及执行从 controller 方法返回的 `Callable` 实例。如果使用响应式（Reactive）类型的流媒体或有返回 `Callable` 的 controller 方法，那么强烈建议配置这个属性，因为在默认情况下，它是一个 `SimpleAsyncTaskExecutor`。
+- `DeferredResultProcessingInterceptor` 的实现和 `CallableProcessingInterceptor` 的实现。
 
 # 处理Handler Method出入参
 
@@ -949,6 +1384,8 @@ public interface ConversionService {
 </bean>
 ~~~
 
+
+
 ConversionServiceFactoryBean支持注册以下三种`converter`:
 
 * `Converter<S, T>`
@@ -969,67 +1406,16 @@ ConversionServiceFactoryBean支持注册以下三种`converter`:
 <mvc:annotation-driven conversion-service="myConversionService" >
 ~~~
 
-#### 使用自定义Converter
 
-通过以上信息，我们可以自定义一个Converter并注册到SpringMVC的框架流程中:
-
-~~~java
-public class MyConverter implements Converter<String, User> {
-    //String format: "username;password"
-    @Override
-    public User convert(String source) {
-        String[] split = source.split(";");
-        return new User(split[0],split[1]);
-    }
-}
-~~~
-
-这样就可以使用对应的String格式来传递User:
-
-~~~java
-@RequestMapping("/converter")
-@ResponseBody
-public String converter(User user){
-    System.out.println(user);
-    return "ok";
-}
-//GET: /converter?user=wangziming;123321
-//print: User(username=wangziming, password=123321)
-~~~
 
 ### 数据格式化
 
-在对日期、时间、数字、货币等具有一定格式的数据进行类型转化时，需要使用特定的格式转换器进行转换，根据不同的本地化环境和给定的格式信息进行转换。
+Spring的`org.springframework.format.annotation `包提供两个格式化注解：
 
-在刚刚讲数据转换时，可能已经注意到了，SpringMVC注册的默认的`ConversionService`是`FormattingConversionServiceFactoryBean`,它生产`FormattingConversionService`通过它的名字就可以知道，它同样负责数据的格式化工作，实际上该类实现了`FormatterRegistry`以注册格式化组件，`FormatterRegistry`定义如下:
+*  `@DateTimeFormat` 用来格式化`Date`、`Calendar`、`Long`(时间戳)和`java.time`包下类型
+*  `@NumberFormat` 用来格式化`Number`字段
 
-~~~java
-public interface FormatterRegistry extends ConverterRegistry {
-	void addPrinter(Printer<?> printer);
-	void addParser(Parser<?> parser);
-	void addFormatter(Formatter<?> formatter);
-	void addFormatterForFieldType(Class<?> fieldType, Formatter<?> formatter);
-	void addFormatterForFieldType(Class<?> fieldType, Printer<?> printer, Parser<?> parser);
-	void addFormatterForFieldAnnotation(AnnotationFormatterFactory<? extends Annotation> annotationFormatterFactory);
-
-}
-~~~
-
-该接口规范了添加`Printer`、`Parser`、`Formatter`、`AnnotationFormatterFactory`的方法，以让实现该接口的类拥有数据格式化的能力:
-
-* `Printer`将对象和根据locale转换为字符串
-* `Parser`将字符串根据locale转化为对象
-* `Formatter`只继承`Printer`和`Parser`
-* `AnnotationFormatterFactory`：生产格式化器来格式化用特定注解标注的字段的值
-
-使用注解注释参数以指示格式化格式相对更方便一些，注解方式的格式化工作由`AnnotationFormatterFactory`完成，Spring提供了一些实现类:
-
-* `DateTimeFormatAnnotationFormatterFactory`—对应注解`@DateTimeFormat`
-* `NumberFormatAnnotationFormatterFactory`—对应注解`@NumberFormat `
-
-等
-
-启用SpringMVC的注解驱动后，默认支持这两个格式化注解:
+处理器方法入参可以直接使用这两个格式化注解:
 
 ~~~java
 @RequestMapping("/formatter")
@@ -1046,58 +1432,7 @@ public String formatter(@DateTimeFormat(pattern = "yyyy-MM-dd") Date date,
 
 ### 数据校验
 
-#### JSR-303
-
-应用程序在执行业务逻辑前，必须通过数据校验以保证接收到的输入数据是正确合法的，比如工资必须是正的、生日必须是过去的时间等等。为了避免数据校验的代码分散在应用程序的不同层，最好将验证逻辑与相应的域模型进行绑定，将代码验证的逻辑集中起来管理。
-
-JSR-303是Java为Bean数据合法性校验提供的标准框架。`hibernate-validator`包是对该框架的实现，可以引入它来进行数据校验:
-
-~~~xml
- <!-- 实现了jdk的Validator、ConstraintValidator、Constraint接口，提供校验实现 -->
- <dependency>
-     <groupId>org.hibernate.validator</groupId>
-     <artifactId>hibernate-validator</artifactId>
-     <version>6.1.5.Final</version>
- </dependency>
-
-~~~
-
-JSR-303定义了如下注解规范:
-
-| 注解                        | 代码内容                                                 |
-| --------------------------- | -------------------------------------------------------- |
-| @Null                       | 被注释的元素必须为 null                                  |
-| @NotNull                    | 被注释的元素必须不为 null                                |
-| @AssertTrue                 | 被注释的元素必须为 true                                  |
-| @AssertFalse                | 被注释的元素必须为 false                                 |
-| @Min(value)                 | 被注释的元素必须是一个数字，其值必须大于等于指定的最小值 |
-| @Max(value)                 | 被注释的元素必须是一个数字，其值必须小于等于指定的最大值 |
-| @DecimalMin(value)          | 被注释的元素必须是一个数字，其值必须大于等于指定的最小值 |
-| @DecimalMax(value)          | 被注释的元素必须是一个数字，其值必须小于等于指定的最大值 |
-| @Size(max, min)             | 被注释的元素的大小必须在指定的范围内                     |
-| @Digits (integer, fraction) | 被注释的元素必须是一个数字，其值必须在可接受的范围内     |
-| @Past                       | 被注释的元素必须是一个过去的日期                         |
-| @Future                     | 被注释的元素必须是一个将来的日期                         |
-| @Pattern(value)             | 被注释的元素必须符合指定的正则表达式                     |
-
-hibernate-validator提供的额外注解:
-
-| @代码     | 代码内容                               |
-| --------- | -------------------------------------- |
-| @Email    | 被注释的元素必须是电子邮箱地址         |
-| @Length   | 被注释的字符串的大小必须在指定的范围内 |
-| @NotEmpty | 被注释的字符串的必须非空               |
-| @Range    | 被注释的元素必须在合适的范围内         |
-
-#### Spring Validator
-
-spring有自己的数据验证框架，同时支持JSR-303框架
-
-spring提供的验证框架的顶级接口是`org.springframework.validation.Validator`
-
-spring提供的`LocalValidatorFactoryBean`同时实现了spring的`Validator`和 JSR-303框架的`Validator`
-
-`<mvc:annotation-driven/>`默认会装配一个`LocalValidatorFactoryBean`,只要在需要检验数据的参数注释`@Valid`注解，即可通知`DataBinder`在完成数据转化后使用`LocalValidator`进行数据校验，数据校验的结果可以通过声明` BindingResult`和`Errors`来访问
+MVC配置会默认配置一个`LocalValidatorFactoryBean`,只要在需要检验数据的参数注释`@Valid`注解，即可通知`DataBinder`在完成数据转化后使用`LocalValidator`进行数据校验，数据校验的结果可以通过声明` BindingResult`和`Errors`来访问
 
 定义进行数据校验的对象:
 
@@ -1134,208 +1469,5 @@ public String validator(@Valid User user, BindingResult result){
 //Print:  username不能为null ，birthday 需要是一个过去的时间
 ~~~
 
-# 异步请求
-
-servlet和SpringMVC支持对请求进行异步响应。接收到Web请求后，可以在保持Web连接的情况下结束Servlet容器线程，在其他线程进行响应处理，要开启异步支持，首先需要设置Servlet和所有的Filter支持异步`<async-supported>`:
-
-~~~xml
-<servlet>
-    <servlet-name>dispatcherServlet</servlet-name>
-    <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
-    <init-param>
-        <param-name>contextConfigLocation</param-name>
-        <param-value>classpath:dispatcher-servlet-annotation.xml</param-value>
-    </init-param>
-    <load-on-startup>1</load-on-startup>
-    <async-supported>true</async-supported>
-</servlet>
-
-<filter>
-    <filter-name>encodingFilter</filter-name>
-    <filter-class>org.springframework.web.filter.CharacterEncodingFilter</filter-class>
-    <async-supported>true</async-supported>
-</filter>
-~~~
-
-并且可以设置mvc以控制异步行为:
-
-~~~xml
-<mvc:annotation-driven enable-matrix-variables="true" >
-    <mvc:async-support default-timeout="100000"/>
-</mvc:annotation-driven>
-~~~
-
-然后可以声明下面的Handler Method返回值以实现异步请求
-
-## `DeferredResult`
-
-当一个请求到达API接口，如果该API接口的return返回值是DeferredResult，在没有超时或者DeferredResult对象设置setResult时，接口不会返回，但是Servlet容器线程会结束，`DeferredResult`另起线程来进行结果处理(即这种操作提升了服务短时间的吞吐能力)，并`setResult()`，如此以来这个请求不会占用服务连接池太久，如果超时或设置`setResult()`，接口会立即返回。
-
-~~~java
-@Controller
-@RequestMapping("/async")
-public class AsynchronousController {
-    @GetMapping("/demo1")
-    @ResponseBody
-    public DeferredResult<String> demo1(){
-        DeferredResult<String> deferredResult = new DeferredResult<>();
-        MyThread myThread = new MyThread(deferredResult);
-        myThread.start();
-        return deferredResult;
-    }
-}
-~~~
-
-最终的结果在MyThread的run方法中处理：
-
-~~~java
-class MyThread extends Thread{
-    private final DeferredResult<String> deferredResult;
-    public MyThread(DeferredResult<String> deferredResult){
-        this.deferredResult = deferredResult;
-    }
-    @SneakyThrows
-    @Override
-    public void run() {
-        Thread.sleep(3000);
-        deferredResult.setResult("123");
-    }
-}
-~~~
-
-## `Callable`
-
-作用和DeferredResult类型，不过让SpringMVC线程来异步执行callable任务:
-
-~~~java
-@GetMapping("/demo")
-@ResponseBody
-public Callable<String> demo2(){
-    return () ->{
-        Thread.sleep(3000);
-        return "132";
-    };
-}
-~~~
-
-如果不设置，默认使用`SimpleAsyncTaskExecutor`来执行异步任务
-
-## `ResponseBodyEmitter`
-
-使用`DeferredResult`和`Callable`只能异步返回一个值。
-
-使用`ResponseBodyEmitter`可以异步返回多个值。
-
-```java
-@GetMapping("/demo3")
-public ResponseBodyEmitter demo3(){
-    ResponseBodyEmitter emitter = new ResponseBodyEmitter();
-    EmitterThread thread = new EmitterThread(emitter);
-    thread.start();
-    return emitter;
-}
-```
-
-其中EmitterThread为:
-
-~~~java
-class EmitterThread extends Thread{
-    private final ResponseBodyEmitter emitter;
-    public EmitterThread(ResponseBodyEmitter emitter){
-        this.emitter = emitter;
-    }
-    @SneakyThrows
-    @Override
-    public void run() {
-        emitter.send("123");
-        Thread.sleep(1000);
-        emitter.send("456");
-        Thread.sleep(1000);
-        emitter.send("789");
-        emitter.complete();
-    }
-}
-~~~
-
-也可以将`ResponseBodyEmitter`作为`ResponseEntity`的body，以设置响应头和状态码。
-
-可以用fetchAPI接收响应流：
-
-~~~javascript
-function demo() {
-    let url = "....../async/demo3"
-    fetch(url).then((response) => push(response.body.getReader()));
-}
 
 
-function push(reader) {
-    reader.read().then(({done, value}) => {
-        if (done) {
-            return;
-        }
-        console.log(Uint8ArrayToString(value));
-        $("#content").append(Uint8ArrayToString(value))
-        push(reader);
-    });
-}
-
-function Uint8ArrayToString(fileData){
-    let dataString = "";
-    for (let i = 0; i < fileData.length; i++) {
-        dataString += String.fromCharCode(fileData[i]);
-    }
-    return dataString
-}
-~~~
-
-## `SseEmitter`
-
-`SseEmitter `(`ResponseBodyEmitter`的子类)提供了对服务器发送事件的支持，其中从服务器发送的事件按照W3C SSE(Server-Sent Events)规范格式化。
-
-~~~java
-@GetMapping("/demo4")
-public SseEmitter demo4(){
-    SseEmitter emitter = new SseEmitter();
-    EmitterThread thread = new EmitterThread(emitter);
-    thread.start();
-    return emitter;
-}
-~~~
-
-其中`EmitterThread`和上一个示例一样
-
-需要用sse规定的EventSourceAPI来处理响应:
-
-~~~javascript
-function demo() {
-    let url = "....../async/demo4"
-    const evtSource = new EventSource(url);
-    evtSource.onmessage = function(event) {
-        $("#content").append(event.data)
-    }
-    evtSource.onerror = function (event) {
-        console.log("error")
-        evtSource.close();
-    }
-}
-~~~
-
-## `StreamingResponseBody`
-
-可以通过`StreamingResponseBody`来异步响应输出流
-
-~~~java
-@GetMapping("/demo5")
-public StreamingResponseBody demo5(){
-    return outputStream -> {
-        for (int i = 0; i < 10; i++) {
-            outputStream.write(Integer.toString(i).getBytes(StandardCharsets.UTF_8));
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    };
-}
-~~~
