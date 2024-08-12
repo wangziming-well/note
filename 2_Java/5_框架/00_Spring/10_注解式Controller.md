@@ -1283,132 +1283,242 @@ MVC配置暴露了以下与异步请求处理有关的选项：
 - `AsyncTaskExecutor`，用于响应式（Reactive）类型流时的阻塞写入，以及执行从 controller 方法返回的 `Callable` 实例。如果使用响应式（Reactive）类型的流媒体或有返回 `Callable` 的 controller 方法，那么强烈建议配置这个属性，因为在默认情况下，它是一个 `SimpleAsyncTaskExecutor`。
 - `DeferredResultProcessingInterceptor` 的实现和 `CallableProcessingInterceptor` 的实现。
 
-# 处理Handler Method出入参
+# CORS
 
-我们知道，Web请求和响应的正文都是不同媒体格式的字符串类型，而我们定义的HandlerMethod出入参一般是Java对象，`RequestMappingHandlerAdapter`需要一些组件的支持，以实现Java对象和Web请求响应体的转换
+## CORS原理
 
-## HttpMessageConverter
+出于最基本的安全考虑，浏览器的通常会采取同源策略。
 
-在前面介绍MehtodHandler方法的返回值和入参时，已经多次提到了`HttpMessageConverter`,它能帮助`RequestMappingHandlerAdapter`：
+文档的源就是文档URL的协议、主机和端口。必须协议、主机和端口都相同的文档URL，文档才算是同源。
 
-* 将读取到的Web请求体中的请求体信息转换为对象传递给Handler Method的参数
-* 将Handler Method返回的对象转换为响应体信息以写入Web响应体
+同源策略指的是脚本只能向所在页面文档的源发起请求。
 
-`@RequestBody`、`@ResponseBody`、`@RequestPart`、`HttpEntity`、`ResponseEntity`背后的实现都需要`HttpMessageConverter`的支持
+如果想要跨源发起请求，就必须使用跨源资源共享(Cross-Origin Resource Sharing,CORS)。
 
-以实现类型转换和数据绑定
+CORS扩展了HTTP协议，增加了新的`Origin`请求头和`Access-Control-Allow-Origin`响应头。
 
-其定义如下:
+前端如果想要发起跨源请求，必须在请求头中添加`Origin`字段，声明本次请求来自哪个源。而跨源的目标网站会添加`Access-Control-Allow-Origin`响应头来声明允许跨源请求的范围。
+
+浏览器将CORS请求分成两类：简单请求（simple request）和非简单请求（not-so-simple request）。只要同时满足以下两大条件，就属于简单请求。
+
+* 请求方法是HEAD，GET，POST三种方法之一
+
+* HTTP的头信息不超出以下几种字段：
+
+  - Accept
+
+  - Accept-Language
+
+  - Content-Language
+
+  - Last-Event-ID
+
+  - Content-Type：只限于三个值application/x-www-form-urlencoded、multipart/form-data、text/plain
+
+凡是不同时满足上面两个条件，就属于非简单请求。浏览器对这两种请求的处理，是不一样的。
+
+### 简单请求
+
+对于简单请求，浏览器直接发出CORS请求。在请求头中声明`Origin`字段表示本次请求的源，例如：
+
+~~~http
+GET /cors HTTP/1.1
+Origin: http://api.bob.com
+Host: api.alice.com
+Accept-Language: en-US
+Connection: keep-alive
+User-Agent: Mozilla/5.0...
+~~~
+
+不论本次请求的源是否在许可的范围内。目标服务器都会返回一个正常的HTTP响应。浏览器会获取响应的`Access-Control-Allow-Origin`响应头判断本次请求是否在许可范围内，如果不再，浏览器会抛出一个跨源请求异常。
+
+如果Origin指定的域名在许可范围内，服务器返回的响应，会多出几个头信息字段。例如：
+
+~~~http
+Access-Control-Allow-Origin: http://api.bob.com
+Access-Control-Allow-Credentials: true
+Access-Control-Expose-Headers: FooBar
+Content-Type: text/html; charset=utf-8
+~~~
+
+面的头信息之中，有三个与CORS请求相关的字段，都以Access-Control-开头。
+
+* `Access-Control-Allow-Origin`：该字段是必须的。它的值要么是请求时Origin字段的值，要么是一个*，表示接受任意域名的请求。
+
+* `Access-Control-Allow-Credentials`：该字段可选。它的值是一个布尔值，表示是否允许发送Cookie。默认情况下，Cookie不包括在CORS请求之中。设为true，即表示服务器明确许可，Cookie可以包含在请求中，一起发给服务器。这个值也只能设为true，如果服务器不要浏览器发送Cookie，删除该字段即可。
+
+* `Access-Control-Expose-Headers`：该字段可选。CORS请求时，XMLHttpRequest对象的getResponseHeader()方法只能拿到6个基本字段：Cache-Control、Content-Language、Content-Type、Expires、Last-Modified、Pragma。如果想拿到其他字段，就必须在Access-Control-Expose-Headers里面指定。上面的例子指定，getResponseHeader('FooBar')可以返回FooBar字段的值。
+
+### 非简单请求
+
+非简单请求的CORS请求，会在正式通信之前，增加一次HTTP查询请求，称为"预检"请求
+
+浏览器会预先询问一次服务器，只有当前网页所在的域名是否在服务器的许可名单之中，以及可以使用哪些HTTP动词和头信息字段。只有得到肯定答复，浏览器才会发出正式的XMLHttpRequest请求，否则就报错。
+
+浏览器发起的预检请求的示例如下：
+
+~~~http
+OPTIONS /cors HTTP/1.1
+Origin: http://api.bob.com
+Access-Control-Request-Method: PUT
+Access-Control-Request-Headers: X-Custom-Header
+Host: api.alice.com
+Accept-Language: en-US
+Connection: keep-alive
+User-Agent: Mozilla/5.0...
+~~~
+
+"预检"请求用的请求方法是OPTIONS，表示这个请求是用来询问的。头信息里面，关键字段是Origin，表示请求来自哪个源。
+
+服务器收到预检请求后，前如果确认跨源请求，就可以做出回应,例如：
+
+~~~http
+HTTP/1.1 200 OK
+Date: Mon, 01 Dec 2008 01:15:39 GMT
+Server: Apache/2.0.61 (Unix)
+Access-Control-Allow-Origin: http://api.bob.com
+Access-Control-Allow-Methods: GET, POST, PUT
+Access-Control-Allow-Headers: X-Custom-Header
+Access-Control-Max-Age: 1728000
+Content-Type: text/html; charset=utf-8
+Content-Encoding: gzip
+Content-Length: 0
+Keep-Alive: timeout=2, max=100
+Connection: Keep-Alive
+Content-Type: text/plain
+~~~
+
+对预检请求的回应中与CORS相关的字段有：
+
+* `Access-Control-Allow-Methods`该字段必需，它的值是逗号分隔的一个字符串，表明服务器支持的所有跨域请求的方法。注意，返回的是所有支持的方法，而不单是浏览器请求的那个方法。这是为了避免多次"预检"请求。
+
+* `Access-Control-Allow-Headers`如果浏览器请求包括Access-Control-Request-Headers字段，则Access-Control-Allow-Headers字段是必需的。它也是一个逗号分隔的字符串，表明服务器支持的所有头信息字段，不限于浏览器在"预检"中请求的字段。
+
+* `Access-Control-Allow-Credentials`该字段与简单请求时的含义相同。
+
+* `Access-Control-Max-Age`该 字段可选，用来指定本次预检请求的有效期，单位为秒。上面结果中，有效期是20天（1728000秒），即允许缓存该条回应1728000秒（即20天），在此期间，不用发出另一条预检请求。
+
+一旦服务器通过了"预检"请求，以后每次浏览器正常的CORS请求，就都跟简单请求一样，会有一个Origin头信息字段。服务器的回应，也都会有一个Access-Control-Allow-Origin头信息字段。
+
+## SpringMVC处理CORS请求
+
+Spring MVC `HandlerMapping` 实现提供了对CORS的内置支持。在成功地将一个请求映射到一个 handler 后， `HandlerMapping` 实现会检查给定请求和 handler 的CORS配置并采取进一步的行动。预检请求被直接处理，而简单和实际的CORS请求被拦截、验证，并设置必要的CORS响应头。
+
+每个 `HandlerMapping` 都可以配置单独使用基于 URL pattern 的 `CorsConfiguration` 映射。在大多数情况下，应用程序使用MVC Java配置或XML命名空间来声明这种映射，这会让一个单一的全局映射被传递给所有 `HandlerMapping` 实例
+
+也可以使用`@CrossOrigin`注解进行handler级别的CORS配置。
+
+## `@CrossOrigin`
+
+`@CrossOrigin` 注解允许注解的 controller 方法进行跨域请求，例如：
 
 ~~~java
-public interface HttpMessageConverter<T> {
-	//指示给定的类型是否是可读的，同时指示支持的请求体Content-Type
-	boolean canRead(Class<?> clazz, MediaType mediaType);
-	//指示可写的对象类型，同时指示支持的响应体Content-Type
-	boolean canWrite(Class<?> clazz, MediaType mediaType);
-	//返回当前转换器支持的媒体类型
-	List<MediaType> getSupportedMediaTypes();
-	//将请求信息流转换为T类型对象
-	T read(Class<? extends T> clazz, HttpInputMessage inputMessage);
-	//请T类型对象实例转换为输出信息流
-	void write(T t, MediaType contentType, HttpOutputMessage outputMessage);
+@RestController
+@RequestMapping("/account")
+public class AccountController {
+
+    @CrossOrigin
+    @GetMapping("/{id}")
+    public Account retrieve(@PathVariable Long id) {
+        // ...
+    }
+
+    @DeleteMapping("/{id}")
+    public void remove(@PathVariable Long id) {
+        // ...
+    }
 }
 ~~~
 
-Spring为`HttpMessageConverter`提供了众多的实现类，以支持不同场景的类型转换:
+默认情况下，`@CrossOrigin` ：
 
-| `HttpMessageConverter`实现                | `<T>` Type                         | Supported Read<br />Content-Type    | Supported Write <br />Content-Type                           |
-| ----------------------------------------- | ---------------------------------- | ----------------------------------- | ------------------------------------------------------------ |
-| `StringHttpMessageConverter`              | `String`                           | `*/*`                               | `text/plain`                                                 |
-| `FormHttpMessageConverter`                | `MultiValueMap`<br />`<String, ?>` | `application/x-www-form-urlencoded` | `application/x-www-form-urlencoded`<br />`multipart/form-data` |
-| `AllEncompassingFormHttpMessageConverter` | `MultiValueMap`<br />`<String, ?>` | `application/x-www-form-urlencoded` | `application/x-www-form-urlencoded`<br />`multipart/form-data` |
-| `ResourceHttpMessageConverter`            | `Resource`                         | `*/*`                               | 由写入的`Resource`决定                                       |
-| `BufferedImageHttpMessageConverter`       | `BufferedImage`                    | 由注册的` image readers`决定        | `BuferedImage`对应的类型                                     |
-| `ByteArrayHttpMessageConverter`           | `byte[]`                           | `*/*`                               | `application/octet-stream`                                   |
-| `SourceHttpMessageConverter`              | `T extends Source`                 | `text/xml`、`application/xml`       | `text/xml`、`application/xml`                                |
-| `MappingJackson2HttpMessageConverter`     | `Object`                           | `application/json`                  | `application/json`                                           |
-| `RssChannelHttpMessageConverter`          | `Channel`                          | `application/rss+xml`               | `application/rss+xml`                                        |
-| ······                                    |                                    |                                     |                                                              |
+- 允许所有 origin。
+- 允许所有 headers。
+- 允许controller 方法所映射的所有HTTP方法。
+- maxAge默认为30分钟
 
-`RequestMappingHandlerAdapter`默认已经装配了下面`HttpMessageConverter`:
+`allowCredentials` 默认不启用，因为这会暴露敏感的用户特定信息（如 cookies 和CSRF令牌）
 
-* `StringHttpMessageConverter`
-* `ByteArrayHttpMessageConverter`
-* `SourceHttpMessageConverter`
-* `AllEncompassingFormHttpMessageConverter`
+也可以将`@CrossOrigin`注释在`@Controller`类上，这样`@Controller`类的所有方法都会继承这个`@CrossOrigin`,而方法上的`@CrossOrigin`会覆盖类上的配置。
 
-如果想要使用其他的`HttpMessageConverter`，需要在SpringWeb容器中显示定义`RequestMappingHandlerAdapter`并指定`HttpMessageConverter`
+~~~java
+@CrossOrigin(maxAge = 3600)
+@RestController
+@RequestMapping("/account")
+public class AccountController {
 
-## DataBinder
+    @CrossOrigin("https://domain2.com")
+    @GetMapping("/{id}")
+    public Account retrieve(@PathVariable Long id) {
+        // ...
+    }
 
- `@RequestParam`, `@RequestHeader`, `@PathVariable`, `@CookieValue`、`@ModelAttribute`等注解指示的方法参数的传递，需要`DataBinder`来实现数据绑定，绑定过程包括数据的转换、格式化、校验等
-
-其中`@ModelAttribute`绑定的是参数对象中的字段
-
-![DataBinder工作流程](https://gitee.com/wangziming707/note-pic/raw/master/img/DataBinder%E5%B7%A5%E4%BD%9C%E6%B5%81%E7%A8%8B.jpeg)
-
-SpringMVC将ServletRequest对象以及处理方法的入参对象实例传递给`DataBinder`
-
-* `DataBinder`首先调用装配在SpringWeb上下文的ConverionService组件进行数据转换、数据格式化的工作，将ServletRequest中的消息填充到入参对象中
-* 然后调用`Validator`组件对已经绑定了请求消息数据的入参对象进行数据合法性校验，最终生成数据绑定结果BindingResult对象
-
-### 数据转换
-
-数据类型转换工作由DataBinder委托ConversionService完成，其定义如下:
-
-~~~Java
-public interface ConversionService {
-	boolean canConvert(Class<?> sourceType, Class<?> targetType);
-	//判断是否能将source类型转换为target类型
-	boolean canConvert(TypeDescriptor sourceType, TypeDescriptor targetType);
-	//通过TypeDescriptor，判断是否能将source类型转换为target类型
-    //TypeDescriptor不但描述了需要转换类的信息，还描述了宿主类的上下文信息，如注解等
-	<T> T convert(Object source, Class<T> targetType);
-	//进行类型转换
-	Object convert(Object source, TypeDescriptor sourceType, TypeDescriptor targetType);
-    //通过TypeDescriptor进行类型转换
+    @DeleteMapping("/{id}")
+    public void remove(@PathVariable Long id) {
+        // ...
+    }
 }
 ~~~
 
-可以通过`ConversionServiceFactoryBean`注册一个`DefaultConversionService`在SpringIoC容器中
+## 全局配置
 
-`DefaultConversionService`提前注册了一些常用的`Converter`以支持常见的类型转换，在使用`ConversionServiceFactoryBean`时，可以通过`converters`添加一些其他的或者自定义的`Converter`：
+使用MVC的Java配置或MVC的XML命名空间来配置全局的 CORS
+
+默认情况下，全局配置会：
+
+- 允许所有 origins。
+- 允许所有 headers。
+- 允许`GET`， `HEAD` 和 `POST` 方法。
+- `maxAge` 被设置为30分钟
+
+###  Java 配置
+
+使用 `CorsRegistry` 回调启用 CORS：
+
+~~~java
+@Configuration
+@EnableWebMvc
+public class WebConfig implements WebMvcConfigurer {
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+
+        registry.addMapping("/api/**")
+            .allowedOrigins("https://domain2.com")
+            .allowedMethods("PUT", "DELETE")
+            .allowedHeaders("header1", "header2", "header3")
+            .exposedHeaders("header1", "header2")
+            .allowCredentials(true).maxAge(3600);
+
+        // Add more mappings...
+    }
+}
+~~~
+
+### XML配置
+
+可以使用 `<mvc:cors>` 元素启用 CORS：
 
 ~~~xml
-<bean id="myConversionService" class="org.springframework.context.support.ConversionServiceFactoryBean">
-    <property name="converters">
-        <set>
-            <bean class="com.wzm.spring.converter.MyConverter"/>
-        </set>
-    </property>
-</bean>
+<mvc:cors>
+    <mvc:mapping path="/api/**"
+        allowed-origins="https://domain1.com, https://domain2.com"
+        allowed-methods="GET, PUT"
+        allowed-headers="header1, header2, header3"
+        exposed-headers="header1, header2" allow-credentials="true"
+        max-age="123" />
+
+    <mvc:mapping path="/resources/**"
+        allowed-origins="https://domain1.com" />
+
+</mvc:cors>
 ~~~
 
 
 
-ConversionServiceFactoryBean支持注册以下三种`converter`:
+# 处理Handler Method参数
 
-* `Converter<S, T>`
-* `GenericConverter`
-* `ConverterFactory`
-
-使用SpringMVC提供的命名空间`mvc`启动注解驱动时:
-
-~~~xml
-<mvc:annotation-driven/>
-~~~
-
-如果没有指定，将注册一个默认的`RequestMappingHandlerAdapter`。和默认的`ConversionService`，即`FormattingConversionServiceFactoryBean`
-
-可以通过指定属性`conversion-service`覆盖默认的`ConversionService`
-
-~~~xml
-<mvc:annotation-driven conversion-service="myConversionService" >
-~~~
-
-
-
-### 数据格式化
+## 数据格式化
 
 Spring的`org.springframework.format.annotation `包提供两个格式化注解：
 
@@ -1430,7 +1540,7 @@ public String formatter(@DateTimeFormat(pattern = "yyyy-MM-dd") Date date,
 //Print Fri Jan 01 00:00:00 CST 2021 和 2222
 ~~~
 
-### 数据校验
+## 数据校验
 
 MVC配置会默认配置一个`LocalValidatorFactoryBean`,只要在需要检验数据的参数注释`@Valid`注解，即可通知`DataBinder`在完成数据转化后使用`LocalValidator`进行数据校验，数据校验的结果可以通过声明` BindingResult`和`Errors`来访问
 
