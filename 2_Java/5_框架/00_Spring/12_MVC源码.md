@@ -134,7 +134,7 @@ org.springframework.web.servlet.ViewResolver=org.springframework.web.servlet.vie
 org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.support.SessionFlashMapManager
 ~~~
 
-# 请求处理
+## 请求处理
 
 `DispatcherServlet`接受到请求后会调用`FrameworkServlet.processRequest()`方法来处理请求,该方法主要逻辑为：
 
@@ -149,7 +149,7 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 
 由此可以看出请求处理的真正逻辑在`FrameworkServlet.doService()`中，这个方法默认为空，`DispatcherServlet`重写了该方法，提供真正的请求处理逻辑。
 
-## `DispatcherServlet.doService()`
+### `DispatcherServlet.doService()`
 
 `DispatcherServlet.doService()`的主要逻辑如下：
 
@@ -185,7 +185,7 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 
 由此可以看出`DispatcherServlet.doService()`主要是针对request域进行一些预处理和后处理，真正处理请求是在`DispatcherServlet.doDispatch()`中
 
-## `DispatcherServlet.doDispatch()`
+### `DispatcherServlet.doDispatch()`
 
 **note:**本节陈述中提到的方法如果没有显示指定，默认为`DispatcherServlet`的方法
 
@@ -193,10 +193,11 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 
 * 调用`checkMultipart()`检查是否需要包装为`multipart`请求：若`this.multipartResolver`不为空且请求是`multipart`的(通过`MultipartResolver.isMultipart()`判断其请求的ContentType前缀是否为`multipart/`)，调用`MultipartResolver.resolveMultipart()`将request包装为`MultipartHttpServletRequest`类型，以供处理器访问文件等。
 * 遍历`this.handlerMappings`，调用`HandlerMapping.getHandler()`方法，获取`HandlerExecutionChain`实例。该类型包含了`Handler`和`HandlerInterceptor`的调用链。
-* 如果上一步获取的`HandlerExecutionChain`实例为空，抛出一个`NoHandlerFoundException`异常，并响应一个404错误，最后退出方法
+    * 如果获取的`HandlerExecutionChain`实例为空，抛出一个`NoHandlerFoundException`异常，并响应一个404错误，最后退出方法
+    * 否则继续
+
 * 调用`getHandlerAdapter()`方法，获取一个支持获得的 `Handler`的`HandlerAdapter`
     * 遍历`this.handlerAdapters`，调用`HandlerAdapter.supports()`方法，如果该方法返回`true`，则返回当前的`HandlerAdapter`
-
 * 处理HTTP缓存机制：如果当前HTTP请求类型为`GET`或者`HEAD`,获取当前资源的最后修改时间戳`lastModified`
     * 如果是`GET`请求，并且缓存未失效，则响应一个304状态码并返回
     * 否则，继续
@@ -205,12 +206,17 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
     * 如果上一步某个拦截器返回`false`则表示这个拦截器已经完成了请求的处理(例如抛出了一个异常，或者在拦截器中完成了请求的响应)，那么中断遍历，不再继续调用后续的`HandlerInterceptor.preHandle()`。然后进行请求的后处理：
         * 按优先级从低到高遍历`HandlerExecutionChain.interceptorList`：调用`HandlerInterceptor.afterCompletion()`进行后处理
         * 然后直接返回`false`
-
 * 如果上一步返回`false`，表示前处理中已经完成了请求的处理，方法直接返回
 * 调用`HandlerAdapter.handle()`处理请求，返回一个`ModelAndView`
 * 判断异步请求：如果当前请求是异步请求，并且异步线程正在进行，那么当前方法直接返回。
-* 根据请求获取默认`viewName`，设置到`ModelAndView`中；默认的`viewName`是从`this.viewNameTranslator.getViewName()`方法返回
-* 
+* 如果当前`ModeAndView`还没有`View`  根据请求获取默认`viewName`，设置到`ModelAndView`中；默认的`viewName`是从`this.viewNameTranslator.getViewName()`方法返回
+* 调用`HandlerExecutionChain.applyPostHandle()`进行后处理：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链,调用`HandlerInterceptor.postHandle()`
+* **调用`processDispatchResult()`处理响应的结果**包括异常处理和`View`渲染
+* 调用`HandlerExecutionChain.triggerAfterCompletion()`进行拦截器完成回调：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链，调用`HandlerInterceptor.afterCompletion()`
+* 如果请求是异步请求，调用`HandlerExecutionChain.applyAfterConcurrentHandlingStarted()`进行异步拦截器回调：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链，调用`AsyncHandlerInterceptor.afterConcurrentHandlingStarted()`完成回调
+* 如果第一步包装了`multipart`请求，调用`MultipartResolver.cleanupMultipart()`清除释放资源：最终删除缓存文件
+
+### `DispatcherServlet.processDispatchResult()`
 
 
 
