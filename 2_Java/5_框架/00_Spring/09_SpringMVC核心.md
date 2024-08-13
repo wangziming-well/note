@@ -178,16 +178,6 @@ public class MyWebAppInitializer extends AbstractDispatcherServletInitializer {
 
 如果需要进一步定制 `DispatcherServlet` 本身，可以重写 `AbstractDispatcherServletInitializer.createDispatcherServlet()` 方法
 
-
-
-
-
-
-
-
-
-
-
 ## Context层次结构
 
 一般情况下，有一个单一的`DispatcherServlet`和与之绑定的单一的  `WebApplicationContext`就足够了。 
