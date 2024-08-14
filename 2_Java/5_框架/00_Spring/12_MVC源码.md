@@ -185,6 +185,21 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 
 由此可以看出`DispatcherServlet.doService()`主要是针对request域进行一些预处理和后处理，真正处理请求是在`DispatcherServlet.doDispatch()`中
 
+### `HandlerExecutionChain`
+
+在继续分析`doDispatch()`前需要先了解一下`HandlerExecutionChain`类。这个类是处理器执行链的抽象。包含了Handler处理器和对应的处理器拦截器。可以让`DispatcherServlet`方便的执行拦截器的前处理、后处理。`HandlerMapping.getHandler()`返回的就是一个`HandlerExecutionChain`,其核心方法如下：
+
+* `applyPreHandle()`:执行包含的拦截器链的前处理回调：
+  * 按优先级从高到底遍历`HandlerExecutionChain.interceptorList`的拦截器链：调用`HandlerInterceptor.preHandle()`进行前处理。
+  * 如果上一步某个拦截器返回`false`则表示这个拦截器已经完成了请求的处理(例如抛出了一个异常，或者在拦截器中完成了请求的响应)，那么中断遍历，不再继续调用后续的`HandlerInterceptor.preHandle()`。然后进行请求的后处理：
+    * 调用`triggerAfterCompletion()`执行包含的拦截器链的完成回调
+    * 然后直接返回`false`
+
+* `applyPostHandle()`:执行包含的拦截器链的后处理回调：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链,调用`HandlerInterceptor.postHandle()`
+
+* 调用`triggerAfterCompletion()`执行包含的拦截器链的完成回调：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链，调用`HandlerInterceptor.afterCompletion()`
+* `applyAfterConcurrentHandlingStarted()`执行包含的拦截器链的异步完成回调：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链，调用`AsyncHandlerInterceptor.afterConcurrentHandlingStarted()`完成回调
+
 ### `DispatcherServlet.doDispatch()`
 
 **note:**本节陈述中提到的方法如果没有显示指定，默认为`DispatcherServlet`的方法
@@ -195,34 +210,57 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 * 遍历`this.handlerMappings`，调用`HandlerMapping.getHandler()`方法，获取`HandlerExecutionChain`实例。该类型包含了`Handler`和`HandlerInterceptor`的调用链。
     * 如果获取的`HandlerExecutionChain`实例为空，抛出一个`NoHandlerFoundException`异常，并响应一个404错误，最后退出方法
     * 否则继续
-
 * 调用`getHandlerAdapter()`方法，获取一个支持获得的 `Handler`的`HandlerAdapter`
     * 遍历`this.handlerAdapters`，调用`HandlerAdapter.supports()`方法，如果该方法返回`true`，则返回当前的`HandlerAdapter`
 * 处理HTTP缓存机制：如果当前HTTP请求类型为`GET`或者`HEAD`,获取当前资源的最后修改时间戳`lastModified`
     * 如果是`GET`请求，并且缓存未失效，则响应一个304状态码并返回
     * 否则，继续
-* 调用`HandlerExecutionChain.applyPreHandle()`进行前处理：
-    * 按优先级从高到底遍历`HandlerExecutionChain.interceptorList`的拦截器链：调用`HandlerInterceptor.preHandle()`进行前处理。
-    * 如果上一步某个拦截器返回`false`则表示这个拦截器已经完成了请求的处理(例如抛出了一个异常，或者在拦截器中完成了请求的响应)，那么中断遍历，不再继续调用后续的`HandlerInterceptor.preHandle()`。然后进行请求的后处理：
-        * 按优先级从低到高遍历`HandlerExecutionChain.interceptorList`：调用`HandlerInterceptor.afterCompletion()`进行后处理
-        * 然后直接返回`false`
-* 如果上一步返回`false`，表示前处理中已经完成了请求的处理，方法直接返回
+* 调用`HandlerExecutionChain.applyPreHandle()`进行前处理。返回`false`，表示前处理中已经完成了请求的处理，方法直接返回
 * 调用`HandlerAdapter.handle()`处理请求，返回一个`ModelAndView`
-* 判断异步请求：如果当前请求是异步请求，并且异步线程正在进行，那么当前方法直接返回。
+* 判断异步请求：如果当前请求处于异步模式，并且异步线程正在进行，那么当前方法直接返回。执行`finally`中代码
 * 如果当前`ModeAndView`还没有`View`  根据请求获取默认`viewName`，设置到`ModelAndView`中；默认的`viewName`是从`this.viewNameTranslator.getViewName()`方法返回
-* 调用`HandlerExecutionChain.applyPostHandle()`进行后处理：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链,调用`HandlerInterceptor.postHandle()`
+* 调用`HandlerExecutionChain.applyPostHandle()`进行后处理
 * **调用`processDispatchResult()`处理响应的结果**包括异常处理和`View`渲染
-* 调用`HandlerExecutionChain.triggerAfterCompletion()`进行拦截器完成回调：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链，调用`HandlerInterceptor.afterCompletion()`
-* 如果请求是异步请求，调用`HandlerExecutionChain.applyAfterConcurrentHandlingStarted()`进行异步拦截器回调：按照优先级从低到高遍历`HandlerExecutionChain.interceptorList`的拦截器链，调用`AsyncHandlerInterceptor.afterConcurrentHandlingStarted()`完成回调
-* 如果第一步包装了`multipart`请求，调用`MultipartResolver.cleanupMultipart()`清除释放资源：最终删除缓存文件
+* 调用`HandlerExecutionChain.triggerAfterCompletion()`进行拦截器完成回调
+* 以下为`finally`代码块内容，即使前边有`return`也会执行
+    * 如果请求请求处于异步模式，调用`HandlerExecutionChain.applyAfterConcurrentHandlingStarted()`进行异步拦截器回调
+    * 如果第一步包装了`multipart`请求，调用`MultipartResolver.cleanupMultipart()`清除释放资源：最终删除缓存文件
+
 
 ### `DispatcherServlet.processDispatchResult()`
 
+`processDispatchResult()`方法处理异常并渲染视图返回结果，方法入参的`exception`为`doDispatch()`中抛出的异常。其主要逻辑为：
+
+* 处理异常：如果有抛出异常(`exception != null`):
+  * 若异常类型为`ModelAndViewDefiningException`,调用`ModelAndViewDefiningException.getModelAndView()`覆盖`ModelAndView`
+  * 否则，调用`processHandlerException()`方法覆盖`ModelAndView`，该方法：
+    * 遍历`this.handlerExceptionResolvers`调用`HandlerExceptionResolver.resolveException()`生成错误响应视图`ModelAndView`
+    * 如果生成的错误`ModelAndView`中的`view`为空，根据请求获取默认`viewName`，设置到`ModelAndView`中；默认的`viewName`是从`this.viewNameTranslator.getViewName()`方法返回
+* 渲染模型：如果`ModelAndView`不为空,**调用`render()`渲染模型**
+  * 调用`this.localeResolver.resolveLocale()`获取`Locale`实例
+  * 如果`ModeAndView`中`viewName`不为空
+    * 遍历`this.viewResolvers`,调用`ViewResolver.resolveViewName()`直到获取`View`实例
+    * 如果遍历完成后仍然没有获取到`View`实例，抛出一个`ServletException`异常
+  * 如果`ModeAndView`中`viewName`为空，调用`ModelAndView.getView()`获取`View`实例，如果获取不到，抛出一个`ServletException`异常
+    * 调用`View.render()`渲染视图
+
+* 如果请求是异步模式(可能是在拦截器的后处理程序中被设置)，方法直接返回
+* 调用`HandlerExecutionChain.triggerAfterCompletion()`进行拦截器完成回调
+
+# 路径匹配
+
+在继续分析前，需要先了解下面Spring 提供的进行路径匹配的Util工具类：
+
+* `org.springframework.util.PathMatcher`
+* `org.springframework.web.util.pattern.PathPattern`
+
+这两个工具类都是用于路径匹配，主要功能基本一致，`PathPattern`是Spring5新增的路径匹配器。旨在取代`PathMatcher`，性能也更强。
+
+## `PathMatcher`
+
+`PathMatcher`只有一个实现类`AntPathMatcher`
 
 
 
-
-
-
-
+# `HandlerMapping`
 
