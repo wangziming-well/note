@@ -258,7 +258,200 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 
 ## `PathMatcher`
 
-`PathMatcher`只有一个实现类`AntPathMatcher`
+`PathMatcher`只有一个实现类`AntPathMatcher`，主要用来判断给定的模式`pattern`和路径`path`是否匹配。
+
+路径由路径分隔符分割成若干个路径段。
+
+其中`pattern`模式的匹配规则如下：
+
+* `?`匹配一个任意字符（不包括路径分隔符）
+* `*`匹配零个或多个任意字符（不包括路径分隔符）
+* `**`匹配路径中零个或者多个目录
+* `{var:regex}`:匹配一个满足`regex`代表的正则表达式路径段，并将匹配到的值赋值给变量名`var`，可以省略正则表达式，此时匹配任意路径段
+
+注意：模式和路径要么都是相对的，要么都是绝对的，否则无法进行匹配(匹配结果为false)
+
+### `match()`
+
+`match()`方法对路径进行完全匹配：
+
+~~~java
+public boolean match(String pattern, String path);
+~~~
+
+使用示例：
+
+~~~java
+AntPathMatcher matcher = new AntPathMatcher();
+
+matcher.match("/test/a?c", "/test/abc"); //true
+matcher.match("/test/a?c", "/test/abbc"); //false
+
+matcher.match("/test/*.html", "/test/index.html"); //true
+matcher.match("/test/*.html", "/test/index");
+
+matcher.match("/test/*", "/test/index"); //true
+matcher.match("/test/*", "/test/v1/index"); //false
+
+matcher.match("/test/**/index.jsp", "/test/v1/v2/index.jsp");//true
+matcher.match("/test/**/index.jsp", "/test/index.jsp");//true
+
+matcher.match("test/**", "/test/v1/v2/index.jsp"); //false
+matcher.match("test/**", "test/index.jsp"); //true
+~~~
+
+### `matchStart()`
+
+进行不完全匹配，路径只需要完全匹配模式中前面部分的若干个路径段，例如：
+
+~~~java
+matcher.matchStart("/test/path/**", "/test"); //true
+matcher.matchStart("/test/path/**", "/test/abc"); //false
+~~~
+
+### `extractPathWithinPattern()`
+
+找出通配符`*`、`**`、`?`所在的路径段，并返回该路径段和其所有子路径，例如：
+
+~~~java
+matcher.extractPathWithinPattern("/test/**/*.html", "/test/p/index.jsp"); //  p/index.jsp
+matcher.extractPathWithinPattern("/test/**/*.html", "/test/p/index.html"); // p/index.html
+matcher.extractPathWithinPattern("/test/a?c/*", "/test/abc/v"); // abc/v
+~~~
+
+### `extractUriTemplateVariables()`
+
+返回模板变量，即`{var:regex}`匹配的变量，例如：
+
+~~~java
+matcher.extractUriTemplateVariables("/test/{v1:\\w+}/{v2}.html", "/test/p/index.html");//  {v1=p, v2=index}
+~~~
+
+### `combine()`
+
+`combine(String pattern1, String pattern2)`方法合并两个模式，主要逻辑如下：
+
+* 如果两个模式其中一个为空(空字符串或者`null`)，直接返回另一个模式
+
+* 如果`pattern1`和`pattern2`不相同，且`pattern1`不包含路径模板变量，且将`pattern2`作为路径时，`pattern1`完全匹配`pattern2`,直接返回`pattern2`
+
+* 如果`pattern1`以`/*`结尾,去掉`pattern1`的后缀的`*`，然后拼接两个模式并返回
+
+* 如果`pattern1`以`/**`结尾,直接拼接两个模式并返回
+
+* 如果`pattern1`包含路径模板变量，或者`pattern1`没有匹配任意文件名(`pattern1`中不包含`*.`),或者路径分隔符为`.`,那么直接拼接两个模式并返回
+
+* 走到这一步，说明`pattern1`不以`/*`、`/**`为后缀，不包含路径模板变量，会匹配任意文件名(包含`*.`),并且路径分隔符不为`.`
+
+* 如果`pattern1`和`pattern2`都不匹配所有文件拓展名(`pattern`的中包含`.`，且后缀不为`.*`)，抛出一个`IllegalArgumentException`
+
+  例如，对于`/test/*.jsp`和`/test/key.jsp`将抛出异常
+
+* 最后，`pattern2`去掉文件后缀(去掉`.xxx`的后缀)，获得`pattern2` 的文件名`file2`(包含路径)
+
+  * 如果`pattern1`匹配所有文件拓展名(以`*.*`作为后缀)，直接返回`pattern2`
+  * 否则返回`file2`拼接上`pattern1`的文件拓展名
+
+
+注意：两个模式的拼接会自动判断是否添加路径分隔符。
+
+例如：
+
+~~~java
+matcher.combine("/test/**", "/test/*");  // /test/*
+matcher.combine("/test/**", "test/*");  // /test/**/test/*
+matcher.combine("/path1/*.*","/test/var.h");  // /test/var.h
+matcher.combine("/path1/*.jsp","/test/var");  // /test/var.jsp
+~~~
+
+### `getPatternComparator()`
+
+这个方法获取一个模式比较器，基于一个路径比较模式的通用性。通用性强的模式大于通用性弱的模式。
+
+注意：模式的通用性是基于路径的，可能有两个模式A，B，对于路径P1来说A更通用，但对于路径P2来说B更通用。
+
+在多个模式同时匹配上同一个路径的场景下，可以用模式比较器选出一个最佳/最优先(最不通用)的模式。比如一个URL请求能够匹配多个`Controller`时,可以选出一个最优先的`Controller`。
+
+对于`pattern1`和`pattern2`和路径`path`；比较器按照下面顺序判断通用性，下面情况中`pattern1`更通用：
+
+* `pattern1`为`null`或者等于`/**`  （都为`null`或者`/**`则通用性相同）
+* `pattern2`与`path`相等（都与`path`相同则通用性相同）
+* `pattern1`以`/**`为后缀且`pattern2`中没有`**`通配符
+* `pattern1`和`pattern2`都以`/**`结尾，`pattern1`长度更短(模板变量长度算1)（长度相同相同则通用性相同）
+* `pattern1`中有更多的通配符(`**`算两个通配符，`{}`和`*`算一个通配符)
+* `pattern1`长度更短(模板变量长度算1)
+* `pattern1`中单`*`通配符更多
+* `pattern1`中模板变量更多
+* 以上判断都通过则通用性相同
+
+例如：
+
+~~~java
+AntPathMatcher matcher = new AntPathMatcher();
+Comparator<String> comparator = matcher.getPatternComparator("/test/path/inde");
+comparator.compare("/**", "/test/**"); //1
+comparator.compare("/test/path/*.*", "/test/path/index.jsp"); // 1
+comparator.compare("/test/path/**", "/test/**/inde"); //0
+~~~
+
+## 新路径匹配器
+
+不同与`PathMatcher`把所有功能集中在一个类中,新的路径匹配围绕`PathPattern`拥有要给体系，在设计上更模块化，更加面向对象。涉及的几个类：
+
+* `PathElement`：路径节点的抽象。一个路径可以拆分成多个路径节点对象。
+* `PathContainer`：路径的结构化抽象。
+* `PathPattern`：模式的抽象。路径模式匹配器的最核心API
+
+* `PathPatternParser`：将一个String类型的模式解析为`PathPattern`实例，这是创建`PathPattern`实例的唯一方式
+
+`PathPattern`提供的路径匹配功能基本和`AntPathMatcher`一样，不同之处在于：
+
+* `**`通配符只能在模式最后
+* 除了通配符：`?`、`*`、`**`、`{var:regex}`外，新提供一个`{*var} `用于捕获剩余所有路径段到变量`var`上
+
+### `PathElement`
+
+`PathElement`代表一个路径节点。例如路径段、路径分隔符。
+
+`PathElement`中的`next`和`prev`指示当前节点的前后节点。所有的`PathElement`之间形成链状结构，构成一个完整的路径模板。
+
+它不是一个公开的类，我们不需要仔细了解其实现细节，只需要了解一下它的不同实现即可。
+
+它有8个实现类，代表不同类型的路径节点：
+
+* `SeparatorPathElement`:路径分隔符
+* `WildcardPathElement`：仅有`*`通配符的路径段
+* `SingleCharWildcardedPathElement`：带有`?`通配符的路径段
+* `WildcardTheRestPathElement`：表示路径剩余部分的路径段，例如在`/foo/**`中的`/**`
+* `CaptureVariablePathElement`表示捕获路径变量的路径段，例如`/foo/{id}`的`{id}`
+* `CaptureTheRestPathElement`表示捕获剩余所有路径的路径段，例如 `/foo/{*foobar}`中的`/{*foobar}`
+* `LiteralPathElement`表示字面路径段，例如`/foo/bar`中的`foo`和`bar`
+* `RegexPathElement`表示正则表达式路径段，例如`/foo/*_*/*_{foobar}`中的`*_*`和`*_{foobar}`
+
+### `PathContainer`
+
+是URI路径的结构化表示，它有如下内部接口/类：
+
+* `PathContainer.Element`:表示路径元素，它有如下子接口：
+  * `PathContainer.Separator`:表示路径分隔符
+  * `PathContainer.PathSegment`:表示路径段
+* `Options`路径解析的可选项，可以设置路径分隔符和是否解码解析路径段
+
+主要方法如下：
+
+* `value()`返回路径对应的字符串
+* `elements()`返回路径元素的有序列表
+
+* `subPath()`截取返回子路径
+* `static parsePath()`根据字符串解析返回一个`PathContainer`
+
+### `PathPattern`
+
+`PathPattern`代表一个模式，只有由`PathPatternParser`创建
+
+
+
+### `PathPatternParser`
 
 
 
