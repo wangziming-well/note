@@ -29,6 +29,8 @@ public class WebConfig {
 </beans>
 ~~~
 
+不管是Java配置还是XML配置，都会触发注册一个`DelegatingWebMvcConfiguration`到容器中。
+
 在Java配置中，你可以实现 `WebMvcConfigurer` 接口:
 
 ~~~java

@@ -447,13 +447,224 @@ comparator.compare("/test/path/**", "/test/**/inde"); //0
 
 ### `PathPattern`
 
-`PathPattern`代表一个模式，只有由`PathPatternParser`创建
+`PathPattern`代表一个模式，用于和代表路径的`PathContainer`进行匹配
 
+`PathPattern`只有由`PathPatternParser`创建，例如：
 
+~~~java
+String patternStr = ....;
+PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
+~~~
+
+其主要方法如下：
+
+#### `matches()`
+
+和指定的路径进行完全匹配。例如：
+
+~~~java
+PathPattern pattern = PathPatternParser.defaultInstance.parse("/test/*/*.jsp");
+PathContainer path = PathContainer.parsePath("/test/v1/index.jsp");
+boolean matches = pattern.matches(path); // true
+~~~
+
+#### `matchAndExtract()`
+
+匹配并捕获路径变量和路径参数。
+
+如果不匹配，返回null，否则它返回一个`PathPattern.PathMatchInfo`, 模式匹配路径时捕获的路径变量和路径参数，它持有如下参数：
+
+* `Map<String, String>  uriVariables`:由模式中`{var}`和`{*var}`捕获的路径变量，
+* `Map<String, MultiValueMap<String, String>> matrixVariables`：被捕获的路径参数(如果没有被模板捕获，那么即使路径有参数，该字段也为空)，例如，针对路径`/test/v1;a=1;b=2,3/index.html`:
+    * 使用模式`/test/{version}/index.html`进行匹配，该参数为：`{version={a=[1], b=[2, 3]}}`
+    * 使用模式`/test/v1/{filename}`进行匹配，该参数为`{}`
+
+使用示例：
+
+~~~java
+PathPattern pattern = PathPatternParser.defaultInstance.parse("/test/{version}/{filename}");
+PathContainer path = PathContainer.parsePath("/test/v1;a=1;b=2,3/index.html");
+PathPattern.PathMatchInfo pathMatchInfo = pattern.matchAndExtract(path);
+System.out.println(pathMatchInfo); //PathMatchInfo[uriVariables={filename=index.html, version=v1}, matrixVariables={version={a=[1], b=[2, 3]}}]
+
+~~~
+
+#### `matchStartOfPath()`
+
+如果不匹配，方法返回`null`,否则返回`PathPattern.PathRemainingMatchInfo`它持有如下参数：
+
+* ` PathContainer pathMatched`:与模式匹配的路径前缀
+* `PathContainer pathRemaining`：不匹配的剩余路径
+* `PathMatchInfo pathMatchInfo`：匹配的捕获参数
+
+示例：
+
+~~~java
+PathPattern pattern = PathPatternParser.defaultInstance.parse("/test/{version}");
+PathContainer path = PathContainer.parsePath("/test/v1;a=1;b=2,3/index.html");
+PathPattern.PathRemainingMatchInfo result = pattern.matchStartOfPath(path);
+System.out.println(result.getPathMatched()); // "/test/v1;a=1;b=2,3"
+System.out.println(result.getPathRemaining()); // "/index.html"
+System.out.println(result.getUriVariables()); // {version=v1}
+System.out.println(result.getMatrixVariables()); // {version={a=[1], b=[2, 3]}}
+~~~
+
+#### `extractPathWithinPattern()`
+
+找出通配符`*`、`**`、`?`所在的路径段，并返回该路径段和其所有子路径，例如：
+
+~~~java
+PathPattern pattern = PathPatternParser.defaultInstance.parse("/test/*/*.html");
+PathContainer path = PathContainer.parsePath("/test/v1/index.html");
+PathContainer result = pattern.extractPathWithinPattern(path); // v1/index.html
+~~~
+
+#### `combine()`
+
+合并两个模式，合并的逻辑和`AntPathMatcher`一样，例如：
+
+~~~java
+PathPattern pattern = PathPatternParser.defaultInstance.parse("/test/*.html");
+PathPattern toCombine = PathPatternParser.defaultInstance.parse("/path.*");
+PathPattern combine = pattern.combine(toCombine); // /path.html
+~~~
+
+#### `compareTo()`
+
+比较模式的通用性，通用性强的`PathPattern`更大，注意，和`AntPathMatcher`不同，`PathPattern`的通用性比较不需要基于某个路径。其通用性按照判断顺序考虑以下因素：
+
+* `null`实例最通用
+* 模式包含`/**`和`/{*ver}`这样的全匹配路径段(`CaptureTheRestPathElement`和`WildcardTheRestPathElement`)更通用
+    * 如果两个路径都是全匹配路径段，模式长度(`normalizedLength`字段)越短越通用
+* 模式中`*`通配符更多的更通用
+    * 如果模式中`*`通配符一样多，`?`通配符更多的更通用
+* 模式长度(`normalizedLength`字段)越短越通用
+* 以上都相等时，直接比较模式代表的字符串字典顺序大小`String.compareTo()`
+
+注意：模式长度(`normalizedLength`字段)计算方式如下：
+
+* 匹配剩余路径段的模式段算长度1，例如`/**`和`/{*var}`
+* 模板变量算长度算1,五变量名称无关，例如`{var}`和`{fooo}`长度都为1
+* 其他字母长度都算1，例如`/`、`*`、`?`和普通字母
+
+一个示例：
+
+~~~java
+String str1 = "/**";
+String str2 = "/{*var}";
+PathPattern pattern1 = PathPatternParser.defaultInstance.parse(str1);
+PathPattern pattern2 = PathPatternParser.defaultInstance.parse(str2);
+System.out.println(pattern1.compareTo(pattern2)); // -81
+System.out.println(str1.compareTo(str2)); // -81
+~~~
 
 ### `PathPatternParser`
 
+用于解析字符串创建`PathPattern`,提供如下可配置字段以配置创建的`PathPattern`:
+
+* `caseSensitive`：路径模式匹配是否区分大小写
+* `pathOptions`解析URL路径的可选项
+
+并且提供一个全局的静态实例：
+
+~~~java
+public static final PathPatternParser defaultInstance;
+~~~
+
+通过`parse()`方法创建实例：
+
+~~~java
+String patternStr = ....;
+PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
+~~~
+
+# `AbstractHandlerMapping`
+
+`HandlereMapping`的主要类层次结构如下：
+
+![HandlerMapping](https://gitee.com/wangziming707/note-pic/raw/master/img/HandlerMapping.png)
+
+可以看到所有的`HandlerMapping`实现都拓展自`AbstractHandlerMapping`抽象类，它为其他实现提供公用的逻辑。
+
+在具体了解`AbstractHandlerMapping`前，我们需要先粗略了解下面类/接口：
+
+* `RequestPath`，扩展了`PathContainer`，表示一个请求路径。有如下关键方法：
+    * `contextPath()`:获取上下文路径
+    * `pathWithinApplication()`:获取app中的相对路径。
+* `CorsConfiguration`：cors请求的配置类。例如设置允许的`cors`请求源，允许的cors HTTP方法等。
+* `CorsConfigurationSource`：用以生成`CorsConfiguration`实例。
+* `AbstractHandlerMapping.CorsInterceptor`：cors拦截器，委托`CorsProcessor`对cors请求进行预处理，
+* `CorsProcessor`:`cors`请求的处理类，根据`CorsConfiguration`配置处理cors请求。例如如果当前请求源不在配置范围内，就拒绝请求；针对预检请求生成响应等。
+* `AbstractHandlerMapping.PreFlightHandler`：预检请求的处理器，对于预检请求，不需要实际处理请求。
+* `MappedInterceptor`:在SpringMVC配置中，如果配置`Interceptor`是，有配置`includePatterns`或者，`excludePatterns`,那么在注册这个拦截器是，会自动将其包装成一个`MappedInterceptor`
+
+## `AbstractHandlerMapping.getHandler()`
+
+`AbstractHandlerMapping`实现了`WebApplicationObjectSupport`，以提供容器上下文的访问支持，可以通过`WebApplicationObjectSupport.obtainApplicationContext()`方法获得对应的容器实例。
+
+`AbstractHandlerMapping`实现`HandlerMapping.getHandler()`核心方法，其主要逻辑如下：
+
+* 调用`getHandlerInternal()`获取`handler`（该方法是抽象方法，由`AbstractHandlerMapping`的实现类来具体实现）
+* 如果上一步获取的`handler`为`null`，使用**可配置字段`this.defaultHandler` **作为`handler`，如果仍未`null`，方法直接返回`null`
+* 如果`handler`类型为`String`，将该字符串视为处理器在容器中的Bean Id，尝试从`ApplicationContext`中获取对应handler Bean实例
+    * 如果容器中没有对应的`handler`，抛出一个`NoSuchBeanDefinitionException `异常
+* 向`request`域中存储一个`lookupPath`，用以路径匹配：
+    * 如果当前`HandlerMapping.usesPathPatterns()`为`true`，则表示`HandlerMapping`会使用`PathPattern`进行路径匹配，该路径匹配器期望一个`PathContainer`作为路径。
+        * 调用`ServletRequestPath.parse()`方法解析请求，获取一个`RequestPath`作为`lookupPath`
+        * `lookupPath`在`request`域中的属性名是`ServletRequestPathUtils.PATH_ATTRIBUTE`
+    * 否则,会使用`AntPathMatcher`进行路径匹配，该路径匹配器期望一个`String`作为路径。
+        * 调用`UrlPathHelper.getLookupPathForRequest()`方法解析请求，获取一个`String`作为`lookupPath`
+        * `lookupPath`在`request`域中的属性名是`UrlPathHelper.PATH_ATTRIBUTE`
+* 调用`getHandlerExecutionChain()`将`handler`包装成一个`HandlerExecutionChain`并设置与请求匹配的拦截器
+    * 根据`handler`创建一个`HandlerExecutionChain`实例
+    * 遍历`this.adaptedInterceptors`
+        * 如果`interceptor`类型是`MappedInterceptor`，调用`MappedInterceptor.matches()`判断当前拦截器是否匹配请求，如果是，则将其注册到`HandlerExecutionChain`中
+        * 否则，说明`interceptor`匹配任意请求，直接将其注册到`HandlerExecutionChain`中
+    * 返回`HandlerExecutionChain`实例
+* 处理cors跨源请求：
+    * 判断是否需要进行`cors`预处理，满足下面条件之一的才会进行cors处理，否则直接跳过下面步骤。
+        * 如果当前请求是非简单请求的预检请求(请求类型是`OPTIONS`，并且请求头中的`Origin`和`Access-Control-Request-Method`字段不为空)
+        * 能获得`CorsConfigurationSource`实例(当前的`handler`本身就是一个`CorsConfigurationSource`，或者可**配置字段`this.corsConfigurationSource`**不为空)
+    * 根据`handler`获取一个本地`CorsConfiguration`实例
+    * 根据`this.corsConfigurationSource`获取一个全局`CorsConfiguration`实例
+    * 合并全局和本地`CorsConfiguration`实例
+    * 处理`cors`请求：
+        * 如果是非简单请求的预检请求，创建一个`PreFlightHandler`处理器，它同时也是一个`CorsInterceptor`拦截器。根据它创建`HandlerExecutionChain`,替代之前生成的`HandlerExecutionChain`
+        * 否则，为`HandlerExecutionChain`添加一个`CorsInterceptor`即可
+
+* 返回之前`HandlerExecutionChain`实例
+
+## `this.adaptedInterceptors`初始化
+
+在`getHandler()`中`AbstractHandlerMapping`会遍历`this.adaptedInterceptors`，将匹配的拦截器添加到`HandlerExecutionChain`中，现在我们来看一下它是如何初始化该字段的：
+
+* `AbstractHandlerMapping`有**可配置字段`this.interceptors`**，该字段允许配置`HandlerInterceptor`和`WebRequestInterceptor`的拦截器
+
+* 请求`HandlerMapping`所在`ApplicationContext`容器上下文中所有的`MappedInterceptor`类型的Bean实例，添加到`this.adaptedInterceptors`中
+* 将`this.interceptors`添加到`this.adaptedInterceptors`中。
 
 
-# `HandlerMapping`
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 注解式`Controller`的`HandlerMapping`
+
+`HandlerMathod`是注解式`Controller`中处理器的抽象，对应一个`@Controller`类的`@RequestMapping`方法
+
+`RequestMappingHandlerMapping`负责维护`HandlerMathod`和请求之间的映射关系。根据继承关系我们知道它有以下主要父类：
+
+* `AbstractHandlerMethodMapping`
+* `RequestMappingInfoHandlerMapping`
+
+## `HandlerMethod`
 
