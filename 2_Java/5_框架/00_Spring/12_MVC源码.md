@@ -594,7 +594,7 @@ PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
     * `contextPath()`:获取上下文路径
     * `pathWithinApplication()`:获取app中的相对路径。
 * `CorsConfiguration`：cors请求的配置类。例如设置允许的`cors`请求源，允许的cors HTTP方法等。
-* `CorsConfigurationSource`：用以生成`CorsConfiguration`实例。
+* `CorsConfigurationSource`：根据请求生成`CorsConfiguration`实例。
 * `AbstractHandlerMapping.CorsInterceptor`：cors拦截器，委托`CorsProcessor`对cors请求进行预处理，
 * `CorsProcessor`:`cors`请求的处理类，根据`CorsConfiguration`配置处理cors请求。例如如果当前请求源不在配置范围内，就拒绝请求；针对预检请求生成响应等。
 * `AbstractHandlerMapping.PreFlightHandler`：预检请求的处理器，对于预检请求，不需要实际处理请求。
@@ -784,13 +784,48 @@ private final boolean validateReturnValue;
 
 ## `AbstractHandlerMethodMapping`
 
-`AbstractHandlerMethodMapping`是定义请求和`HandlerMethod`之间的映射的抽象基类，它的泛型`T`类型表示`HandlerMethod`的映射，每个`HandlerMethod`都对应一个`T`，`T`包含请求与`HandlerMethod`的进行匹配时需要的条件。
+`AbstractHandlerMethodMapping`是定义请求和`HandlerMethod`之间的映射的抽象基类。
 
+它的泛型`T`类型表示`HandlerMethod`的`mapping`映射，`T`包含请求与`HandlerMethod`的进行匹配时需要的条件信息。如映射到某个`HandlerMethod`需要的请求的路径/类型/请求头 等信息。每个`HandlerMethod`都需要绑定一个`T`用于请求映射。
 
+`AbstractHandlerMethodMapping`定义下面内部类来辅助它提供处理器映射器的相关功能：
 
+* `MappingRegistration`:一个`T`映射的注册项，主要包含一对`HandlerMethod`和对应的`T`映射实例。除此之外还有如下属性
+    * `mappingName`：根据`HandlerMethodMappingNamingStrategy`生成的name
+    * `directPaths`：映射T的直接路径集合
+    * `corsConfig`:当前处理器是否启用了cors
+* `Match`：对`T`映射和对应的`HandlerMathod`的浅包装，主要为了通过比较器在请求上下文中找到最佳匹配。
+* `MatchComparator`:可以客户端提供的比较器对`Match`进行比较
 
+* `MappingRegistry`:一个`T`映射的注册表，维护`HandlerMethod`的所有映射关系。并提供给相应的查找方法。
 
+### `MappingRegistry`
 
+它维护以下`Map`:
+
+~~~java
+private final Map<T, MappingRegistration<T>> registry = new HashMap<>(); 
+// T 到 MappingRegistration的映射
+private final MultiValueMap<String, T> pathLookup = new LinkedMultiValueMap<>();
+//路径字符串到List<T>的映射 因为一个path可能匹配多个处理器
+private final Map<String, List<HandlerMethod>> nameLookup = new ConcurrentHashMap<>();
+//name到List<HandlerMethod>的映射。因为name
+private final Map<HandlerMethod, CorsConfiguration> corsLookup = new ConcurrentHashMap<>();
+//HandlerMethod到CorsConfiguration的映射
+~~~
+
+其核心方法是`MappingRegistry.register()`，其方法签名如下：
+
+~~~java
+public void register(T mapping, Object handler, Method method);
+~~~
+
+主要逻辑为：
+
+* 根据提供的`handler`和`method`，生成一个`HandlerMethod`实例
+* 检查是否已经注册，如果`this.registry`中已经存在了同样的`mapping`和`HandlerMethod`对，抛出一个`IllegalStateException`异常
+* 调用`HandlerMethod.createWithValidateFlags()`启用其方法校验
+* 
 
 
 
