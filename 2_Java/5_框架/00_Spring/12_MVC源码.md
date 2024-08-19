@@ -578,7 +578,9 @@ String patternStr = ....;
 PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 ~~~
 
-# `AbstractHandlerMapping`
+# SpringMVC重要组件
+
+## `HandlerMapping`
 
 `HandlereMapping`的主要类层次结构如下：
 
@@ -598,7 +600,7 @@ PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 * `AbstractHandlerMapping.PreFlightHandler`：预检请求的处理器，对于预检请求，不需要实际处理请求。
 * `MappedInterceptor`:在SpringMVC配置中，如果配置`Interceptor`是，有配置`includePatterns`或者，`excludePatterns`,那么在注册这个拦截器是，会自动将其包装成一个`MappedInterceptor`
 
-## `AbstractHandlerMapping.getHandler()`
+### `AbstractHandlerMapping`
 
 `AbstractHandlerMapping`实现了`WebApplicationObjectSupport`，以提供容器上下文的访问支持，可以通过`WebApplicationObjectSupport.obtainApplicationContext()`方法获得对应的容器实例。
 
@@ -608,7 +610,7 @@ PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 * 如果上一步获取的`handler`为`null`，使用**可配置字段`this.defaultHandler` **作为`handler`，如果仍未`null`，方法直接返回`null`
 * 如果`handler`类型为`String`，将该字符串视为处理器在容器中的Bean Id，尝试从`ApplicationContext`中获取对应handler Bean实例
     * 如果容器中没有对应的`handler`，抛出一个`NoSuchBeanDefinitionException `异常
-* 向`request`域中存储一个`lookupPath`，用以路径匹配：
+* 调用`initLookupPath()`方法向`request`域中缓存一个`lookupPath`，用以路径匹配：
     * 如果当前`HandlerMapping.usesPathPatterns()`为`true`，则表示`HandlerMapping`会使用`PathPattern`进行路径匹配，该路径匹配器期望一个`PathContainer`作为路径。
         * 调用`ServletRequestPath.parse()`方法解析请求，获取一个`RequestPath`作为`lookupPath`
         * `lookupPath`在`request`域中的属性名是`ServletRequestPathUtils.PATH_ATTRIBUTE`
@@ -634,7 +636,7 @@ PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 
 * 返回之前`HandlerExecutionChain`实例
 
-## `this.adaptedInterceptors`初始化
+**`this.adaptedInterceptors`初始化：**
 
 在`getHandler()`中`AbstractHandlerMapping`会遍历`this.adaptedInterceptors`，将匹配的拦截器添加到`HandlerExecutionChain`中，现在我们来看一下它是如何初始化该字段的：
 
@@ -643,28 +645,160 @@ PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 * 请求`HandlerMapping`所在`ApplicationContext`容器上下文中所有的`MappedInterceptor`类型的Bean实例，添加到`this.adaptedInterceptors`中
 * 将`this.interceptors`添加到`this.adaptedInterceptors`中。
 
+# 注解式`Controller`的处理器
 
+`org.springframework.web.method.HandlerMathod`是注解式`Controller`中处理器的抽象，对应一个`@Controller`类的`@RequestMapping`方法
 
+`HandlerMethod`处理器方法一定有注解(方法体和方法参数上),并且框架需要根据这些注解声明来控制处理器行为，所以`HandlerMethod`很自然地继承了`org.springframework.core.annotation.AnnotatedMethod`，它是一个注解方法的抽象。
 
+和方法紧密相关的一个概念就是方法的参数和返回值。`org.springframework.core.MethodParameter`就是对方法参数和返回值的抽象
 
+## `MethodParameter`
 
+`MethodParameter`是Spring对方法参数的抽象，它封装了方法参数的各种信息：如参数类型、参数名、参数位置、参数注解等
 
+它有如下重要字段：
 
+~~~java
+private final Executable executable; //参数所在的方法(普通方法/构造器)
+private final int parameterIndex; //参数在方法中的位置: -1表示返回值，0表示第一个入参
+private int nestingLevel; //嵌套层数
+Map<Integer, Integer> typeIndexesPerLevel; //嵌套索引映射
+private volatile ParameterNameDiscoverer parameterNameDiscoverer; // 获取参数名parameterName需要用到该字段
+private volatile Class<?> containingClass; 
+//下面字段使用懒加载，在第一次调用对应的getter方法时初始化字段值。
+private volatile Parameter parameter; //当前方法参数对应的 Parameter 实例。
+private volatile Class<?> parameterType; //参数类型
+private volatile Type genericParameterType; //参数类型
+private volatile Annotation[] parameterAnnotations; //参数上的注解
+volatile String parameterName; //参数名
+private volatile MethodParameter nestedMethodParameter; // 嵌套方法参数
+~~~
 
+可以用对应的`getter`方法访问这些字段。
 
+## `AnnotatedMethod`
 
+`AnnotatedMethod`是对注解方法的抽象，它封装了方法、方法参数、方法注解信息，可以通过它提供的如下方法访问：
 
+~~~java
+public final Method getMethod();//获取当前方法对应的Method实例
+protected final Method getBridgedMethod(); // 获取当前方法的桥方法的Method实例(在继承重写方法时，如果重写的方法返回值与父类方法不同，那么编译器会自动生成一个桥方法)
+public final MethodParameter[] getMethodParameters(); // 获取入参的方法参数列表
+public MethodParameter getReturnType(); //获取返回值对应的方法参数
+public boolean isVoid(); //返回值是否是 void
+public <A extends Annotation> A getMethodAnnotation(Class<A> annotationType); //获取方法注解
+public <A extends Annotation> boolean hasMethodAnnotation(Class<A> annotationType); //判断方法上是否存在指定注解
+~~~
 
+## `HandlerMethod`
 
+创建一个`HandlerMethod`至少需要一个`@RequestMapping`方法对应的`Method`实例，和`@RequestMapping`方法所在类的Bean实例，即如下构造器：
+
+~~~java
+public HandlerMethod(Object bean, Method method);
+~~~
+
+`HandlerMethod`的如下字段和`bean`有关：
+
+~~~java
+private final Object bean;   //@RequestMapping方法所在类的实例
+private final Class<?> beanType; //@RequestMapping方法所在类的类型
+~~~
+
+可以通过对应的`getter`方法访问它们。
+
+### 解析`bean`
+
+也可以通过提供一个`beanName`和`BeanFactory`来指定`@RequestMapping`所在类的实例：
+
+~~~java
+public HandlerMethod(String beanName, BeanFactory beanFactory, Method method);
+~~~
+
+此时`beanName`字符串会被绑定到`this.bean`上，`beanFactory`会绑定到`this.beanFactory`上
+
+可以看到通过这个构造器创建的实例，其`this.bean`字段上绑定的不是真正的`bean`实例。而是一个`beanName`字符串。
+
+所以它不能对外提供真正的`bean`实例，需要解析当前的`bean`。
+
+此时可以通过`createWithResolvedBean()`方法解析`this.bean`字段，返回一个新的`HandlerMethod`，其逻辑如下：
+
+* 如果当前实例的`this.bean`字符类型是字符串，那么调用`this.beanFactory.getBean(beanName)`获取`handler`实例，否则直接使用`this.bean`作为`handler`
+* 创建一个新的`HandlerMethod`实例并返回，新实例的`this.resolvedFromHandlerMethod`字段为当前`HandlerMethod`实例
+
+所以如果一个`HandlerMethod`是通过解析产生的，那么它的`this.resolvedFromHandlerMethod`字段就不为空，并且指向其源`HandlerMethod`
+
+### 处理是否参数校验
+
+`HandlerMethod`提供了两个方法，告诉客户端当前处理器方法是否需要进行参数校验：
+
+~~~java
+public boolean shouldValidateArguments();  //需要校验方法入参
+public boolean shouldValidateReturnValue(); //需要检验方法返回值
+~~~
+
+这对应`HandlerMethod`的如下字段：
+
+~~~java
+private final boolean validateArguments;
+private final boolean validateReturnValue;
+~~~
+
+直接使用构造器创建的`HandlerMethod`的，这两个字段的值都默认为`false`,也就是说默认情况下，`HandlerMethod`不需要进行参数校验。
+
+可以调用`createWithValidateFlags()`创建一个新的，允许参数校验的`HandlerMethod`实例，该主要逻辑如下：
+
+* 创建一个新的`HandlerMethod`
+* 新的`HandlerMethod`的`this.resolvedFromHandlerMethod`为当前`HandlerMethod`
+* 新的`HandlerMethod`的`this.validateArguments`值为方法`MethodValidationInitializer.checkArguments()`返回值，该方法：
+  * 如果当前项目中不存在`jakarta.validation.Validator`类，说明无法进行校验，返回`false`
+  * 如果`HandlerMethod`所在的类上有`Validated`注释，那么方法验证由AOP代理进行，返回`false`
+  * 遍历方法的参数，如果参数满足下面条件之一，说明需要进行参数验证，返回`true`,否则返回`false`
+    * 参数上有`jakarta.validation.Constraint`注解
+    * 参数上有`jakarta.validation.Valid`注解，并且当前参数类型是基于键值或者索引的容器(参数类型为`List`,`Map`或者数组)
+    * 参数类型是容器类型，如果容器中元素的类型有注解`@Constraint`或者`@Valid`
+* 新的`HandlerMethod`的`this.validateReturnValue`值为方法`MethodValidationInitializer.checkReturnValue()`返回值，该方法：
+  * 如果当前项目中不存在`jakarta.validation.Validator`类，说明无法进行校验，返回`false`
+  * 如果`HandlerMethod`所在的类上有`Validated`注释，那么方法验证由AOP代理进行，返回`false`
+  * 如果返回值有注解`@Constraint`或者`@Valid`，返回`true`,否则返回`false`
+
+### 处理`ResponseStatus`
+
+如果当前处理器方法上有`@ResponseStatus`注释，那么：
+
+* `this.responseStatus`字段会设置为`@ResponseStatus`的`code`值
+* `this.responseStatusReason`会设置为`@ResponseStatus`的`reason`值
+  * 如果`this.messageSource`不为空，那么`reason`会进行国际化处理
+
+可以通过对应的`getter`方法方法这两个字段。
 
 # 注解式`Controller`的`HandlerMapping`
-
-`HandlerMathod`是注解式`Controller`中处理器的抽象，对应一个`@Controller`类的`@RequestMapping`方法
 
 `RequestMappingHandlerMapping`负责维护`HandlerMathod`和请求之间的映射关系。根据继承关系我们知道它有以下主要父类：
 
 * `AbstractHandlerMethodMapping`
 * `RequestMappingInfoHandlerMapping`
 
-## `HandlerMethod`
+我们从父类开始依次分析：
+
+## `AbstractHandlerMethodMapping`
+
+`AbstractHandlerMethodMapping`是定义请求和`HandlerMethod`之间的映射的抽象基类，它的泛型`T`类型表示`HandlerMethod`的映射，每个`HandlerMethod`都对应一个`T`，`T`包含请求与`HandlerMethod`的进行匹配时需要的条件。
+
+
+
+
+
+
+
+
+
+# 注解式`Controller`的`HandlerAdapter`
+
+
+
+
+
+
 
