@@ -592,7 +592,7 @@ PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 
 * `RequestPath`，扩展了`PathContainer`，表示一个请求路径。有如下关键方法：
     * `contextPath()`:获取上下文路径
-    * `pathWithinApplication()`:获取app中的相对路径。
+    * `pathWithinApplication()`:获取上下文路径后的请求路径。
 * `CorsConfiguration`：cors请求的配置类。例如设置允许的`cors`请求源，允许的cors HTTP方法等。
 * `CorsConfigurationSource`：根据请求生成`CorsConfiguration`实例。
 * `AbstractHandlerMapping.CorsInterceptor`：cors拦截器，委托`CorsProcessor`对cors请求进行预处理，
@@ -606,11 +606,11 @@ PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 
 `AbstractHandlerMapping`实现`HandlerMapping.getHandler()`核心方法，其主要逻辑如下：
 
-* 调用`getHandlerInternal()`获取`handler`（该方法是抽象方法，由`AbstractHandlerMapping`的实现类来具体实现）
+* **调用`getHandlerInternal()`**获取`handler`（该方法是抽象方法，由`AbstractHandlerMapping`的实现类来具体实现）
 * 如果上一步获取的`handler`为`null`，使用**可配置字段`this.defaultHandler` **作为`handler`，如果仍未`null`，方法直接返回`null`
 * 如果`handler`类型为`String`，将该字符串视为处理器在容器中的Bean Id，尝试从`ApplicationContext`中获取对应handler Bean实例
     * 如果容器中没有对应的`handler`，抛出一个`NoSuchBeanDefinitionException `异常
-* 调用`initLookupPath()`方法向`request`域中缓存一个`lookupPath`，用以路径匹配：
+* 调用`initLookupPath()`方法向`request`域中缓存一个`lookupPath`，用以路径匹配，并返回对应的相对路径：
     * 如果当前`HandlerMapping.usesPathPatterns()`为`true`，则表示`HandlerMapping`会使用`PathPattern`进行路径匹配，该路径匹配器期望一个`PathContainer`作为路径。
         * 调用`ServletRequestPath.parse()`方法解析请求，获取一个`RequestPath`作为`lookupPath`
         * `lookupPath`在`request`域中的属性名是`ServletRequestPathUtils.PATH_ATTRIBUTE`
@@ -782,11 +782,11 @@ private final boolean validateReturnValue;
 
 我们从父类开始依次分析：
 
-## `AbstractHandlerMethodMapping`
+## `AbstractHandlerMethodMapping<T>`
 
 `AbstractHandlerMethodMapping`是定义请求和`HandlerMethod`之间的映射的抽象基类。
 
-它的泛型`T`类型表示`HandlerMethod`的`mapping`映射，`T`包含请求与`HandlerMethod`的进行匹配时需要的条件信息。如映射到某个`HandlerMethod`需要的请求的路径/类型/请求头 等信息。每个`HandlerMethod`都需要绑定一个`T`用于请求映射。
+它的泛型`T`类型表示`HandlerMethod`的`mapping`映射信息，`T`包含请求与`HandlerMethod`的进行匹配时需要的条件信息。如映射到某个`HandlerMethod`需要的请求的路径/类型/请求头 等信息。每个`HandlerMethod`都需要绑定一个`T`用于请求映射。
 
 `AbstractHandlerMethodMapping`定义下面内部类来辅助它提供处理器映射器的相关功能：
 
@@ -795,7 +795,7 @@ private final boolean validateReturnValue;
     * `directPaths`：映射T的直接路径集合
     * `corsConfig`:当前处理器是否启用了cors
 * `Match`：对`T`映射和对应的`HandlerMathod`的浅包装，主要为了通过比较器在请求上下文中找到最佳匹配。
-* `MatchComparator`:可以客户端提供的比较器对`Match`进行比较
+* `MatchComparator`:可以用客户端提供的比较器对`Match`进行比较
 
 * `MappingRegistry`:一个`T`映射的注册表，维护`HandlerMethod`的所有映射关系。并提供给相应的查找方法。
 
@@ -820,12 +820,237 @@ private final Map<HandlerMethod, CorsConfiguration> corsLookup = new ConcurrentH
 public void register(T mapping, Object handler, Method method);
 ~~~
 
-主要逻辑为：
+主要逻辑为：（如果没有指定，方法默认为`AbstractHandlerMethodMapping`定义的方法）
 
 * 根据提供的`handler`和`method`，生成一个`HandlerMethod`实例
 * 检查是否已经注册，如果`this.registry`中已经存在了同样的`mapping`和`HandlerMethod`对，抛出一个`IllegalStateException`异常
 * 调用`HandlerMethod.createWithValidateFlags()`启用其方法校验
-* 
+* 调用`getDirectPaths()`方法(提供了一个默认的实现，但子类会重写该方法)通过`T`获取其直接路径(非模式)集合，遍历该集合，将`path`和`mapping`对放入`this.pathLookup`
+* 调用`HandlerMethodMappingNamingStrategy.getName()`方法，根据`HandlerMethod`和`mapping`解析一个`name`,添加到`this.nameLookup`字段
+* 调用`initCorsConfiguration()`(方法为空，由子类具体实现)生成一个`CorsConfiguration`实例，如果该实例不为`null`,将`HandlerMethod`和`CorsConfiguration`对添加到`this.corsLookup`
+* 最后，创建一个`MappingRegistration`实例，将`mapping`实例和`MappingRegistration`实例对添加到`this.registry`
+
+在注册完映射关系后，可以通过`MappingRegistry`提供的方法查找相关映射和处理器：
+
+~~~java
+Map<T, MappingRegistration<T>> getRegistrations(); //返回this.registry
+List<T> getMappingsByDirectPath(String urlPath); //根据this.pathLookup查找
+List<HandlerMethod> getHandlerMethodsByMappingName(String mappingName); //根据this.nameLookup查找
+CorsConfiguration getCorsConfiguration(HandlerMethod handlerMethod); // 根据this.corsLooku查找
+~~~
+
+### 注册`HandlerMethod`
+
+`AbstractHandlerMethodMapping`维护一个`MappingRegistry`字段：
+
+~~~java
+private final MappingRegistry mappingRegistry = new MappingRegistry();
+~~~
+
+在提供服务前，`AbstractHandlerMethodMapping`需要将可用的`HandlerMethod`注册到`this.mappingRegistry`中。
+
+`AbstractHandlerMethodMapping`是通过`InitializingBean`接口提供的回调实现`HandlerMethod`的注册的。在`AbstractHandlerMethodMapping` Bean实例化完毕后，会调用`initHandlerMethods()`初始化并注册`HandlerMethod`.
+
+`initHandlerMethods()`方法主要逻辑如下：
+
+*  获取容器中所有Bean的`beanName`,判断可配置字段`this.detectHandlerMethodsInAncestorContexts`:
+  * 如果该字段为`false`(默认值):仅获取当前容器中的`beanName`
+  * 如果该字段为`true`:获取当前容器以及所有祖先容器中的`beanName`
+
+* 接下来遍历获取到的所有`beanName`
+* 获取`beanName`对应的`beanType`
+* 调用`isHandler()`方法判断当前Bean是否是处理器
+  * 该方法是抽象方法，在子类的实现中，当前`beanType`类型上有`@Controller`注解的会返回`true`
+* 如果当前`Bean`是处理器，调用`detectHandlerMethods()`方法进行检测：
+  * 根据`beanName`从容器中获取`handleType`处理器类型
+  * 因为CGLIB代理，获得的`handleType`可能是CGLIB生成的子类，所以调用`ClassUtils.getUserClass()`方法获取其原始类`userType`;`userType`就是处理器类型
+  * 遍历`userType`所有的用户定义方法`Method`
+    * 调用**`getMappingForMethod()`**方法(抽象方法，具体由子类实现)获取`Method`对应的`T`映射。
+    * 根据`Method`和处理器`bean`实例和`T`映射调用`this.mappingRegistry.register()`方法将其注册到`MappingRegistry`中
+
+### `getHandlerInternal()`
+
+`AbstractHandlerMethodMapping`实现了`AbstractHandlerMapping.getHadnlerInternel()`方法，可以根据`HttpServletRequest`请求，从`this.mappingRegistry`中找到匹配`HandlerMethod`。
+
+`AbstractHandlerMethodMapping.getHadnlerInternel()`方法的主要逻辑为：(如果没有指定，下面提到的方法默认为`AbstractHandlerMethodMapping`声明)
+
+* 调用`AbstractHandlerMapping.initLookupPath()`方法，获取请求在app上下文中的相对路径`lookupPath`
+* 创建一个`Matche`列表`matches`，用以保存所有匹配的`HandlerMethod`
+* 根据直接路径(非模式)查找匹配的映射：
+  * 调用`this.mappingRegistry.getMappingsByDirectPath()`根据路径查找匹配的`T`映射列表
+  * 调用**`getMatchingMapping()`方法**(抽象方法，需要子类实现)，根据`T`映射信息判断请求`HttpServletRequest`是否匹配
+  * 如果匹配，创建一个`Match`实例放入`matches`中
+* 如果上一步没有匹配的映射(当前`matches`为空)，那么直接遍历所有的注册项：
+  * 调用`this.mappingRegistry.getRegistrations().keySet()`获取所有的`T`映射
+  * 调用**`getMatchingMapping()`方法**(抽象方法，需要子类实现)，根据`T`映射信息判断请求`HttpServletRequest`是否匹配
+  * 如果匹配，创建一个`Match`实例放入`matches`中
+* 如果此时`matches`仍然为空，则说明没有匹配的的处理器，**调用`handleNoMatch()`方法**(抽象方法，需要子类实现)进行匹配失败的处理(通常会抛出一些`ServletException`异常)并返回`null`结束方法。
+* 如果`matches`长度为1，说明只有一个匹配的`bestMatch`
+* 如果`matches`长度不为1，需要找到一个最佳匹配`bestMatch`
+  * 调用**`getMappingComparator()`方法**(抽象方法，需要子类实现)获取一个`Matcher`的比较器。
+  * 根据上一步创建比较器对`matches`排序，找到最佳的匹配`bestMatch`
+  * 如果当前请求是`cors`的预检请求，判断`matchs`中是否有处理器进行了cors配置，如果有，方法直接返回一个用于预检请求的模糊匹配处理器(一个空的处理器)
+  * 如果当前的请求不是`cors`预检请求,那么检测匹配优先级：
+    * 获取第二匹配的`Match`,`secondBestMatch`
+    * 如果`bestMatch`和`secondBestMatch`在`Matcher`比较器下的优先级相同，说明有两个最佳匹配，抛出一个`IllegalStateException`异常
+* 向requset域中添加属性:属性名为`org.springframework.web.servlet.HandlerMapping.bestMatchingHandler`,属性值为最佳匹配的`HandlerMethod`实例
+* 调用**方法`handleMatch()`**进行找到匹配后的处理
+  * 该方法默认只向request域中添加一条`org.springframework.web.servlet.HandlerMapping.pathWithinHandlerMapping`属性，值为请求在app上下文中的相对路径`lookupPath`
+  * 子类会重写该方法
+* 返回`bestMatch`中的`HandlerMethod`实例
+
+## `RequestCondition<T>`
+
+`RequestCondition`是请求条件的抽象接口。用于判断`HttpServletRequest`请求是否符合给定的条件。
+
+其中泛型`T`表示条件的类型。(通常就是实现类本身)
+
+接口定义如下:
+
+~~~java
+public interface RequestCondition<T> {
+
+	T combine(T other); //合并两个条件
+	@Nullable
+	T getMatchingCondition(HttpServletRequest request); //判断请求是否符合条件
+	int compareTo(T other, HttpServletRequest request); //就同一请求比较两个条件，在一个请求符合多个条件时使用该方法选出一个最佳的条件
+}
+
+~~~
+
+它有如下实现：
+
+| 类名                             | 描述                                                         | 多个条件关系 | 对应的`@RequestMapping`字段 |
+| -------------------------------- | ------------------------------------------------------------ | ------------ | --------------------------- |
+| `AbstractRequestCondition`:      | 抽象基类                                                     |              |                             |
+|                                  |                                                              |              |                             |
+| `CompositeRequestCondition`      | 复合请求条件，内部持有多种请求条件(多个`RequestConditionHolder`) | “且”(`&&`)   |                             |
+| `RequestMappingInfo`             | 请求映射信息，内部持有下面8类请求条件的实例。`RequestMappingInfo`与请求匹配当前仅当持有的8个请求条件全部匹配 |              |                             |
+| `RequestConditionHolder`         | 请求条件的持有者，内部持有一个`RequestCondition`，允许在请求条件的类型未知请求下处理请求条件。 |              |                             |
+| `ConsumesRequestCondition`       | 对请求头的`Content-Type`字段的请求条件                       | ”或“(`||`)   | `consumes`或`headers`       |
+| `ProducesRequestCondition`       | 对请求期望响应体的`MediaType`的请求条件。默认请求下通过请求头的`Accept`字段决定。 | ”或“(`||`)   | `produces`或`headers`       |
+| `HeadersRequestCondition`        | 对请求头的请求条件                                           | ”且“(`&&`)   | `headers`                   |
+| `ParamsRequestCondition`         | 对请求参数的请求条件                                         | ”且“(`&&`)   | `params`                    |
+| `PathPatternsRequestCondition`   | 对请求路径与一组模式是否匹配的请求条件,使用` PathPattern`进行路径模式匹配 | ”或“(`||`)   | `path/value`                |
+| `PatternsRequestCondition`       | 对请求路径与一组模式是否匹配的请求条件,使用`AntPathMatcher`进行路径模式匹配 | ”或“(`||`)   | `path/value`                |
+| `RequestMethodsRequestCondition` | 对请求方法的请求条件，使用`RequestMethod`枚举的方法          | ”或“(`||`)   | `method`                    |
+
+下面详解了解其中几个重要的实现
+
+### `AbstractRequestCondition`
+
+`AbstractRequestCondition`是`RequestCondition`的抽象基类。几乎所有的`RequestCondition`实现都会继承这个抽象基类。
+
+`AbstractRequestCondition`在`RequestCondition`接口的基础上拓展了提供了`Content`的概念，`Content`表示请求条件的离散项的集合。例如请求条件对HTTP请求方法有限制，那么`Content`可能就为`[POST,GET]`.
+
+它提供下面方法以访问`content`:
+
+~~~java
+public boolean isEmpty(); //返回content是否为空
+protected abstract Collection<?> getContent();
+protected abstract String getToStringInfix(); //在打印离散项集合时离散项之间的间隔符，例如对于HTTP请求方法，使用||作为间隔符
+~~~
+
+同时`AbstractRequestCondition`还根据`content`重写了`Object`的`equals()`、`hashCode()`、`toString()`方法
+
+### `PathPatternsRequestCondition`
+
+`PathPatternsRequestCondition`它内部维护一个`patterns`字段：
+
+~~~java
+private final SortedSet<PathPattern> patterns;
+~~~
+
+因为是`SortedSet`，所以`PathPattern`容器中已经根据其`Comparable`接口定义的优先级排好序了
+
+#### `getMatchingCondition()`
+
+在`getMatchingCondition()`方法完成对请求的条件校验，主要逻辑如下：
+
+* 根据从请求域中获取属性`ServletRequestPathUtils.PATH_ATTRIBUTE`，是一个`RequestPath`(收到请求时，`DispatcherServlet`会在其`doService()`方法中设置该属性)
+
+* 如果该`RequestPath`为`null`，抛出一个`IllegalArgumentException`异常。
+
+* 调用`RequestPath.pathWithinApplication()`获取上下文路径后的请求路径`PathContainer`
+
+* 遍历`this.patterns`:调用`PathPattern.matches()`方法判断是否与上一步给定的路径匹配，如果匹配将其添加到新的`TreeSet<PathPattern>`集合`matches`
+
+* 如果`matches`为`null`表示请求条件不通过，返回`null`
+
+* 如果`matches`不为`null`,表示请求条件通过，根据`matches`创建一个新的`PathPatternsRequestCondition`实例返回。
+
+  可见返回的新实例中持有的都是匹配的模式。
+
+#### `combine()`
+
+在`combine()`方法完成请求条件的合并：
+
+* 设两个`PathPatternsRequestCondition`为`this`和`other`
+* 如果两个请求条件内容都为空，返回一个匹配根路径的请求条件(对应模式为`/`)
+* 如果一个请求条件为空，返回另一个请求条件
+* 如果两个条件都不为空：
+  * 对`this.patterns`中的每个`PathPattern`，调用`PathPattern.combine()`合并`other.patterns`中的每一个`PathPattern`,(即假设`this.patterns`有3个`PathPattern`，`other.patterns`有4个`PathPattern`，那么去重前会产生12个`PathPattern`)
+  * 将每个合并结果添加到`SortedSet<PathPattern>`集合(因为是`SortedSet`所以会自动去重)中，根据这个集合创建一个新的`PathPatternsRequestCondition`并返回
+
+#### `compareTo()`
+
+在`compareTo()`方法中比较两个请求条件的通用性/大小(通用性越强的请求条件越大)
+
+* `PathPatternsRequestCondition`中的`PathPattern`本身就按从小到大排序存储。
+
+* 设当前引用为`this`，另一个引用为`other`
+
+* 直接比较其字典顺序(第一位与第一位比较，如果第一位就区分出了大小，直接返回，否则比较下一位。如果可比较的所有位大小都相等，则更长的更小)
+
+### `ProducesRequestCondition`
+
+
+
+
+
+
+
+### `RequestMappingInfo`
+
+
+
+
+
+
+
+
+
+## `RequestMappingInfoHandlerMapping`
+
+`AbstractHandlerMethodMapping`的泛型`T`类型期望一个`HandlerMethod`的`mapping`映射信息
+
+`RequestMappingInfoHandlerMapping`实现了`AbstractHandlerMethodMapping`并固定类型参数`T`为`RequestMappingInfo`。
+
+`RequestMappingInfoHandlerMapping`在`AbstractHandlerMethodMapping`的基础上提供`RequestMappingInfo`相关的逻辑。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 实现/重写父类方法
+
+
+
+
 
 
 
