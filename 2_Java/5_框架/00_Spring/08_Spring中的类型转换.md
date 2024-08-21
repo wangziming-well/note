@@ -1122,7 +1122,7 @@ System.out.println(people);
 
 我们以方法`AbstractNestablePropertyAccessor.processLocalProperty()`为例，梳理设定属性的逻辑：
 
-* 根据`propertyName`获得要设置的属性对应的`PropertyHandler，通过`PropertyHandler`我们可以知道对应的属性是否可读可写，是否需要进行类型转换，也可以通过它设置属性值。
+* 根据`propertyName`获得要设置的属性对应的`PropertyHandler`，通过`PropertyHandler`我们可以知道对应的属性是否可读可写，是否需要进行类型转换，也可以通过它设置属性值。
 * 如果属性不可写，判断它是否可选
   * 若属性是可选的，则记录一条debug日志并返回
   * 否则抛出一个`NotWritablePropertyException`并返回

@@ -11,9 +11,9 @@
 
 ## 初始化
 
-**note:**本节陈述中提到的方法如果没有显示指定，默认为`FrameworkServlet`的方法
+**note:**本节陈述中提到的方法如果没有显示指定，默认为`FrameworkServlet`声明的方法
 
-`DispatcherServlet`初始化的核心逻辑在`FrameworkServlet.initWebApplicationContext()`方法中。这个方法会初始化`WebApplicationContext`并将其注册到`this.webApplicationContext`字段上。其主要逻辑为：
+`DispatcherServlet`初始化的核心逻辑在 `FrameworkServlet.initWebApplicationContext()`方法中。这个方法会初始化`WebApplicationContext`并将其注册到`this.webApplicationContext`字段上。其主要逻辑为：
 
 * 获取root `WebApplicationContext`(一般是由`ContextLoaderListener`在容器初始化时注册到`ServletContext`)
 
@@ -578,6 +578,110 @@ String patternStr = ....;
 PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 ~~~
 
+# 内容协商
+
+在 HTTP 中，内容协商是一种用于在同一 URL 上提供资源的不同表示形式的机制。内容协商机制是指客户端和服务器端就响应的资源内容进行交涉，然后提供给客户端最为适合的资源。
+
+客户端发起请求时会告诉服务端自己期望一个什么样的资源，服务端接收到请求后会据此检查自己支持的响应类型，并返回一个合适的响应。
+
+SpringMVC提供对HTTP内容协商提供了全面的支持:
+
+* `ContentNegotiationStrategy`是内容协商的策略接口，不同的实现对应不同的内容协商策略
+
+* `MediaTypeFileExtensionResolver`：将`MediaType`解析为文件拓展名的接口
+
+* `ContentNegotiationManager` ：内容协商的管理器。
+
+## `MediaTypeFileExtensionResolver`
+
+`MediaTypeFileExtensionResolver`，将`MediaType`解析为文件拓展名。其定义如下：
+
+~~~java
+public interface MediaTypeFileExtensionResolver {
+
+	List<String> resolveFileExtensions(MediaType mediaType); //将MediaType解析为对应的文件拓展名列表，例如："application/json" 解析为 "json"
+
+	List<String> getAllFileExtensions(); //获取所有注册的文件拓展名
+}
+
+~~~
+
+想要实现这样的功能，可以在内部维护一个`mediaType`和文件拓展名的映射。实际上它的主要实现类`MappingMediaTypeFileExtensionResolver`就是这样做的。
+
+`MediaTypeFileExtensionResolver`的其他实现类并不是为了拓展不同的接口的实现，而是：通过继承或者委托`MappingMediaTypeFileExtensionResolver`获得将`MediaType`解析为文件拓展名的能力。
+
+### `MappingMediaTypeFileExtensionResolver`
+
+`MappingMediaTypeFileExtensionResolver`内部维护下面三个重要字段：
+
+~~~java
+private final ConcurrentMap<String, MediaType> mediaTypes = new ConcurrentHashMap<>(64);
+//文件拓展名到MediaType的映射
+private final ConcurrentMap<MediaType, List<String>> fileExtensions = new ConcurrentHashMap<>(64);
+//MediaType到文件拓展名列表的映射
+private final List<String> allFileExtensions = new CopyOnWriteArrayList<>();
+//注册的所有文件拓展名
+~~~
+
+可以看到`MediaType`和文件拓展名是一对多的关系
+
+在创建`MappingMediaTypeFileExtensionResolver`时需要提供一个文件拓展名到`MediaType`的映射：`Map<String, MediaType> `通过这个映射可以初始化上面三个字段。
+
+只需要直接查找`this.mediaTypes`即可实现`resolveFileExtensions()`方法。
+
+另外它还提供下面几个`protected`方法，以供子类使用：
+
+~~~java
+protected MediaType lookupMediaType(String extension); //根据文件拓展名查找MediaType
+protected void addMapping(String extension, MediaType mediaType); //添加一个扩展名到MediaType的映射，忽略映射已存在的情况
+protected List<MediaType> getAllMediaTypes() //获取注册的所有MediaType
+~~~
+
+## `ContentNegotiationStrategy`
+
+`ContentNegotiationStrategy`是内容协商的策略接口，它提供一下可用策略实现：
+
+* `FixedContentNegotiationStrategy`:返回固定的`MediaType`列表
+* `HeaderContentNegotiationStrategy`:根据请求的`Accept`头解析请求期望的`Content-Type`
+* `ParameterContentNegotiationStrategy`:根据指定的请求参数(默认为`format`)解析请求期望的`Content-Type`
+
+### `ParameterContentNegotiationStrategy`
+
+`ParameterContentNegotiationStrategy`继承了`AbstractMappingContentNegotiationStrategy`
+
+`AbstractMappingContentNegotiationStrategy`即继承了`MappingMediaTypeFileExtensionResolver`，也实现了`ContentNegotiationStrategy`
+
+创建`ParameterContentNegotiationStrategy`是需要提供一组`Map<String, MediaType>`文件拓展名到`MediaType`的映射。
+
+这样该策略会取出指定的请求参数值(默认为`format`)，通过该值检索映射关系找到对应的`MediaType`列表
+
+## `ContentNegotiationManager`
+
+`ContentNegotiationManager`是实现内容协商的中心类。它实现了`ContentNegotiationStrategy`和`MediaTypeFileExtensionResolver`。
+
+`ContentNegotiationManager`将内容协商任务委托给注册的`ContentNegotiationStrategy`实现。
+
+`ContentNegotiationManager`将解析`MediaType`的任务委托给注册的`MediaTypeFileExtensionResolver`实现。
+
+它内部维护下面两个字段：
+
+~~~java
+private final List<ContentNegotiationStrategy> strategies = new ArrayList<>();
+private final Set<MediaTypeFileExtensionResolver> resolvers = new LinkedHashSet<>();
+~~~
+
+创建`ContentNegotiationManager`是需要提供`ContentNegotiationStrategy[]`列表以注册到`this.strategies`字段中。
+
+`this.resolvers`字段的注册有下面两个途径：
+
+* 如果构造器提供的`ContentNegotiationStrategy`同时也是`MediaTypeFileExtensionResolver`(这里只有`ContentNegotiationManager`本身和`ParameterContentNegotiationStrategy`)，那么会将其注册到`this.resolvers`字段。
+
+* 直接调用`addFileExtensionResolvers()`方法添加
+
+在`ContentNegotiationManager.resolveMediaTypes()`通过方法进行内容协商时，会按照`this.strategies`从头到尾的顺序进行遍历，只要其中有一个策略能返回有效的结果，直接结束遍历，返回该策略。
+
+所以在向`ContentNegotiationManager`注册内容协商策略时需要格外注意注册策略的顺序。
+
 # SpringMVC重要组件
 
 ## `HandlerMapping`
@@ -827,7 +931,7 @@ public void register(T mapping, Object handler, Method method);
 * 调用`HandlerMethod.createWithValidateFlags()`启用其方法校验
 * 调用`getDirectPaths()`方法(提供了一个默认的实现，但子类会重写该方法)通过`T`获取其直接路径(非模式)集合，遍历该集合，将`path`和`mapping`对放入`this.pathLookup`
 * 调用`HandlerMethodMappingNamingStrategy.getName()`方法，根据`HandlerMethod`和`mapping`解析一个`name`,添加到`this.nameLookup`字段
-* 调用`initCorsConfiguration()`(方法为空，由子类具体实现)生成一个`CorsConfiguration`实例，如果该实例不为`null`,将`HandlerMethod`和`CorsConfiguration`对添加到`this.corsLookup`
+* 调用**`initCorsConfiguration()`方法**(方法为空，由子类具体实现)生成一个`CorsConfiguration`实例，如果该实例不为`null`,将`HandlerMethod`和`CorsConfiguration`对添加到`this.corsLookup`
 * 最后，创建一个`MappingRegistration`实例，将`mapping`实例和`MappingRegistration`实例对添加到`this.registry`
 
 在注册完映射关系后，可以通过`MappingRegistry`提供的方法查找相关映射和处理器：
@@ -853,7 +957,7 @@ private final MappingRegistry mappingRegistry = new MappingRegistry();
 
 `initHandlerMethods()`方法主要逻辑如下：
 
-*  获取容器中所有Bean的`beanName`,判断可配置字段`this.detectHandlerMethodsInAncestorContexts`:
+*  获取容器中所有Bean的`beanName`,判断**可配置字段`this.detectHandlerMethodsInAncestorContexts`**:
   * 如果该字段为`false`(默认值):仅获取当前容器中的`beanName`
   * 如果该字段为`true`:获取当前容器以及所有祖先容器中的`beanName`
 
@@ -1004,21 +1108,94 @@ private final SortedSet<PathPattern> patterns;
 
 ### `ProducesRequestCondition`
 
+持有如下关键字段：
 
+~~~java
+private final List<ProduceMediaTypeExpression> expressions; 
+private final ContentNegotiationManager contentNegotiationManager;
+~~~
 
+其中`ProduceMediaTypeExpression`用于匹配一个`MediaType`，可以匹配一个指定的`MediaType`或者匹配除了指定`MediaType`外的所有`MediaType`(有持有的`negated`字段决定)
 
+`expressions`由`@RequestMapping`注解的`produces`和`headers`值提供。
 
+`ContentNegotiationManager`内容协商处理器解析请求期望的响应类型。如果创建`ProducesRequestCondition`时未指定，将使用默认的`ContentNegotiationManager`，这个默认的`ContentNegotiationManager`只持有一个`HeaderContentNegotiationStrategy`协商策略。
 
+其`getMatchingCondition()`核心方法的主要逻辑如下：
+
+* 如果`HttpServletRequest`请求是一个cors预检请求，直接返回一个空的`ProducesRequestCondition`实例
+* 如果当前`ProducesRequestCondition`实例本身就是空的(`this.expressions`为空)，直接返回本身
+* 委托持有的`ContentNegotiationManager`实例，调用其`resolveMediaTypes()`方法进行内容协商，根据请求解析出请求期望的响应类型，保存到`List<MediaType> acceptedMediaTypes`列表中
+* 遍历`this.expressions`,调用`ProduceMediaTypeExpression.matche()`，判断当前表达式是否匹配给定的`acceptedMediaTypes`。如果匹配，将表达式放入新的`List<ProduceMediaTypeExpression> result`列表中
+* 如果`result`不空，则匹配通过，根据`result`创建一个新的`ProducesRequestCondition`实例并返回。
+* 如果`result`为空，判断`acceptedMediaTypes`中是否有`MediaType.ALL`，有说明请求期望任意的响应类型，说明匹配通过，返回一个空的`ProducesRequestCondition`实例
+* 否则，说明所有的表达式都不匹配请求期望的`MeidaType`，匹配失败，返回`null`
 
 ### `RequestMappingInfo`
 
+`RequestMappingInfo`表示请求映射信息，其中保存了各种类型的请求条件，用于匹配请求。只有当`RequestMappingInfo`持有的所有请求条件都与请求匹配时，才表示`RequestMappingInfo`与请求匹配。
 
+它持有如下请求条件：
 
+~~~java
+private final PathPatternsRequestCondition pathPatternsCondition;
+private final PatternsRequestCondition patternsCondition;
+private final RequestMethodsRequestCondition methodsCondition;
+private final ParamsRequestCondition paramsCondition;
+private final HeadersRequestCondition headersCondition;
+private final ConsumesRequestCondition consumesCondition;
+private final ProducesRequestCondition producesCondition;
+private final RequestConditionHolder customConditionHolder;
+~~~
 
+其中`pathPatternsCondition`和`patternsCondition`必须一个为`null`另一个不为`null`
 
+这取决于当前`RequestMappingInfo`是用`AntPatnMatcher`还是用`PathPattern`进行路径匹配。
 
+因为`RequestMappingInfo`的创建需要多个请求条件。所以使用了Builder设计模式，对外提供了方便创建`RequsetMappingInfo`实例的`RequestMappingInfo.Builder` API：
 
+~~~java
+public static Builder paths(String... paths); //根据提供的路径/模式返回一个builder
+public Builder mutate(); //根据当前的实例返回一个Builder，允许在当前实例的基础上生成一个新的实例
+~~~
 
+`Builder`接口提供如下方法，用于设置`RequestMappingInfo`的各种字段。
+
+~~~java
+public interface Builder {
+    Builder paths(String... paths);
+    Builder methods(RequestMethod... methods);
+    Builder params(String... params);
+    Builder headers(String... headers);
+    Builder consumes(String... consumes);
+    Builder produces(String... produces);
+    Builder mappingName(String name);
+    Builder customCondition(RequestCondition<?> condition);
+    Builder options(BuilderConfiguration options);
+    RequestMappingInfo build();
+}
+~~~
+
+其中`BuilderConfiguration`为使用`Builder`创建实例需要的配置选项容器，其中可以配置下面选项：
+
+~~~java
+private PathPatternParser patternParser; //用于创建PathPatternsRequestCondition请求条件实例
+private PathMatcher pathMatcher; //用于创建PatternsRequestCondition请求条件实例
+private ContentNegotiationManager contentNegotiationManager;//用于创建ProducesRequestCondition请求条件实例
+~~~
+
+一个使用`Builder`创建实例的示例：
+
+~~~java
+RequestMappingInfo.BuilderConfiguration options = new RequestMappingInfo.BuilderConfiguration();
+ContentNegotiationManager contentNegotiationManager = new ContentNegotiationManager(new FixedContentNegotiationStrategy(MediaType.APPLICATION_JSON));
+options.setContentNegotiationManager(contentNegotiationManager);
+RequestMappingInfo requestMappingInfo = RequestMappingInfo.paths("/test/**")
+        .methods(RequestMethod.GET, RequestMethod.POST)
+        .produces(MediaType.APPLICATION_JSON_VALUE)
+        .options(options)
+        .build();
+~~~
 
 ## `RequestMappingInfoHandlerMapping`
 
@@ -1028,31 +1205,61 @@ private final SortedSet<PathPattern> patterns;
 
 `RequestMappingInfoHandlerMapping`在`AbstractHandlerMethodMapping`的基础上提供`RequestMappingInfo`相关的逻辑。
 
+创建`RequestMappingInfoHandlerMapping`时，会创建一个`RequestMappingInfoHandlerMethodMappingNamingStrategy`设置到`AbstractHandlerMethodMapping.namingStrategy`字段，`AbstractHandlerMethodMapping`根据该字段策略生成`MappingRegistry`的名称。
 
+`AbstractHandlerMethodMapping`中有一些需要实现/重写的方法，在`RequestMappingInfoHandlerMapping`中得到了重写/实现。包括下面方法，其中映射`T`在此时就是`RequestMappingInfo`
 
+* `getDirectPaths()`通过`T`映射获取直接路径集合，这里直接调用了`RequestMappingInfo.getDirectPaths()`方法
+* `getMatchingMapping()`:判断给定的`T`映射是否匹配请求，不匹配返回`null`,这里直接调用`RequestMappingInfo.getMatchingCondition()`方法
+* `getMappingComparator()`：获取`T`映射的比较器，直接使用的`RequestMappingInfo.compareTo()`生成一个比较器
+* `handleMatch()`：匹配成功后，对请求做一些处理，向request域中添加一些属性
+* `handleNoMatch()`：按照次序判断不匹配的原因，抛出异常，例如，因为请求方法不匹配，则抛出一个`HttpRequestMethodNotSupportedException`异常
 
+还有一个重要的方法`getMappingForMethod()`没有实现，它最终会在`RequestMappingHandlerMapping`中实现。
 
+`initCorsConfiguration()`
 
+## `RequestMappingHandlerMapping`
 
+`RequestMappingHandlerMapping`是注解式`Controller`的`HandlerMapping`的最终实现。
 
+`RequestMappingHandlerMapping`继承`RequestMappingInfoHandlerMapping`，在此基础上:
 
+* 解析`@Controller`类上的` @RequestMapping`和`@HttpExchange`(SpringWebFlux 的声明式Http客户端)注解信息；将其转换为`RequsetMappingInfo`
+* 解析`@CrossOrigin`注解信息，将其转换为`CorsConfiguration`
 
+以上逻辑通过实现`AbstractHandlerMethodMapping` 的    `getMappingForMethod()`和`initCorsConfiguration()`方法完成
 
+### `getMappingForMethod()`
 
+`getMappingForMethod()`方法根据处理器方法对应的`Method`实例和处理器方法所在的`@Controller`类信息生成一个`RequestMappingInfo`,其主要逻辑如下：
 
+* 通过方法上的注解解析`RequestMappingInfo`：
 
+  * 获取方法上的`@RequestMapping`注解信息，如果有多个`@RequestMapping`注解，按顺序取第一个
 
+  * 获取方法上的`@HttpExchange`注解信息，如果有多个`@HttpExchange`注解，抛出一个`IllegalStateException`异常
 
+  * 如果方法上既有`@RequestMapping`也有`@HttpExchange`注解，抛出一个`IllegalStateException`异常
 
+  * 如果方法上既没有`@RequestMapping`也没有`@HttpExchange`注解，方法直接返回`null`,即当前类不是处理器方法
 
+  * 使用`RequestMappingInfo.Builder`，通过`@RequestMapping`或者`@HttpExchange`提供的信息创建一个`RequestMappingInfo`实例
+    * 创建过程中的`RequestMappingInfo.BuilderConfiguration`由`this.config`字段提供，该字段在Bean实例化完成后被配置
 
-### 实现/重写父类方法
+* 通过类上的注解解析一个`RequestMappingInfo`，过程和第一步一样
+* 调用`RequestMappingInfo.combine()`将类上的请求映射信息与方法上的合并，最终的合并行为由`RequsetCondition`决定，例如：
+  * 对于路径的合并，最终是调用`AntPathMatcher`或者`PathPattern`的`combine()`方法进行两个路径模式的合并
+  * 对于请求方法的合并，最终为两个请求方法集合的合并去重。
 
+### `initCorsConfiguration()`
 
+该方法将类和方法上的`@CrossOrigin`注解信息解析为`CorsConfiguration`:
 
-
-
-
+* 获取方法和类上的`@CrossOrigin`信息
+* 如果方法和类上都没有`@CrossOrigin`注解，方法直接返回`null`
+* 创建以一个`CorsConfiguration`实例
+* 将`@CrossOrigin`上提供的cors信息配置到`CorsConfiguration`实例中，方法上的信息会覆盖类上的信息
 
 # 注解式`Controller`的`HandlerAdapter`
 
