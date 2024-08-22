@@ -511,3 +511,79 @@ RequestMappingInfo requestMappingInfo = RequestMappingInfo.paths("/test/**")
 * 将`@CrossOrigin`上提供的cors信息配置到`CorsConfiguration`实例中，方法上的信息会覆盖类上的信息
 
 # 注解式`Controller`的`HandlerAdapter`
+
+`RequestMappingHandlerAdapter`负责为`DispatcherServlet`适配`HandlerMethod`处理器， 根据继承关系，它有如下主要父类：
+
+* `WebContentGenerator`：为其子类提供Web响应内容的生成逻辑。可以根据配置来设置HTTP响应头来控制响应。
+* `AbstractHandlerMethodAdapter`：是支持`HandlerMethod`的`HandlerAdapter`的抽象基类，提供`handleInternal()`抽象方法，实现`HandlerMethod`的调用处理。
+
+`@RequestMapping`方法(即`HandlerMethod`)允许多种特定类型或注解的入参和返回值。`RequestMappingHandlerAdapter`需要
+
+* 为`HandlerMethod`方法提供它需要的的参数值。
+* 处理`HandlerMethod`方法的返回值，根据不同的返回值生成`ModelAndView`或者设置`response`。
+
+`RequestMappingHandlerAdapter`将这样的工作委托给了专门的API来完成：
+
+* `HandlerMethodArgumentResolver`:解析`HandlerMethod`方法的入参并提供参数值
+* `HandlerMethodReturnValueHandler`：解析`HandlerMethod`的返回类型，并根据返回值生成`ModelAndView`或者设置到Web响应中
+
+另外`RequestMappingHandlerAdapter`需要实际调用`@RequestMapping`方法，以执行其中处理请求的相关逻辑。它使用`HandlerMethod`的子类`InvocableHandlerMethod`来完成这样的调用
+
+## `HandlerMethodArgumentResolver`
+
+`HandlerMethodArgumentResolver`会解析参数类型和参数上的注解，并据此从相关的数据源(请求域、请求参数、Model等)获取相关数据，将其转换成参数需要的类型，以供`@RequestMapping`方法调用使用，其定义如下：
+
+~~~java
+public interface HandlerMethodArgumentResolver {
+
+
+	boolean supportsParameter(MethodParameter parameter); //返回此解析器是否支持给定的方法参数
+
+	@Nullable
+	Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+			NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception;
+    //解析方法参数，并根据给定请求生成对应的参数值。提供对请求模型的访问
+
+}
+~~~
+
+其中：
+
+* `ModelAndViewContainer`：为解析器提供对模型的访问
+* `WebDataBinderFactory`:用于创建`WebDataBinder`，用于对参数值的数据绑定和类型转换
+
+针对`@RequestMapping`方法允许的不同参数类型和参数注解，`HandlerMethodArgumentResolver`提供了对应的实现，具体整理如下：
+
+| 类名                                      | 支持的方法参数/注解条件                                      |
+| ----------------------------------------- | ------------------------------------------------------------ |
+| `ErrorsMethodArgumentResolver`            | `Errors`                                                     |
+| `ExpressionValueMethodArgumentResolver`   | `@Value`                                                     |
+| `HttpEntityMethodProcessor`               | `HttpEntity`、`RequestEntity`                                |
+| `HttpHeadersReturnValueHandler`           | `HttpHeaders`                                                |
+| `MapMethodProcessor`                      | `Map`                                                        |
+| `MatrixVariableMethodArgumentResolver`    | `@MatrixVariable` (如果参数类型为`Map`,需要`@MatrixVariable`注解指定了`name`) |
+| `MatrixVariableMapMethodArgumentResolver` | `@MatrixVariable`并且参数类型为`Map`并且`@MatrixVariable`注解没有指定`name`) |
+| `ModelAttributeMethodProcessor`           | `@ModelAttribute`或者参数类型是`BeanUtils.isSimpleProperty()`指定的简单类型 |
+| `ModelMethodProcessor`                    | `Model`                                                      |
+| `MatrixVariableMethodArgumentResolver`    | `@PathVariable`(如果参数类型为`Map`，需要`@PathVariable`注解指定了`value`) |
+| `PathVariableMapMethodArgumentResolver`   |                                                              |
+|                                           |                                                              |
+|                                           |                                                              |
+|                                           |                                                              |
+
+
+
+
+
+
+
+## `RequestMappingHandlerAdapter`
+
+
+
+
+
+
+
+
+

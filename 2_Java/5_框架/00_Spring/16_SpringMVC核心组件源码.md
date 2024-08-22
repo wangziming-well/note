@@ -255,7 +255,14 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 
 ![HandlerMapping](https://gitee.com/wangziming707/note-pic/raw/master/img/HandlerMapping.png)
 
-可以看到所有的`HandlerMapping`实现都拓展自`AbstractHandlerMapping`抽象类，它为其他实现提供公用的逻辑。
+可以看到所有的`HandlerMapping`实现都拓展自`AbstractHandlerMapping`抽象类，它为其他实现提供公用的逻辑。简单概述一下其主要实现类：
+
+* `SimpleUrlHandlerMapping`：维护一个`url`到`handler`实例的映射关系(创建实例时提供该映射，包括`handler`实例)。
+* `BeanNameUrlHandlerMapping`:提供从`url`到`beanName`的简单映射，只有`beanName`或者别名以`/`为前缀的Bean才会被加入到该映射关系。所以想要使用该映射，需要将Bean命名为类型`/foo`这样的形式。
+* `RequestMappingHandlerMapping`:注解式`Controller`的处理器映射
+* `RouterFunctionMapping`:根据容器中的`RouterFunction`定义的映射关系，根据请求获取一个`HandlerFunction`作为`handler`
+
+## `AbstractHandlerMapping`涉及接口
 
 在具体了解`AbstractHandlerMapping`前，我们需要先粗略了解下面类/接口：
 
@@ -267,9 +274,11 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 * `AbstractHandlerMapping.CorsInterceptor`：cors拦截器，委托`CorsProcessor`对cors请求进行预处理，
 * `CorsProcessor`:`cors`请求的处理类，根据`CorsConfiguration`配置处理cors请求。例如如果当前请求源不在配置范围内，就拒绝请求；针对预检请求生成响应等。
 * `AbstractHandlerMapping.PreFlightHandler`：预检请求的处理器，对于预检请求，不需要实际处理请求。
-* `MappedInterceptor`:在SpringMVC配置中，如果配置`Interceptor`是，有配置`includePatterns`或者，`excludePatterns`,那么在注册这个拦截器是，会自动将其包装成一个`MappedInterceptor`
+* `MappedInterceptor`:在SpringMVC配置中，如果配置`Interceptor`时，有配置`includePatterns`或者，`excludePatterns`,那么在注册这个拦截器是，会自动将其包装成一个`MappedInterceptor`
 
 ## `AbstractHandlerMapping`
+
+`AbstractHandlerMapping`主要提供将`handler`对象和拦截器包装成`HandlerExecutionChain`的逻辑
 
 `AbstractHandlerMapping`实现了`WebApplicationObjectSupport`，以提供容器上下文的访问支持，可以通过`WebApplicationObjectSupport.obtainApplicationContext()`方法获得对应的容器实例。
 
@@ -314,6 +323,16 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
 * 请求`HandlerMapping`所在`ApplicationContext`容器上下文中所有的`MappedInterceptor`类型的Bean实例，添加到`this.adaptedInterceptors`中
 * 将`this.interceptors`添加到`this.adaptedInterceptors`中。
 
+# HandlerAdapter
 
+`HandlerAdapter`的主要类层次结构如下：
 
+![HandlerAdapter](https://gitee.com/wangziming707/note-pic/raw/master/img/HandlerAdapter.png)
 
+其主要实现类为：
+
+* `HandlerFunctionAdapter`:适配`HandlerFunction`类型的`handler`(由`RouterFunctionMapping`提供)
+* `HttpRequestHandlerAdapter`：适配`HttpRequestHandler`类型的`handler`
+* `RequestMappingHandlerAdapter`:适配`HandlerMethod`类型的`handler`
+* `SimpleControllerHandlerAdapter`：适配`Controller`类型的`handler`
+* `SimpleServletHandlerAdapter`:设配`Servlet`类型的`handler`
