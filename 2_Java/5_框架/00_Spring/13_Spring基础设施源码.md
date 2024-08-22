@@ -1,6 +1,6 @@
 # 路径匹配
 
-在继续分析前，需要先了解下面Spring 提供的进行路径匹配的Util工具类：
+Spring 提供的进行路径匹配的Util工具类：
 
 * `org.springframework.util.PathMatcher`
 * `org.springframework.web.util.pattern.PathPattern`
@@ -526,6 +526,10 @@ System.out.println(people);
 * 调用`PropertyHandler.getValue()`获取属性值
 * 如果访问的是属性的键值，会根据属性值的类型(例如`Map`、`List`、`Array`等)获取键值
 
+
+
+# 数据绑定
+
 ## `DataBinder`
 
 `DataBinder`是Spring框架中提供对象数据绑定和校验的基础设置类，常用于网络请求中的对象绑定，如`WebDatBinder`
@@ -565,6 +569,3 @@ private final List<Validator> validators = new ArrayList<>();
     * 该方法会先调用`getInternalBindingResult()`初始化(如果没有)一个`AbstractPropertyBindingResult`赋值到`this.bindingResult`
     * 然后调用`bindingResult.getPropertyAccessor()`方法获取target的属性访问器
   * 调用`ConfigurablePropertyAccessor.setPropertyValues()`方法绑定属性值
-
-# 数据绑定
-
