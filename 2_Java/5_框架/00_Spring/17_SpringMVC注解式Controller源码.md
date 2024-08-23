@@ -8,6 +8,8 @@
 
 ## `MethodParameter`
 
+==？？？？nested()==
+
 `MethodParameter`是Spring对方法参数的抽象，它封装了方法参数的各种信息：如参数类型、参数名、参数位置、参数注解等
 
 它有如下重要字段：
@@ -29,6 +31,36 @@ private volatile MethodParameter nestedMethodParameter; // 嵌套方法参数
 ~~~
 
 可以用对应的`getter`方法访问这些字段。
+
+### 嵌套方法参数
+
+可以通过`nested()`方法获得一个新的嵌套的`MethodParameter`，该方法参数与原方法参数指向同一个参数，但是嵌套层数更深。可以通过嵌套的`MethodParameter`访问方法参数的泛型类型。
+
+例如对于下面类：
+
+~~~java
+@Controller
+public class Demo {
+
+    @RequestMapping("/te?t")
+    @ResponseBody
+    public String get(@RequestBody Map<String,User> user ){
+        //....
+    }
+}
+~~~
+
+可以通过下面代码访问其方法参数和参数的泛型：
+
+~~~java
+Method get = Demo.class.getDeclaredMethod("get", Map.class);
+MethodParameter methodParameter = new MethodParameter(get, 0);
+MethodParameter nested1 = methodParameter.nested(0);
+MethodParameter nested2 = methodParameter.nested(1);
+System.out.println(methodParameter.getNestedParameterType()); //interface java.util.Map
+System.out.println(nested1.getNestedParameterType()); //class java.lang.String
+System.out.println(nested2.getNestedParameterType()); //class com.example.springboot.controller.User
+~~~
 
 ## `AnnotatedMethod`
 
@@ -554,26 +586,36 @@ public interface HandlerMethodArgumentResolver {
 
 针对`@RequestMapping`方法允许的不同参数类型和参数注解，`HandlerMethodArgumentResolver`提供了对应的实现，具体整理如下：
 
-| 类名                                      | 支持的方法参数/注解条件                                      |
-| ----------------------------------------- | ------------------------------------------------------------ |
-| `ErrorsMethodArgumentResolver`            | `Errors`                                                     |
-| `ExpressionValueMethodArgumentResolver`   | `@Value`                                                     |
-| `HttpEntityMethodProcessor`               | `HttpEntity`、`RequestEntity`                                |
-| `HttpHeadersReturnValueHandler`           | `HttpHeaders`                                                |
-| `MapMethodProcessor`                      | `Map`                                                        |
-| `MatrixVariableMethodArgumentResolver`    | `@MatrixVariable` (如果参数类型为`Map`,需要`@MatrixVariable`注解指定了`name`) |
-| `MatrixVariableMapMethodArgumentResolver` | `@MatrixVariable`并且参数类型为`Map`并且`@MatrixVariable`注解没有指定`name`) |
-| `ModelAttributeMethodProcessor`           | `@ModelAttribute`或者参数类型是`BeanUtils.isSimpleProperty()`指定的简单类型 |
-| `ModelMethodProcessor`                    | `Model`                                                      |
-| `MatrixVariableMethodArgumentResolver`    | `@PathVariable`(如果参数类型为`Map`，需要`@PathVariable`注解指定了`value`) |
-| `PathVariableMapMethodArgumentResolver`   |                                                              |
-|                                           |                                                              |
-|                                           |                                                              |
-|                                           |                                                              |
+| 类名                                                         | 支持的方法参数/注解                                          | 参数值来源                                                   |
+| ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `ErrorsMethodArgumentResolver`                               | `Errors`                                                     | `WebDataBinder`绑定其他参数时产生的`Errors`                  |
+| `ExpressionValueMethodArgumentResolver`                      | `@Value`                                                     |                                                              |
+| `MatrixVariableMethodArgumentResolver`<br />`MatrixVariableMapMethodArgumentResolver` | `@MatrixVariable`                                            | 路径中的匹配到的矩阵变量<br />`PathPattern.matchAndExtract().getMatrixVariables()` |
+| `PathVariableMethodArgumentResolver`<br />`PathVariableMapMethodArgumentResolver` | `@PathVariable`                                              |                                                              |
+| `PrincipalMethodArgumentResolver`                            | `Principal`                                                  |                                                              |
+| `RedirectAttributesMethodArgumentResolver`                   | `RedirectAttributes`                                         |                                                              |
+| `RequestAttributeMethodArgumentResolver`                     | `@RequestAttribute`                                          |                                                              |
+| `RequestHeaderMethodArgumentResolver`<br />`RequestHeaderMapMethodArgumentResolver` | `@RequestHeader`                                             |                                                              |
+| `RequestParamMethodArgumentResolver`<br />`RequestParamMapMethodArgumentResolver` | `@RequestParam`                                              |                                                              |
+| `RequestPartMethodArgumentResolver`                          | `@RequestPart`                                               |                                                              |
+| `ServletCookieValueMethodArgumentResolver`                   | `@CookieValue`                                               |                                                              |
+| `ServletRequestMethodArgumentResolver`                       | `WebRequest`、`ServletRequest`、<br />`MultipartRequest`、`HttpSession`<br />`PushBuilder`、`Principal`<br />`InputStream`、`Reader`<br />`HttpMethod`、`Locale`<br />`TimeZone`、`ZoneId` |                                                              |
+| `ServletResponseMethodArgumentResolver`                      | `ServletResponse`、<br />`OutputStream`、`Writer`            |                                                              |
+| `SessionAttributeMethodArgumentResolver`                     | `@SessionAttribute`                                          |                                                              |
+| `SessionStatusMethodArgumentResolver`                        | `SessionStatus`                                              |                                                              |
+| `UriComponentsBuilderMethodArgumentResolver`                 | `UriComponentsBuilder`<br />`ServletUriComponentsBuilder`    |                                                              |
+| `HttpEntityMethodProcessor`                                  | `HttpEntity`、`RequestEntity`                                |                                                              |
+| `MapMethodProcessor`                                         | `Map`                                                        |                                                              |
+| `ModelAttributeMethodProcessor`                              | `@ModelAttribute`                                            |                                                              |
+| `ModelMethodProcessor`                                       | `Model`                                                      |                                                              |
+| `RequestResponseBodyMethodProcessor`                         | `@RequestBody`                                               |                                                              |
+| `ServletModelAttributeMethodProcessor`                       | `ModelAttribute`                                             |                                                              |
 
+注意事项：
 
+* `ServletModelAttributeMethodProcessor`和`ModelAttributeMethodProcessor`有字段`annotationNotRequired`,如果该字段为`true`，它们还可以支持参数类型是`BeanUtils.isSimpleProperty()`指定的简单类型，无需注解。
 
-
+* `RequestPartMethodArgumentResolver`除了支持`@RequestPart`外，还支持一种情况：参数有`@RequestParam`注解并且参数类型是Multipart参数(类型为`MultipartFile`、`Part`以及包含它们的集合/数组)
 
 
 
@@ -587,3 +629,4 @@ public interface HandlerMethodArgumentResolver {
 
 
 
+****
