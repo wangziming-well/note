@@ -101,3 +101,14 @@ private final Set<MediaTypeFileExtensionResolver> resolvers = new LinkedHashSet<
 在`ContentNegotiationManager.resolveMediaTypes()`通过方法进行内容协商时，会按照`this.strategies`从头到尾的顺序进行遍历，只要其中有一个策略能返回有效的结果，直接结束遍历，返回该策略。
 
 所以在向`ContentNegotiationManager`注册内容协商策略时需要格外注意注册策略的顺序。
+
+# 异步支持
+
+`WebAsyncManager`
+
+
+
+# 消息转换
+
+`HttpMessageConverter`
+

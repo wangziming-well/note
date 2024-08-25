@@ -8,8 +8,6 @@
 
 ## `MethodParameter`
 
-==？？？？nested()==
-
 `MethodParameter`是Spring对方法参数的抽象，它封装了方法参数的各种信息：如参数类型、参数名、参数位置、参数注解等
 
 它有如下重要字段：
@@ -280,7 +278,6 @@ private final MappingRegistry mappingRegistry = new MappingRegistry();
     * 如果`bestMatch`和`secondBestMatch`在`Matcher`比较器下的优先级相同，说明有两个最佳匹配，抛出一个`IllegalStateException`异常
 * 向requset域中添加属性:属性名为`org.springframework.web.servlet.HandlerMapping.bestMatchingHandler`,属性值为最佳匹配的`HandlerMethod`实例
 * 调用**方法`handleMatch()`**进行找到匹配后的处理
-  * 该方法默认只向request域中添加一条`org.springframework.web.servlet.HandlerMapping.pathWithinHandlerMapping`属性，值为请求在app上下文中的相对路径`lookupPath`
   * 子类会重写该方法
 * 返回`bestMatch`中的`HandlerMethod`实例
 
@@ -491,9 +488,20 @@ RequestMappingInfo requestMappingInfo = RequestMappingInfo.paths("/test/**")
 `AbstractHandlerMethodMapping`中有一些需要实现/重写的方法，在`RequestMappingInfoHandlerMapping`中得到了重写/实现。包括下面方法，其中映射`T`在此时就是`RequestMappingInfo`
 
 * `getDirectPaths()`通过`T`映射获取直接路径集合，这里直接调用了`RequestMappingInfo.getDirectPaths()`方法
+
 * `getMatchingMapping()`:判断给定的`T`映射是否匹配请求，不匹配返回`null`,这里直接调用`RequestMappingInfo.getMatchingCondition()`方法
+
 * `getMappingComparator()`：获取`T`映射的比较器，直接使用的`RequestMappingInfo.compareTo()`生成一个比较器
-* `handleMatch()`：匹配成功后，对请求做一些处理，向request域中添加一些属性
+
+* `handleMatch()`：匹配成功后，对请求做一些处理，向request域中添加一些属性：
+
+    | 属性名                                                 | 属性值说明                                               |
+    | ------------------------------------------------------ | -------------------------------------------------------- |
+    | `HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE` | 请求在app上下文中的相对路径`lookupPath`                  |
+    | `HandlerMapping.MATRIX_VARIABLES_ATTRIBUTE`            | 使用`PathPattern`/`AntPathMatcher`匹配路径捕获的矩阵变量 |
+    | `HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE`      | 使用`PathPattern`/`AntPathMatcher`匹配路径捕获的路径变量 |
+    | `HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE`       | 与路径匹配的最佳模式的字符串                             |
+
 * `handleNoMatch()`：按照次序判断不匹配的原因，抛出异常，例如，因为请求方法不匹配，则抛出一个`HttpRequestMethodNotSupportedException`异常
 
 还有一个重要的方法`getMappingForMethod()`没有实现，它最终会在`RequestMappingHandlerMapping`中实现。
@@ -589,33 +597,92 @@ public interface HandlerMethodArgumentResolver {
 | 类名                                                         | 支持的方法参数/注解                                          | 参数值来源                                                   |
 | ------------------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | `ErrorsMethodArgumentResolver`                               | `Errors`                                                     | `WebDataBinder`绑定其他参数时产生的`Errors`                  |
-| `ExpressionValueMethodArgumentResolver`                      | `@Value`                                                     |                                                              |
-| `MatrixVariableMethodArgumentResolver`<br />`MatrixVariableMapMethodArgumentResolver` | `@MatrixVariable`                                            | 路径中的匹配到的矩阵变量<br />`PathPattern.matchAndExtract().getMatrixVariables()` |
-| `PathVariableMethodArgumentResolver`<br />`PathVariableMapMethodArgumentResolver` | `@PathVariable`                                              |                                                              |
-| `PrincipalMethodArgumentResolver`                            | `Principal`                                                  |                                                              |
-| `RedirectAttributesMethodArgumentResolver`                   | `RedirectAttributes`                                         |                                                              |
-| `RequestAttributeMethodArgumentResolver`                     | `@RequestAttribute`                                          |                                                              |
-| `RequestHeaderMethodArgumentResolver`<br />`RequestHeaderMapMethodArgumentResolver` | `@RequestHeader`                                             |                                                              |
-| `RequestParamMethodArgumentResolver`<br />`RequestParamMapMethodArgumentResolver` | `@RequestParam`                                              |                                                              |
-| `RequestPartMethodArgumentResolver`                          | `@RequestPart`                                               |                                                              |
-| `ServletCookieValueMethodArgumentResolver`                   | `@CookieValue`                                               |                                                              |
-| `ServletRequestMethodArgumentResolver`                       | `WebRequest`、`ServletRequest`、<br />`MultipartRequest`、`HttpSession`<br />`PushBuilder`、`Principal`<br />`InputStream`、`Reader`<br />`HttpMethod`、`Locale`<br />`TimeZone`、`ZoneId` |                                                              |
-| `ServletResponseMethodArgumentResolver`                      | `ServletResponse`、<br />`OutputStream`、`Writer`            |                                                              |
-| `SessionAttributeMethodArgumentResolver`                     | `@SessionAttribute`                                          |                                                              |
-| `SessionStatusMethodArgumentResolver`                        | `SessionStatus`                                              |                                                              |
-| `UriComponentsBuilderMethodArgumentResolver`                 | `UriComponentsBuilder`<br />`ServletUriComponentsBuilder`    |                                                              |
-| `HttpEntityMethodProcessor`                                  | `HttpEntity`、`RequestEntity`                                |                                                              |
-| `MapMethodProcessor`                                         | `Map`                                                        |                                                              |
-| `ModelAttributeMethodProcessor`                              | `@ModelAttribute`                                            |                                                              |
-| `ModelMethodProcessor`                                       | `Model`                                                      |                                                              |
-| `RequestResponseBodyMethodProcessor`                         | `@RequestBody`                                               |                                                              |
-| `ServletModelAttributeMethodProcessor`                       | `ModelAttribute`                                             |                                                              |
+| `ExpressionValueMethodArgumentResolver`                      | `@Value`                                                     | 从`Environment`环境变量中解析`@Value`指定的表达式            |
+| `MatrixVariableMethodArgumentResolver`<br />`MatrixVariableMapMethodArgumentResolver` | `@MatrixVariable`                                            | 路径中的匹配到的矩阵变量                                     |
+| `PathVariableMethodArgumentResolver`<br />`PathVariableMapMethodArgumentResolver` | `@PathVariable`                                              | 路径中的匹配到的路径变量                                     |
+| `PrincipalMethodArgumentResolver`                            | `Principal`                                                  | `HttpServletRequest`的`getUserPrincipal()`方法返回           |
+| `RedirectAttributesMethodArgumentResolver`                   | `RedirectAttributes`                                         | 新建的一个`RedirectAttributesModelMap`实例该实例会作为一个`ModelMap`传递给重定向处理器 |
+| `RequestAttributeMethodArgumentResolver`                     | `@RequestAttribute`                                          | `HttpServletRequest`的`getAttribute()`方法                   |
+| `RequestHeaderMethodArgumentResolver`<br />`RequestHeaderMapMethodArgumentResolver` | `@RequestHeader`                                             | `HttpServletRequest`的`getHeaders()`方法                     |
+| `RequestParamMethodArgumentResolver`<br />`RequestParamMapMethodArgumentResolver` | `@RequestParam`                                              | `MultipartHttpServletRequest`的`getFiles()/getFile()`方法或者`HttpServletRequest`的`getParameterValues()`方法 |
+| `RequestPartMethodArgumentResolver`                          | `@RequestPart`                                               | `MultipartHttpServletRequest`的`getFiles()/getFile()`方法或者`MultipartHttpServletRequest`方法的`getPart().getInputStream()`方法 |
+| `ServletCookieValueMethodArgumentResolver`                   | `@CookieValue`                                               | `HttpServletRequest`的`getCookies()`方法                     |
+| `ServletRequestMethodArgumentResolver`                       | `WebRequest`、`ServletRequest`、<br />`MultipartRequest`、`HttpSession`<br />`PushBuilder`、`Principal`<br />`InputStream`、`Reader`<br />`HttpMethod`、`Locale`<br />`TimeZone`、`ZoneId` | 调用`HttpServletRequest`的各种方法或者将请求包装成特定类型   |
+| `ServletResponseMethodArgumentResolver`                      | `ServletResponse`、<br />`OutputStream`、`Writer`            | 将响应包装成`ServletResponse`类型，或者调用`ServletResponse`的`getOutputStream()`或者`getWriter()`方法 |
+| `SessionAttributeMethodArgumentResolver`                     | `@SessionAttribute`                                          | 调用`HttpServletRequest`的`getSession().getAttribute()`方法  |
+| `SessionStatusMethodArgumentResolver`                        | `SessionStatus`                                              | 调用`ModelAndViewContainer`的`getSessionStatus()`方法        |
+| `UriComponentsBuilderMethodArgumentResolver`                 | `UriComponentsBuilder`<br />`ServletUriComponentsBuilder`    | 通过`request`新建一个`ServletUriComponentsBuilder`实例       |
+| `HttpEntityMethodProcessor`                                  | `HttpEntity`、`RequestEntity`                                | 新建一个`HttpEntity`或者`RequestEntity`.实例，这些实例的字段通过调用`HttpServletRequest`的`getInputStream()`和`getHeaders()`方法填充 |
+| `MapMethodProcessor`                                         | `Map`                                                        | 调用`ModelAndViewContainer`的`getModel()`方法                |
+| `ModelAttributeMethodProcessor`                              | `@ModelAttribute`                                            | 调用`ModelAndViewContainer`的`getModel().get()`获取属性，  如果`Model`中没有该属性，从`request`的请求参数或者路径变量中获取值，并且添加到`Model`属性中 |
+| `ModelMethodProcessor`                                       | `Model`                                                      | 调用`ModelAndViewContainer`的`getModel()`方法                |
+| `RequestResponseBodyMethodProcessor`                         | `@RequestBody`                                               | 调用`HttpServletRequest`的`getInputStream()`方法获取请求体   |
+| `ServletModelAttributeMethodProcessor`                       | `ModelAttribute`                                             | 调用`ModelAndViewContainer`的`getModel().get()`获取属性，  如果`Model`中没有该属性，从`request`的请求参数或者路径变量中获取值，并且添加到`Model`属性中 |
 
 注意事项：
 
 * `ServletModelAttributeMethodProcessor`和`ModelAttributeMethodProcessor`有字段`annotationNotRequired`,如果该字段为`true`，它们还可以支持参数类型是`BeanUtils.isSimpleProperty()`指定的简单类型，无需注解。
 
 * `RequestPartMethodArgumentResolver`除了支持`@RequestPart`外，还支持一种情况：参数有`@RequestParam`注解并且参数类型是Multipart参数(类型为`MultipartFile`、`Part`以及包含它们的集合/数组)
+
+* `RequestParamMethodArgumentResolver`除了支持`@RequestParam`外，还支持一种情况：参数类型是Multipart参数(类型为`MultipartFile`、`Part`以及包含它们的集合/数组)
+
+* 处理器映射时，`RequestMappingInfoHandlerMapping`的`handleMatch()`方法会向`request`域中存储`MatrixVariableMethodArgumentResolver`和`PathVariableMethodArgumentResolver`等需要的矩阵变量/路径变量
+
+* 可能会使用`HttpMessageConverter`的`HandlerMethodArgumentResolver`如下：
+    * `RequestResponseBodyMethodProcessor`
+    * `RequestPartMethodArgumentResolver`
+    * `HttpEntityMethodProcessor`
+
+### `HandlerMethodArgumentResolverComposite`
+
+
+
+
+
+
+
+
+
+## `HandlerMethodReturnValueHandler`
+
+`HandlerMethodArgumentResolver`用于处理`HanderMethod`方法的返回值，根据返回值类型有不同的处理策略，其定义如下：
+
+~~~java
+public interface HandlerMethodReturnValueHandler {
+
+	boolean supportsReturnType(MethodParameter returnType);
+
+	void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+			ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception;
+
+}
+~~~
+
+`RequestMappingHandlerAdapter`用到的`HandlerMethodReturnValueHandler`如下：
+
+| 类名                                           | 支持的类型/注解                                              | 返回值的处理                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `AsyncTaskMethodReturnValueHandler`            | `WebAsyncTask`                                               | 调用`WebAsyncManager`的`startCallableProcessing()`方法       |
+| `CallableMethodReturnValueHandler`             | `Callable`                                                   | 调用`WebAsyncManager`的`startCallableProcessing()`方法       |
+| `DeferredResultMethodReturnValueHandler`       | `DeferredResult`<br />`ListenableFuture`<br />`CompletionStage` | 调用`WebAsyncManager`的`startDeferredResultProcessing()`方法 |
+| `HttpHeadersReturnValueHandler`                | `HttpHeaders`                                                | 调用`HttpServletResponse`的`addHeader()`方法                 |
+| `ModelAndViewMethodReturnValueHandler`         | `ModelAndView`                                               | 调用`ModelAndViewContainer`的各种`set`方法，将`ModelAndView`中的值设置到其中 |
+| `ModelAndViewResolverMethodReturnValueHandler` | 任意类型                                                     | 调用`ModelAndViewResolver`的`resolveModelAndView()`方法将返回值转换为`ModelAndView`，然后将其放入到`ModelAndViewContainer`中 |
+| `ResponseBodyEmitterReturnValueHandler`        | `ResponseBodyEmitter`                                        | 创建一个`DeferredResult`实例，然后调用`WebAsyncManager`的`startDeferredResultProcessing()`方法以开启异步响应。每次`ResponseBodyEmitter`调用`send()`方法，实际就会通过`HttpServletResponse`的 |
+| `StreamingResponseBodyReturnValueHandler`      | `StreamingResponseBody`                                      |                                                              |
+| `HttpEntityMethodProcessor`                    | `HttpEntity`、`RequestEntity`                                |                                                              |
+| `MapMethodProcessor`                           | `Map`                                                        |                                                              |
+| `ModelAttributeMethodProcessor`                | `@ModelAttribute`                                            |                                                              |
+| `ModelMethodProcessor`                         | `Model`                                                      |                                                              |
+| `RequestResponseBodyMethodProcessor`           | `@RequestBody`                                               |                                                              |
+| `ServletModelAttributeMethodProcessor`         | `ModelAttribute`                                             |                                                              |
+
+
+
+
+
+
 
 
 
@@ -625,8 +692,9 @@ public interface HandlerMethodArgumentResolver {
 
 
 
+## `ModelAndViewContainer`
 
 
 
 
-****
+## `ModelAndViewResolver`
