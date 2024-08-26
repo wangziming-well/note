@@ -102,13 +102,98 @@ private final Set<MediaTypeFileExtensionResolver> resolvers = new LinkedHashSet<
 
 所以在向`ContentNegotiationManager`注册内容协商策略时需要格外注意注册策略的顺序。
 
-# 异步支持
+# `HttpMessageConverter`
 
-`WebAsyncManager`
+`HttpMessageConverter`消息转换器是HTTP请求/响应体和Java类之间进行转换的策略接口，其定义如下：
+
+~~~java
+public interface HttpMessageConverter<T> { // T为转换的对象类型
+
+	boolean canRead(Class<?> clazz,MediaType mediaType); 
+    //判断指定的mediaType类型的请求体是否能够转换为 clazz指定的类型
+	boolean canWrite(Class<?> clazz,MediaType mediaType);
+    //判断clazz指定的类型是否能够写入mediaType指定媒体类型的响应体
+	List<MediaType> getSupportedMediaTypes();
+    //获取当前消息转换器支持的所有媒体类型
+	default List<MediaType> getSupportedMediaTypes(Class<?> clazz);
+    //获取当前消息转换器支持的指定clazz类型的所有媒体类型
+	T read(Class<? extends T> clazz, HttpInputMessage inputMessage);
+    //读取请求体并转换为指定类型
+	void write(T t, MediaType contentType, HttpOutputMessage outputMessage);
+    //将T实例转换并写入指定媒体类型的响应体
+}
+~~~
+
+其中：
+
+* `HttpInputMessage`代表HTTP输入消息，由请求头和代表请求体的`InputStream`组成
+* `HttpOutputMessage`代表HTTP输出消息，由响应头和代表响应体的`OutputStream`组成
+
+一些常用的消息转换器如下：
+
+| 类名                                                         | 支持Java类型     | 支持读取request类型                 | 支持写入的response类型                                       |
+| ------------------------------------------------------------ | ---------------- | ----------------------------------- | ------------------------------------------------------------ |
+| `ByteArrayHttpMessageConverter`                              | `byte[]`         | `*/*`                               | `application/octet-stream`                                   |
+| `StringHttpMessageConverter`                                 | `String`         | `*/*`                               | `text/plain`                                                 |
+| `ResourceHttpMessageConverter`                               | `Resources`      | `*/*`                               | 由` MediaTypeFactory`决定                                    |
+| `ResourceRegionHttpMessageConverter`                         | `ResourceRegion` | 不支持写入请求                      | `*/*`                                                        |
+| `FormHttpMessageConverter`<br />`AllEncompassingFormHttpMessageConverter` | `MultiValueMap`  | `application/x-www-form-urlencoded` | `application/x-www-form-urlencoded`<br />`multipart/form-data`<br />`multipart/mixed` |
+
+* 对于`FormHttpMessageConverter`，如果要写入的响应体是`multipart`类型的，它支持将以下Java类型转换为`mutipart`响应的`part`部分：`byte[]`、`String`、`Resources`。
+  * 其子类`AllEncompassingFormHttpMessageConverter`拓展了可写入`part`类型，支持基于 XML 和JSON的`part`类型
+
+此外还有一些消息转换器需要其他类库的支持才能正常使用，下面是常用的：
+
+| 类名                                  | 需要类库                                          |
+| ------------------------------------- | ------------------------------------------------- |
+| `MappingJackson2HttpMessageConverter` | `com.fasterxml.jackson.databind:jackson-databind` |
+| `GsonHttpMessageConverter`            | `com.google.code.gson:gson`                       |
+| ........                              |                                                   |
+
+以上两个消息转换器都支持将Java类型读写到`application/json`或者`application/*+json `类型的请求和响应。
 
 
 
-# 消息转换
+# 异步请求
 
-`HttpMessageConverter`
+
+
+## `AsyncWebRequest`
+
+
+
+## `DeferredResult`
+
+
+
+## `WebAsyncManager`
+
+`WebAsyncManager`是管理异步请求的核心类。
+
+使用`WebAsyncManager`管理的异步场景涉及两个请求，三个线程，其中两个线程为请求线程，另一个是异步线程。
+
+一个请求线程可以调用`WebAsyncManager` 的`startCallableProcessing()`或`startDeferredResultProcessing()`方法来启动异步请求处理。结果会在第二个异步线程(由用户自己指定或者使用`WebAsyncManager`配置的线程池)中产生。
+
+结果会被保存，并且`WebAsyncManager`会将当前请求委派(调用`AsyncWebRequest.dispatch()`)给当前路径的另一个请求处理线程，在这个新的请求处理线程中，会获取保存的结果并进行响应。
+
+`WebAsyncManager`有三个状态，
+
+* `NOT_STARTED`:没有正在进行的异步处理
+* `ASYNC_PROCESSING`：异步处理已启动，但尚未设置结果
+* `RESULT_SET`：结果被设置并会发起第二个请求
+
+其状态机如下:
+
+
+
+![WebAsyncManager.State](https://gitee.com/wangziming707/note-pic/raw/master/img/WebAsyncManager.State.png)
+
+`WebAsyncManager`有如下重要字段：
+
+~~~java
+~~~
+
+
+
+
 

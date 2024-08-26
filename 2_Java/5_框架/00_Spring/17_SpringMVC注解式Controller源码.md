@@ -605,44 +605,31 @@ public interface HandlerMethodArgumentResolver {
 | `RequestAttributeMethodArgumentResolver`                     | `@RequestAttribute`                                          | `HttpServletRequest`的`getAttribute()`方法                   |
 | `RequestHeaderMethodArgumentResolver`<br />`RequestHeaderMapMethodArgumentResolver` | `@RequestHeader`                                             | `HttpServletRequest`的`getHeaders()`方法                     |
 | `RequestParamMethodArgumentResolver`<br />`RequestParamMapMethodArgumentResolver` | `@RequestParam`                                              | `MultipartHttpServletRequest`的`getFiles()/getFile()`方法或者`HttpServletRequest`的`getParameterValues()`方法 |
-| `RequestPartMethodArgumentResolver`                          | `@RequestPart`                                               | `MultipartHttpServletRequest`的`getFiles()/getFile()`方法或者`MultipartHttpServletRequest`方法的`getPart().getInputStream()`方法 |
+| `RequestPartMethodArgumentResolver`                          | `@RequestPart`                                               | `MultipartHttpServletRequest`的`getFiles()/getFile()`方法或者`MultipartHttpServletRequest`方法的`getPart().getInputStream()`方法或者使用`HttpMessageConverter`将请求体转换为参数类型 |
 | `ServletCookieValueMethodArgumentResolver`                   | `@CookieValue`                                               | `HttpServletRequest`的`getCookies()`方法                     |
 | `ServletRequestMethodArgumentResolver`                       | `WebRequest`、`ServletRequest`、<br />`MultipartRequest`、`HttpSession`<br />`PushBuilder`、`Principal`<br />`InputStream`、`Reader`<br />`HttpMethod`、`Locale`<br />`TimeZone`、`ZoneId` | 调用`HttpServletRequest`的各种方法或者将请求包装成特定类型   |
 | `ServletResponseMethodArgumentResolver`                      | `ServletResponse`、<br />`OutputStream`、`Writer`            | 将响应包装成`ServletResponse`类型，或者调用`ServletResponse`的`getOutputStream()`或者`getWriter()`方法 |
 | `SessionAttributeMethodArgumentResolver`                     | `@SessionAttribute`                                          | 调用`HttpServletRequest`的`getSession().getAttribute()`方法  |
 | `SessionStatusMethodArgumentResolver`                        | `SessionStatus`                                              | 调用`ModelAndViewContainer`的`getSessionStatus()`方法        |
 | `UriComponentsBuilderMethodArgumentResolver`                 | `UriComponentsBuilder`<br />`ServletUriComponentsBuilder`    | 通过`request`新建一个`ServletUriComponentsBuilder`实例       |
-| `HttpEntityMethodProcessor`                                  | `HttpEntity`、`RequestEntity`                                | 新建一个`HttpEntity`或者`RequestEntity`.实例，这些实例的字段通过调用`HttpServletRequest`的`getInputStream()`和`getHeaders()`方法填充 |
+| `HttpEntityMethodProcessor`                                  | `HttpEntity`、`RequestEntity`                                | 使用`HttpMessageConverter`将请求体转换为`HttpEntity`泛型指定的类型 |
 | `MapMethodProcessor`                                         | `Map`                                                        | 调用`ModelAndViewContainer`的`getModel()`方法                |
-| `ModelAttributeMethodProcessor`                              | `@ModelAttribute`                                            | 调用`ModelAndViewContainer`的`getModel().get()`获取属性，  如果`Model`中没有该属性，从`request`的请求参数或者路径变量中获取值，并且添加到`Model`属性中 |
 | `ModelMethodProcessor`                                       | `Model`                                                      | 调用`ModelAndViewContainer`的`getModel()`方法                |
-| `RequestResponseBodyMethodProcessor`                         | `@RequestBody`                                               | 调用`HttpServletRequest`的`getInputStream()`方法获取请求体   |
+| `RequestResponseBodyMethodProcessor`                         | `@RequestBody`                                               | 使用`HttpMessageConverter`将请求体转换为参数类型             |
 | `ServletModelAttributeMethodProcessor`                       | `ModelAttribute`                                             | 调用`ModelAndViewContainer`的`getModel().get()`获取属性，  如果`Model`中没有该属性，从`request`的请求参数或者路径变量中获取值，并且添加到`Model`属性中 |
 
 注意事项：
 
-* `ServletModelAttributeMethodProcessor`和`ModelAttributeMethodProcessor`有字段`annotationNotRequired`,如果该字段为`true`，它们还可以支持参数类型是`BeanUtils.isSimpleProperty()`指定的简单类型，无需注解。
-
+* `ServletModelAttributeMethodProcessor`有字段`annotationNotRequired`,如果该字段为`true`，它们还可以支持参数类型是`BeanUtils.isSimpleProperty()`指定的简单类型，无需注解。
 * `RequestPartMethodArgumentResolver`除了支持`@RequestPart`外，还支持一种情况：参数有`@RequestParam`注解并且参数类型是Multipart参数(类型为`MultipartFile`、`Part`以及包含它们的集合/数组)
-
 * `RequestParamMethodArgumentResolver`除了支持`@RequestParam`外，还支持一种情况：参数类型是Multipart参数(类型为`MultipartFile`、`Part`以及包含它们的集合/数组)
-
 * 处理器映射时，`RequestMappingInfoHandlerMapping`的`handleMatch()`方法会向`request`域中存储`MatrixVariableMethodArgumentResolver`和`PathVariableMethodArgumentResolver`等需要的矩阵变量/路径变量
-
-* 可能会使用`HttpMessageConverter`的`HandlerMethodArgumentResolver`如下：
-    * `RequestResponseBodyMethodProcessor`
-    * `RequestPartMethodArgumentResolver`
-    * `HttpEntityMethodProcessor`
 
 ### `HandlerMethodArgumentResolverComposite`
 
+`HandlerMethodArgumentResolverComposite`是`HandlerMethodArgumentResolver`的组合。它内部持有一组`HandlerMethodArgumentResolver`。
 
-
-
-
-
-
-
+`HandlerMethodArgumentResolverComposite`会将方法参数的处理委托给它拥有的适合的`HandlerMethodArgumentResolver`。如果持有的所有的`HandlerMethodArgumentResolver`都不支持该参数类型，将抛出一个异常
 
 ## `HandlerMethodReturnValueHandler`
 
@@ -669,22 +656,17 @@ public interface HandlerMethodReturnValueHandler {
 | `HttpHeadersReturnValueHandler`                | `HttpHeaders`                                                | 调用`HttpServletResponse`的`addHeader()`方法                 |
 | `ModelAndViewMethodReturnValueHandler`         | `ModelAndView`                                               | 调用`ModelAndViewContainer`的各种`set`方法，将`ModelAndView`中的值设置到其中 |
 | `ModelAndViewResolverMethodReturnValueHandler` | 任意类型                                                     | 调用`ModelAndViewResolver`的`resolveModelAndView()`方法将返回值转换为`ModelAndView`，然后将其放入到`ModelAndViewContainer`中 |
-| `ResponseBodyEmitterReturnValueHandler`        | `ResponseBodyEmitter`                                        | 创建一个`DeferredResult`实例，然后调用`WebAsyncManager`的`startDeferredResultProcessing()`方法以开启异步响应。每次`ResponseBodyEmitter`调用`send()`方法，实际就会通过`HttpServletResponse`的 |
-| `StreamingResponseBodyReturnValueHandler`      | `StreamingResponseBody`                                      |                                                              |
-| `HttpEntityMethodProcessor`                    | `HttpEntity`、`RequestEntity`                                |                                                              |
-| `MapMethodProcessor`                           | `Map`                                                        |                                                              |
-| `ModelAttributeMethodProcessor`                | `@ModelAttribute`                                            |                                                              |
-| `ModelMethodProcessor`                         | `Model`                                                      |                                                              |
-| `RequestResponseBodyMethodProcessor`           | `@RequestBody`                                               |                                                              |
-| `ServletModelAttributeMethodProcessor`         | `ModelAttribute`                                             |                                                              |
+| `ResponseBodyEmitterReturnValueHandler`        | `ResponseBodyEmitter`                                        | 创建一个`DeferredResult`实例，然后调用`WebAsyncManager`的`startDeferredResultProcessing()`方法以开启异步响应。每次`ResponseBodyEmitter`调用`send()`方法，实际就会通过`HttpMessageConverter`将`send()`的参数转换并写入请求体 |
+| `StreamingResponseBodyReturnValueHandler`      | `StreamingResponseBody`                                      | 将`StreamingResponseBody`包装成一个`StreamingResponseBodyTask`,这也是一个`Callable`接口，然后调用`WebAsyncManager`的`startCallableProcessing()`方法开启异步响应 |
+| `HttpEntityMethodProcessor`                    | `HttpEntity`、`RequestEntity`                                | 将`HttpEntity`或者`RequestEntity`的`body`通过`HttpMessageConverter`转换并写入响应体中 |
+| `MapMethodProcessor`                           | `Map`                                                        | 将`Map`中的键值对作为属性其放入`ModelAndViewContainer`的`Model`中 |
+| `ModelMethodProcessor`                         | `Model`                                                      | 将返回`Model`中的属性全部写入`ModelAndViewContainer`的`Model`中 |
+| `RequestResponseBodyMethodProcessor`           | `@RequestBody`                                               | 通过`HttpMessageConverter`将返回值转换并写入响应体中         |
+| `ServletModelAttributeMethodProcessor`         | `@ModelAttribute`                                            | 将返回值作为一个属性值写入`ModelAndViewContainer`的`Model`中 |
 
+### `HandlerMethodReturnValueHandlerComposite`
 
-
-
-
-
-
-
+`HandlerMethodReturnValueHandlerComposite`是`HandlerMethodReturnValueHandler`的组合，它持有一组`HandlerMethodReturnValueHandler`实例，将方法返回值的处理委托给这些实例。如果所有的实例都不支持该方法返回值，将抛出异常
 
 ## `RequestMappingHandlerAdapter`
 
@@ -692,9 +674,10 @@ public interface HandlerMethodReturnValueHandler {
 
 
 
-## `ModelAndViewContainer`
 
 
+# TODO
 
+ `ModelAndViewContainer`
 
-## `ModelAndViewResolver`
+`ModelAndViewResolver`
