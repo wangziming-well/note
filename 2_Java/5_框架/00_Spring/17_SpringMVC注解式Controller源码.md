@@ -668,6 +668,54 @@ public interface HandlerMethodReturnValueHandler {
 
 `HandlerMethodReturnValueHandlerComposite`是`HandlerMethodReturnValueHandler`的组合，它持有一组`HandlerMethodReturnValueHandler`实例，将方法返回值的处理委托给这些实例。如果所有的实例都不支持该方法返回值，将抛出异常
 
+## `HandlerMethod`拓展
+
+`HandlerMethod`有几个子类，实现了处理器方法调用相关的逻辑：
+
+* `InvocableHandlerMethod`:通过一组 `HandlerMethodArgumentResolver`解析当前处理器方法需要的参数值，来调用底层的`Method`方法
+* `ServletInvocableHandlerMethod`:拓展自`InvocableHandlerMethod`，在此基础上提供了通过一组`HandlerMethodReturnValueHandler`处理方法调用返回值的逻辑。
+
+### `InvocableHandlerMethod`
+
+内部维护一个`this.resolvers`字段用于处理请求参数：
+
+~~~java
+private HandlerMethodArgumentResolverComposite resolvers = new HandlerMethodArgumentResolverComposite();
+~~~
+
+`InvocableHandlerMethod`类的`invokeForRequest()`方法实现方法调用，主要逻辑如下：
+
+* 遍历当前`HandlerMethod`的方法参数组`MethodParameter[]`,调用`this.resolvers.resolveArgument`获取方法参数对应的参数值，得到一个入参数组`Object[] args`
+* 如果当前`HandlerMethod`需要校验方法参数(`shouldValidateArguments()`为`true`)并且`this.methodValidator`不为空，则调用`this.methodValidator.applyArgumentValidation()`进行校验参数，如果校验不通过，抛出一个`MethodValidationException`异常
+* 调用`Method.invoke()`方法，传入当前处理器方法所在的Bean实例和第一步获取的入参数组`args`完成方法调用
+* 如果当前`HandlerMethod`需要检验方法返回值(`shouldValidateReturnValue()`为`true`)并且`this.methodValidator`不为空，则调用`this.methodValidator.applyReturnValueValidation()`校验返回值，如果校验不通过，抛出一个`MethodValidationException`异常
+
+### `ServletInvocableHandlerMethod`
+
+`ServletInvocableHandlerMethod`内部维护一个`this.returnValueHandlers`字段：
+
+~~~java
+private HandlerMethodReturnValueHandlerComposite returnValueHandlers;
+~~~
+
+其核心方法是`invokeAndHandle()`，以调用方法并处理返回值，主要逻辑为：
+
+* 调用`InvocableHandlerMethod.invokeForRequest()`方法执行方法调用获取返回值
+* 调用`this.returnValueHandlers.handleReturnValue()`方法处理返回值
+
+#### `wrapConcurrentResult()`
+
+它还有一个重要方法`wrapConcurrentResult()`，将当前的`ServletInvocableHandlerMethod`包装成一个`ConcurrentResultHandlerMethod`。`ConcurrentResultHandlerMethod`是`ServletInvocableHandlerMethod`的子类。
+
+在并发请求处理中，当并发请求生成并发结果后，会将当前分派给Web容器，此时容器会生成第二个请求，在这第二个请求中，就会使用`ConcurrentResultHandlerMethod`来处理这个并发结果并响应。
+
+`ConcurrentResultHandlerMethod`所代表的处理器方法是一个`Callable`回调函数，在这个函数中对并发结果进行响应。该回调的逻辑为：
+
+* 如果并发结果`result`类型为`Exception`或者`Throwable`,直接抛出一个异常
+* 否则处理器方法直接返回该`result`
+
+这样在并发请求处理的分派请求中，`result`作为返回值和其他普通处理器方法的返回值一样被继续处理
+
 ## `RequestMappingHandlerAdapter`
 
 

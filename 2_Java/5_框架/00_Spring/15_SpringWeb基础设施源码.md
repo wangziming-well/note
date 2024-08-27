@@ -156,13 +156,70 @@ public interface HttpMessageConverter<T> { // T为转换的对象类型
 
 # 异步请求
 
-
-
 ## `AsyncWebRequest`
 
+`AsyncWebRequest`是对异步Web请求的抽象，它拓展自`NativeWebRequest`,提供下面方法：
 
+~~~java
+public interface AsyncWebRequest extends NativeWebRequest {
+
+	void setTimeout(@Nullable Long timeout); 
+    //设置异步超时时间
+	void addTimeoutHandler(Runnable runnable);
+	//设置并发请求超时时的回调
+	void addErrorHandler(Consumer<Throwable> exceptionHandler);
+	//设置并发请求发送错误时的回调
+	void addCompletionHandler(Runnable runnable);
+	//设置并发请求发送完成时的回调
+	void startAsync();
+	//开启异步请求模式，以便请求线程退出后，仍能进行响应。实际会调用ServletRequest.startAsync()
+	boolean isAsyncStarted();
+	//判断当前请求是否处于异步状态。实际调用ServletRequest.isAsyncStarted()
+	void dispatch();
+	//将当前请求再次分派到Web容器，生成一个新请求，异步的结果会在这个新请求中被处理响应。
+	boolean isAsyncComplete();
+	//判断异步处是否已经完成
+}
+~~~
 
 ## `DeferredResult`
+
+`DeferredResult`表示异步处理的结果。它维护一组异步处理的回调和一个异步处理的结果。主要字段如下：
+
+~~~java
+private final Long timeoutValue; //异步处理的超时时间 
+private final Supplier<?> timeoutResult; // 异步处理超时时，需要提供的结果
+private Runnable timeoutCallback; //异步处理超时回调
+private Consumer<Throwable> errorCallback; //异步处理错误回调
+private Runnable completionCallback; //异步处理完成回调
+private volatile Object result = RESULT_NONE; //异步处理的结果
+private DeferredResultHandler resultHandler; //结果处理器，当结果被设置时，会调用该处理器来处理结果
+~~~
+
+其中`timeoutCallback`、`errorCallback`、`completionCallback`可以通过它们对应的`setter`方法设置。设置好这些值后，可以调用`getInterceptor()`方法获取一个`DeferredResultProcessingInterceptor`，这个拦截器会使用这三个回调来完成拦截
+
+通过`setResultHandler()`方法设置结果处理器，设置结果处理器时，如果结果已经被设置了，那么会直接调用该结果处理器。保证即使结果提前设置也会被处理。
+
+通过`setResult()`方法设置异步处理的结果，结果会被赋值到`this.result`字段，紧接着会调用`this.resultHandler.handleResult()`处理该结果。
+
+使用`DeferredResult`时，`WebAsyncManager`会设置好`resultHandler`，这样当用户在异步线程中调用`setResult()`时，`WebAsyncManager`就会负责处理该结果。
+
+## `WebAsyncTask`
+
+`WebAsyncTask`同样可以用于异步请求处理，它持有一个代表异步任务的`Callable`回调，一个可以用于执行异步任务的`AsyncTaskExecutor`,以及异步请求处理过程中的回调：
+
+~~~java
+private final Callable<V> callable;
+private final Long timeout;
+private final AsyncTaskExecutor executor;
+private final String executorName;
+private BeanFactory beanFactory;
+private Callable<V> timeoutCallback;
+private Callable<V> errorCallback;
+private Runnable completionCallback;
+~~~
+
+可以通过对应的`on`方法设置`timeoutCallback`、`errorCallback`、`completionCallback`.字段，可以通过`getInterceptor()`方法获取对应的`CallableProcessingInterceptor`拦截器，该拦截器使用这三个回调进行拦截。
 
 
 
@@ -191,9 +248,94 @@ public interface HttpMessageConverter<T> { // T为转换的对象类型
 `WebAsyncManager`有如下重要字段：
 
 ~~~java
+private AsyncWebRequest asyncWebRequest; //当前异步请求管理器对应的异步请求
+private AsyncTaskExecutor taskExecutor = DEFAULT_TASK_EXECUTOR; //用于提供异步线程的线程池
+private volatile Object concurrentResult = RESULT_NONE; //异步处理的结果
+private volatile Object[] concurrentResultContext; //并发结果的上下文，一般为一个ModelAndViewContainer
+private final AtomicReference<State> state = new AtomicReference<>(State.NOT_STARTED); //当前异步请求的状态
+private final Map<Object, CallableProcessingInterceptor> callableInterceptors = new LinkedHashMap<>(); //callable异步处理的拦截器，通过对应的register方法设置
+private final Map<Object, DeferredResultProcessingInterceptor> deferredResultInterceptors = new LinkedHashMap<>(); //deferredResult异步处理的拦截器，通过对应的register方法设置
 ~~~
 
 
 
+### `setConcurrentResultAndDispatch()`
 
+`WebAsyncManager`通过`setConcurrentResultAndDispatch()`私有方法来设置并发处理结果，并分派到一个新请求，会在新请求中处理该结果。该方法主要逻辑如下：
 
+* 将当前管理器的状态由`ASYNC_PROCESSING`改为`RESULT_SET`
+* 将提供的`result`值设置到`this.concurrentResult`字段
+* 此时如果当前异步模式已经结束，方法直接返回，否则下一步
+* 调用`AsyncWebRequest.dispatch()`将当前请求派发到Web容器，Web容器会生成一个新请求，在这个新请求中，会对`this.concurrentResult`进行处理
+
+### 开启异步处理
+
+可以通过`WebAsyncManager`的下面三个方法开启异步处理：
+
+~~~java
+public void startCallableProcessing(Callable<?> callable, Object... processingContext);
+public void startCallableProcessing(final WebAsyncTask<?> webAsyncTask, Object... processingContext);
+public void startDeferredResultProcessing(final DeferredResult<?> deferredResult, Object... processingContext);
+~~~
+
+其中前两个是重载的，第一个方法会将`callable`参数包装成一个`WebAsyncTask`然后调用第二个。
+
+接下来详细了解一下第二三个方法的主要逻辑：
+
+#### `startCallableProcessing()`
+
+* 将`WebAsyncManager`的状态从`NOT_STARTED`改变为`ASYNC_PROCESSING`
+* 设置超时时间：将`WebAsyncTask`的超时时间设置到`this.asyncWebRequest`中
+* 获取执行任务的线程池：
+  * 尝试从`WebAsyncTask`中获取`AsyncTaskExecutor`
+  * 如果上一步获取的`AsyncTaskExecutor`不为`null`，那么将其设置到`this.taskExecutor`
+* 生成`CallableProcessingInterceptor`的调用链：
+  * 从`webAsyncTask`获取`CallableProcessingInterceptor`
+  * 从`this.callableInterceptors`字段获取`CallableProcessingInterceptor`
+  * 获取一个`TimeoutCallableProcessingInterceptor()`
+  * 将上面获取到的所有拦截器放入一个`CallableInterceptorChain`实例，名为`interceptorChain`
+
+* 为异步请求添加回调：
+  * 调用`this.asyncWebRequest.addTimeoutHandler()`添加超时回调。在该回调中：
+    * 调用`interceptorChain.triggerAfterTimeout()`触发拦截链的超时拦截，生成一个并发结果
+    * 调用`setConcurrentResultAndDispatch()`设置并发处理结果并分派请求
+  * 调用`this.asyncWebRequest.addErrorHandler()`添加错误回调，在该回调中：
+    * 调用`interceptorChain.triggerAfterError()`触发拦截链的错误拦截，生成一个并发结果
+    * 调用`setConcurrentResultAndDispatch()`设置并发处理结果并分派请求
+  * 调用`this.asyncWebRequest.addCompletionHandler()`添加完成回调，在该回调中：
+    * 调用`interceptorChain.triggerAfterCompletion()`触发拦截链的完成拦截
+* 调用`interceptorChain.applyBeforeConcurrentHandling()`触发并发处理前拦截
+* 调用`this.taskExecutor.submit()`提交任务并执行，在该任务中：
+  * 调用`interceptorChain.applyPreProcess()`触发前处理拦截
+  * 调用`WebAsyncTask`中的`Callable`实例的`call()`方法执行异步处理逻辑，生成一个`result`结果
+  * 如果执行过程中抛出异常，将异常赋值给`result`
+  * 调用`interceptorChain.applyPostProcess()`触发后处理拦截
+  * 调用`setConcurrentResultAndDispatch()`设置并发处理结果并分派请求
+
+* y如果上一步提交任务的过程中抛出异常：
+  * 调用`interceptorChain.applyPostProcess()`触发后处理拦截
+  * 调用`setConcurrentResultAndDispatch()`设置并发处理结果并分派请求
+
+#### `startDeferredResultProcessing()`
+
+`startDeferredResultProcessing()`和`startCallableProcessing()`的处理逻辑基本一致，不同之处在于：
+
+* 对`DeferredResult`的处理不需要线程池，异步线程由用户自己提供并处理
+
+* 拦截器类型不同，使用的是`DeferredResultProcessingInterceptor`
+
+* 不需要提交任务到线程池，只需要添加一个结果处理器到`DeferredResult`中即可，即调用`DeferredResult.setResultHandler()`方法添加一个结果处理器，在该结果处理器中：
+
+  * 调用`interceptorChain.applyPostProcess()`触发拦截器后处理
+  * 调用`setConcurrentResultAndDispatch()`设置并发处理结果并分派请求
+
+  这样，当用户在异步线程中调用`DeferredResult.setResult()`是，就会触发该结果处理器以处理结果。
+
+### 与请求绑定
+
+一个`WebAsyncManager`一般对应请求，并且会绑定到请求域中，`WebAsyncUtils`负责处理这样的行为
+
+其重要静态方法为`getAsyncManager()`，其主要逻辑为：
+
+* 从`requset`域中获取名为`WebAsyncUtils.WEB_ASYNC_MANAGER_ATTRIBUTE`的属性,该属性为一个`WebAsyncManager`
+* 如果该属性为`null`，那么新建一个`WebAsyncManager`实例，并绑定到`WebAsyncUtils.WEB_ASYNC_MANAGER_ATTRIBUTE`请求域属性上
