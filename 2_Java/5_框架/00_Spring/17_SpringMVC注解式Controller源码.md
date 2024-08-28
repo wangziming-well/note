@@ -718,6 +718,50 @@ private HandlerMethodReturnValueHandlerComposite returnValueHandlers;
 
 ## `RequestMappingHandlerAdapter`
 
+`RequestMappingHandlerAdapter`适配`HandlerMethod`处理器，负责它对应底层`Method`的调用和处理。
+
+它有如下重要字段：
+
+~~~java
+private List<HandlerMethodArgumentResolver> customArgumentResolvers;
+//自定义参数解析器，可以通过对应的setter方法设置，这个参数会在不覆盖默认参数解析器的基础上添加自定义的解析器
+private HandlerMethodArgumentResolverComposite argumentResolvers;
+//参数解析器组，用于处理HandlerMethod的参数，可以通过对应的setter方法设置，使用该方法设置会覆盖默认的解析器
+private HandlerMethodArgumentResolverComposite initBinderArgumentResolvers;
+private List<HandlerMethodReturnValueHandler> customReturnValueHandlers;
+private HandlerMethodReturnValueHandlerComposite returnValueHandlers;
+private List<ModelAndViewResolver> modelAndViewResolvers;
+private ContentNegotiationManager contentNegotiationManager = new ContentNegotiationManager();
+private final List<HttpMessageConverter<?>> messageConverters = new ArrayList<>();
+private final List<Object> requestResponseBodyAdvice = new ArrayList<>();
+private WebBindingInitializer webBindingInitializer;
+private MethodValidator methodValidator;
+private AsyncTaskExecutor taskExecutor = new MvcSimpleAsyncTaskExecutor();
+private Long asyncRequestTimeout;
+private CallableProcessingInterceptor[] callableInterceptors = new CallableProcessingInterceptor[0];
+private DeferredResultProcessingInterceptor[] deferredResultInterceptors = new DeferredResultProcessingInterceptor[0];
+private ReactiveAdapterRegistry reactiveAdapterRegistry = ReactiveAdapterRegistry.getSharedInstance();
+private boolean ignoreDefaultModelOnRedirect = true;
+private int cacheSecondsForSessionAttributeHandlers = 0;
+private boolean synchronizeOnSession = false;
+private SessionAttributeStore sessionAttributeStore = new DefaultSessionAttributeStore();
+private ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
+private ConfigurableBeanFactory beanFactory;
+private final Map<Class<?>, SessionAttributesHandler> sessionAttributesHandlerCache = new ConcurrentHashMap<>(64);
+private final Map<Class<?>, Set<Method>> initBinderCache = new ConcurrentHashMap<>(64);
+private final Map<ControllerAdviceBean, Set<Method>> initBinderAdviceCache = new LinkedHashMap<>();
+private final Map<Class<?>, Set<Method>> modelAttributeCache = new ConcurrentHashMap<>(64);
+private final Map<ControllerAdviceBean, Set<Method>> modelAttributeAdviceCache = new LinkedHashMap<>();
+~~~
+
+
+
+### 初始化
+
+`RequestMappingHandlerAdapter`实现了`InitializingBean`接口，在`afterPropertiesSet()`方法中完成初始化，主要逻辑如下:
+
+
+
 
 
 

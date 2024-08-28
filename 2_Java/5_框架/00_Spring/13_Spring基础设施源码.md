@@ -331,8 +331,6 @@ PathPattern parse = PathPatternParser.defaultInstance.parse(patternStr);
 
 # 类型转换
 
-接下来分析Spring的源码，看Spring是在什么地方、如何使用的类型转换。
-
 ## `TypeConverter`
 
 `TypeConverter`是Spring 框架中的底层接口，`TypeConverter`统一整合了Spring框架中的各种类型转换API，如`Converter`、`PropertyEditor`、`GenericConverter`等。所以在框架内部可以方便地使用`TypeConverter`完成类型转换。其接口如下：
@@ -383,7 +381,7 @@ public class SimpleTypeConverter extends TypeConverterSupport {
 }
 ~~~
 
-### TypeConverterDelegate核心逻辑
+## TypeConverterDelegate核心逻辑
 
 我们已经知道`TypeConveter`的类型转换是委托给了`TypeConverterDelegate.convertIfNecessary()`来完成的，接下来我们来了解这个方法的大致逻辑：
 
@@ -391,7 +389,7 @@ public class SimpleTypeConverter extends TypeConverterSupport {
 * 通过持有的`PropertyEditorRegistry`查找匹配的`PropertyEditor`,如果找到则尝试通过`PropertyEditor`进行类型转换，然后进入下一步
 * 如果源类型是可迭代类型(如Map、Collection等)并且`typeDescriptor`有描述迭代元素的目标类型，那么将遍历这些子元素，对每个子元素递归调用`convertIfNecessary()`
 
-
+# 属性访问
 
 ## `BeanWrapper`
 
@@ -490,42 +488,47 @@ System.out.println(people);
 
 
 
-# 数据校验
-
-MethodValidator
-
-TODO
-
 # 数据绑定
+
+
+
+## `BindingResult`
+
+
+
+
+
+## `PropertyValues`
+
+
 
 ## `DataBinder`
 
-`DataBinder`是Spring框架中提供对象数据绑定和校验的基础设置类，常用于网络请求中的对象绑定，如`WebDatBinder`
+`DataBinder`是Spring框架中提供对象数据绑定和校验的基础设置类，常用于网络请求中的对象绑定，如`WebDatBinder`.提供对象属性的设置,允许类型转换，也提供校验。
 
-使用它进行数据绑定和校验的基本代码如下：
+`DataBinder`的`bind()`方法实现对象字段的绑定，`validate()`对对象进行校验。`getBindingResult()`方法获取一个代表绑定结果的`BindingResult`实例。
 
-~~~java
-Foo target = new Foo();
-DataBinder binder = new DataBinder(target);
-binder.setValidator(new FooValidator());
-// bind to the target object
-binder.bind(propertyValues);
-// validate the target object
-binder.validate();
-// get BindingResult that includes any validation errors
-BindingResult results = binder.getBindingResult();
-~~~
 
-以上演示是通过`setter`方法绑定属性，它也提供通过构造器注入属性发方式。
+
+
 
 `DataBinder`持有以下重要属性：
 
 ~~~java
-private Object target; //进行数据绑定的目标对象
-private AbstractPropertyBindingResult bindingResult; //绑定结果对象
+private Object target; //进行数据绑定的目标对象实例
+ResolvableType targetType; //目标对象的类型，当target为null时，可以用setTargetType方法设置该值，以用类型构造器创建一个target实例
+private final String objectName; //目标类型的名称，如果不指定，默认为target
+private AbstractPropertyBindingResult bindingResult; //表示绑定结果
+private ExtendedTypeConverter typeConverter; //内部的类型转换器，为DataBinder对外提供类型转换功能
+private String[] allowedFields; //允许绑定的属性名，支持*通配符
+private String[] disallowedFields; //不允许绑定的属性名，支持*通配符
+private String[] requiredFields; //必填的属性名，支持*通配符
+private NameResolver nameResolver; //使用构造器创建target实例时，使用NameResolver根据构造器的参数类型解析一个name，后续会通过该name解析一个value值来作为构造器的入参
 private ConversionService conversionService;
-private ExtendedTypeConverter typeConverter; 
+private MessageCodesResolver messageCodesResolver;
+private BindingErrorProcessor bindingErrorProcessor = new DefaultBindingErrorProcessor();
 private final List<Validator> validators = new ArrayList<>();
+private Predicate<Validator> excludedValidators;
 ~~~
 
 其核心方法是`dobind(MutablePropertyValues)`,方法主要逻辑如下：
