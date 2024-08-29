@@ -387,19 +387,11 @@ public class SimpleTypeConverter extends TypeConverterSupport {
 
 * 如果持有的`PropertyEditorRegistry`注册了`conversionService`,并且有传参`typeDescriptor`，那么会尝试使用`ConversionService.canConvert()`进行类型转换，如果能够转换，直接返回转换结果，否则进入下一步
 * 通过持有的`PropertyEditorRegistry`查找匹配的`PropertyEditor`,如果找到则尝试通过`PropertyEditor`进行类型转换，然后进入下一步
-* 如果源类型是可迭代类型(如Map、Collection等)并且`typeDescriptor`有描述迭代元素的目标类型，那么将遍历这些子元素，对每个子元素递归调用`convertIfNecessary()`
+* 如果源类型是可迭代类型(如`Map`、`Collection`等)并且`typeDescriptor`有描述迭代元素的目标类型，那么将遍历这些子元素，对每个子元素递归调用`convertIfNecessary()`
 
 # 属性访问
 
-## `BeanWrapper`
-
-`BeanWrapper`是Spring Ioc框架中的重要组件，包装了Bean对象，并提供对bean属性的访问和设置。它只有一个实现`BeanWrapperImpl`，其继承体系为:
-
-![BeanWrapperImpl](https://gitee.com/wangziming707/note-pic/raw/master/img/BeanWrapperImpl.png)
-
-可以看到`BeanWrapper`本身实现了`TypeConverter`和`PropertyEditorRegistry`，可以进行类型转换，与其他的`TypeConverter`一样，其类型转换任务是委托给`TypeConverterDelegate`完成的。
-
-除此之外，`BeanWrapper`还实现了`PropertyAccessor`接口，这个接口提供了一种访问JavaBean属性的通用机制，其主要定义如下：
+`PropertyAccessor`接口，这个接口提供了一种访问JavaBean属性的通用机制，其主要定义如下：
 
 ~~~java
 public interface PropertyAccessor {
@@ -420,9 +412,7 @@ public interface PropertyAccessor {
 
 可以看到，它提供了通过`propertyName`访问对象属性和通过`PropertyValue/Map`设置对象属性的一系列方法。
 
-其中`propertyName`可以访问嵌套路径和有序集合：使用`.`来访问嵌套对象属性，使用`[n]`来访问集合属性。
-
-例如对下面对象`People`：
+其中`propertyName`可以访问嵌套路径和有序集合：使用`.`来访问嵌套对象属性，使用`[n]`来访问集合属性。例如对下面对象`People`：
 
 ~~~java
 @Data
@@ -452,13 +442,34 @@ beanWrapper.setPropertyValue("tels[1]","11000");
 System.out.println(people);
 ~~~
 
-注意示例中设置的类型就是属性的类型，如果设置类型和属性类型不一致，`BeanWrapper`会使用`TypeConverterDelegate`尝试进行类型转换
+其继承体系如下：
+
+![PropertyAccessor](https://gitee.com/wangziming707/note-pic/raw/master/img/PropertyAccessor.png)
+
+* `PropertyAccessor`的实现类都会继承`AbstractNestablePropertyAccessor`，它集成了`TypeConverterSupport`如果设置类型和属性类型不一致，就会使用`TypeConverterSupport`提供的类型转换服务尝试进行类型转换
+* 属性访问器体系只有两个实现类：
+  * `DirecFieldAccessor`：同通反射直接访问属性
+  * `BeanWrapperImpl`:通过`setter/getter`方法访问属性
 
 ## `AbstractNestablePropertyAccessor`
 
 `AbstractNestablePropertyAccessor`是提供属性访问的基础设置类，他为其子类，例如`BeanWrapperImpl`提供属性访问的共用逻辑。
 
-他的核心方法是`setPropertyValue(PropertyTokenHolder,PropertyValue)`和`getPropertyValue(PropertyTokenHolder)`
+他的核心方法是`setPropertyValue(PropertyTokenHolder,PropertyValue)`和`getPropertyValue(PropertyTokenHolder)`。
+
+并且它有抽象内部类`PropertyHandler`,提供属性处理器的抽象。通过`getLocalPropertyHandler()`获取属性对应的处理器。
+
+### `PropertyHandler`
+
+`PropertyHandler`用于处理对应的属性，子类需要实现该内部类以提供不同的属性处理策略，其主要方法为：
+
+~~~java
+public Class<?> getPropertyType(); //获取属性类型
+public boolean isReadable(); //属性是否可写
+public boolean isWritable(); //属性是否可读
+public abstract Object getValue() //获取属性值
+public abstract void setValue(Object value) //设置属性值
+~~~
 
 ### `setPropertyValue()`
 
@@ -469,13 +480,12 @@ System.out.println(people);
 
 我们以方法`AbstractNestablePropertyAccessor.processLocalProperty()`为例，梳理设定属性的逻辑：
 
-* 根据`propertyName`获得要设置的属性对应的`PropertyHandler`，通过`PropertyHandler`我们可以知道对应的属性是否可读可写，是否需要进行类型转换，也可以通过它设置属性值。
-* 如果属性不可写，判断它是否可选
+* 根据`propertyName`调用`getLocalPropertyHandler()`方法获得要设置的属性对应的`PropertyHandler`
+* 如果属性不可写(通过`PropertyHandler.isWritable()`)，判断它是否可选
   * 若属性是可选的，则记录一条debug日志并返回
   * 否则抛出一个`NotWritablePropertyException`并返回
 * 如果需要进行类型转换(通过`PropertyHandler.conversionNecessary`判断)则调用`AbstractNestablePropertyAccessor.convertIfNecessary()`进行类型转换
-  * 最终是调用`typeConverterDelegate.convertIfNecessary()`完成类型转换
-* 调用`PropertyHandler.setValue()`将要设置的值设置到属性上(主要通过调用属性的`setter`方法)
+* 调用`PropertyHandler.setValue()`将要设置的值设置到属性上
 
 ### `getPropertyValue()`
 
@@ -486,31 +496,168 @@ System.out.println(people);
 * 调用`PropertyHandler.getValue()`获取属性值
 * 如果访问的是属性的键值，会根据属性值的类型(例如`Map`、`List`、`Array`等)获取键值
 
+## `BeanWrapper`
+
+`BeanWrapper`是Spring Ioc框架中的重要组件，它是一个属性访问器，并且包装了Bean对象，提供对bean属性的访问和设置。它只有一个实现`BeanWrapperImpl`
+
+`BeanWrapperImpl`在其`PropertyHandler`的实现`BeanPropertyHandler`使用`setter/getter`方法访问属性
+
+## `DirectFieldAccessor`
+
+`BeanWrapperImpl`在其`PropertyHandler`的实现`FieldPropertyHandler`使用反射直接访问属性
+
+# 对象验证
+
+Spring提供完整的对象验证服务，`org.springframework.validation.Validator`是Spring 校验器的顶级接口。`org.springframework.validation.Errors`代表校验失败的错误信息。
+
+对象验证不通过的原因有两类，分别对应下面两个类：
+
+* `ObjectError`：代表拒绝对象的全局错误原因。
+* `FieldError`：代表拒绝对象的字段原因，即特定字段值校验不通过原因。
+
+## `Errors`
+
+`Errors`封装校验的错误信息，因为Spring支持嵌套对象校验，所以`Errors`也支持嵌套路径，它提供下面接口：
+
+嵌套路径支持：
+
+~~~java
+String getObjectName(); //获取根对象的名称
+default void setNestedPath(String nestedPath); //设置嵌套路径
+default String getNestedPath(); //获取当前嵌套路径
+default void pushNestedPath(String subPath); //在当前路径的基础上添加子路径
+default void popNestedPath(); //回到上一个路径
+~~~
+
+错误信息注册：
+
+~~~java
+default void reject(String errorCode);
+default void reject(String errorCode, String defaultMessage);
+void reject(String errorCode, Object[] errorArgs, @Nullable String defaultMessage);
+//注册一个全局错误ObjectError
+default void rejectValue(String field, String errorCode);
+default void rejectValue(String field, String errorCode, String defaultMessage);
+void rejectValue(String field, String errorCode,Object[] errorArgs,String defaultMessage);
+//注册一个字段错误FieldError
+default void addAllErrors(Errors errors);
+//合并errors到当前错误中
+~~~
+
+访问错误信息：
+
+~~~java
+default <T extends Throwable> void failOnError(Function<String, T> messageToException);
+//根据messageToException抛出异常
+default boolean hasErrors();
+default int getErrorCount();
+default List<ObjectError> getAllErrors();
+//访问所有错误
+default boolean hasGlobalErrors();
+default int getGlobalErrorCount();
+List<ObjectError> getGlobalErrors();
+default ObjectError getGlobalError();
+//访问全局错误
+default boolean hasFieldErrors();
+default int getFieldErrorCount();
+List<FieldError> getFieldErrors();
+default FieldError getFieldError();
+default boolean hasFieldErrors(String field);
+default int getFieldErrorCount(String field);
+default List<FieldError> getFieldErrors(String field);
+default FieldError getFieldError(String field);
+//访问字段错误
+~~~
+
+访问字段：
+
+~~~java
+Object getFieldValue(String field);
+default Class<?> getFieldType(String field);
+~~~
+
+`AbstractErrors`是`Errors`的抽象基类，为子类实现提供嵌套路径的实现与 全局错误和字段错误的管理
+
+## `Validator`
+
+`Validator`是对象验证的顶级接口，它的主要方法如下：
+
+~~~java
+boolean supports(Class<?> clazz); //判断当前验证器是否支持指定的类型
+void validate(Object target, Errors errors); //对target进行验证，验证结果注册到给定的errors
+default Errors validateObject(Object target); //对target进行验证，返回Errors验证结果
+~~~
+
+
+
+
+
+
+
 
 
 # 数据绑定
 
-
+`DataBinder`是Spring框架中提供对象数据绑定和校验的基础设置类，常用于网络请求中的对象绑定，如`WebDatBinder`.提供对象属性的设置,允许类型转换，也提供校验。通过`PropertyValues`提供的属性信息对目标类进行绑定，绑定结果抽象为`BindingResult`
 
 ## `BindingResult`
 
+`BindingResult`接口表示为`DataBinder`的绑定结果，可以通过` DataBinder.getBindingResult() `方法获取。它拓展了`Errors`接口，所以可以提供错误信息的注册。它的定义如下：
 
+~~~java
+public interface BindingResult extends Errors {
+	Object getTarget(); //返回包装的目标对象
+	Map<String, Object> getModel(); //返回一个状态模型Map，暴露当前的BindingResult实例和target实例
+	Object getRawFieldValue(String field); //返回指定字段的字段值
+	PropertyEditor findEditor(String field, @Nullable Class<?> valueType); //根据指定域和类型获取属性编辑器
+	PropertyEditorRegistry getPropertyEditorRegistry(); //返回底层的属性编辑器注册表
+	String[] resolveMessageCodes(String errorCode); // 处理错误码
+	String[] resolveMessageCodes(String errorCode, String field); // 处理错误码
+	void addError(ObjectError error); //添加错误到错误列表，这个方法通常由 BindingErrorProcessor使用
+	default void recordFieldValue(String field, Class<?> type, @Nullable Object value);
+    //记录指定字段难道值，在无法构建目标对象实例时使用
+	default void recordSuppressedField(String field);
+    //将指定的不允许字段标记为 suppressed隐藏。DataBinder会为检测到的每个字段值调用此函数，以定位不允许的字段。
+	default String[] getSuppressedFields();
+    //返回在绑定过程中被隐藏的字段列表。
+}
+~~~
 
+其继承体系中主要的类有：
 
+![BindingResult](https://gitee.com/wangziming707/note-pic/raw/master/img/BindingResult.png)
 
-## `PropertyValues`
+### `AbstractBindingResult`
 
+`AbstractBindingResult`是`BindingResult`的抽象基类，提供了对 `ObjectErrors `和 `FieldErrors `的通用管理
 
+它持有`ObjectError`列表字段：
+
+~~~java
+private final List<ObjectError> errors = new ArrayList<>();
+~~~
+
+可以通过对应的`add/addAll`和`get/getAll`方法设置和访问错误信息列表。
+
+### `AbstractPropertyBindingResult`
+
+`AbstractPropertyBindingResult`是`AbstractBindingResult`的子类，在此基础上提供了通过`PropertyAccessor`进行字段访问的预实现
+
+其`getPropertyAccessor()`获取底层的对`target`对象的属性访问器。
+
+### `BeanPropertyBindingResult`
+
+`BeanPropertyBindingResult`使用`BeanWrapper`作为目标对象的属性访问器，其`getPropertyAccessor()`方法实际返回一个`BenBeanWrapper`
+
+### `DirectFieldBindingResult`
+
+`DirectFieldBindingResult`使用`DirectFieldAccessor`作为目标对象的属性访问器，其`getPropertyAccessor()`方法实际返回一个`DirectFieldAccessor`
 
 ## `DataBinder`
 
-`DataBinder`是Spring框架中提供对象数据绑定和校验的基础设置类，常用于网络请求中的对象绑定，如`WebDatBinder`.提供对象属性的设置,允许类型转换，也提供校验。
+`DataBinder`允许通过构造函数和 setter 方法将属性值绑定到目标对象，还支持验证和绑定结果分析。可以通过指定允许的字段模式、必填字段、自定义编辑器等来自定义绑定过程。
 
 `DataBinder`的`bind()`方法实现对象字段的绑定，`validate()`对对象进行校验。`getBindingResult()`方法获取一个代表绑定结果的`BindingResult`实例。
-
-
-
-
 
 `DataBinder`持有以下重要属性：
 
@@ -524,19 +671,64 @@ private String[] allowedFields; //允许绑定的属性名，支持*通配符
 private String[] disallowedFields; //不允许绑定的属性名，支持*通配符
 private String[] requiredFields; //必填的属性名，支持*通配符
 private NameResolver nameResolver; //使用构造器创建target实例时，使用NameResolver根据构造器的参数类型解析一个name，后续会通过该name解析一个value值来作为构造器的入参
-private ConversionService conversionService;
-private MessageCodesResolver messageCodesResolver;
-private BindingErrorProcessor bindingErrorProcessor = new DefaultBindingErrorProcessor();
-private final List<Validator> validators = new ArrayList<>();
-private Predicate<Validator> excludedValidators;
+private ConversionService conversionService; //用于转换属性值类型的ConversionService
+private MessageCodesResolver messageCodesResolver; //用于处理错误信息
+private BindingErrorProcessor bindingErrorProcessor = new DefaultBindingErrorProcessor(); //绑定错误的处理策略，默认为DefaultBindingErrorProcessor
+private final List<Validator> validators = new ArrayList<>(); //在绑定过程中进行校验的Validator，可以通过对应的setter方法和add方法设置
+private Predicate<Validator> excludedValidators; //用于过滤validators的谓词，可以通过setter方法设置
 ~~~
 
-其核心方法是`dobind(MutablePropertyValues)`,方法主要逻辑如下：
+### `getBindingResult()`
 
-* 调用`checkAllowedFields()`过滤不允许绑定的字段
-* 调用`checkRequiredFields()`检查必填字段，如果有必填字段为空，会向`BindingResult`注册一个错误
-* 调用`applyPropertyValues()`进行数据绑定：
-  * 调用`getPropertyAccessor()`获取一个用于访问对象属性的`ConfigurablePropertyAccessor`
-    * 该方法会先调用`getInternalBindingResult()`初始化(如果没有)一个`AbstractPropertyBindingResult`赋值到`this.bindingResult`
-    * 然后调用`bindingResult.getPropertyAccessor()`方法获取target的属性访问器
-  * 调用`ConfigurablePropertyAccessor.setPropertyValues()`方法绑定属性值
+`this.bindingResult`是一个`AbstractPropertyBindingResult`,创建时会与`target`目标对象绑定，可以通过`this.bindingResult`获取目标对象的属性访问器`PropertyAccessor`,以访问目标对象属性
+
+`this.bindingResult`是懒加载的,在`DataBinder`内部，通过`getBindingResult()`或者`getInternalBindingResult()`来获取`this.bindingResult`，第一次调用该方法时会创建一个`AbstractPropertyBindingResult`实例，并赋值该字段：
+
+* 如果`this.directFieldAccess`为`true`，创建一个`DirectFieldBindingResult`
+* 否则，创建一个`BeanPropertyBindingResult`
+
+### `getPropertyAccessor()`
+
+`getPropertyAccessor()`方法用于获取目标对象对应的属性访问器，获取方式是通过`this.bindingResult`获取，定义如下：
+
+~~~java
+protected ConfigurablePropertyAccessor getPropertyAccessor() {
+    return getInternalBindingResult().getPropertyAccessor();
+}
+~~~
+
+### `bind()`
+
+先大致了解如下类/接口：
+
+* `PropertyValue`:代表属性值，封装了属性名和值
+* `PropertyValues`:`PropertyValue`的容器，通常使用它的实现`MutablePropertyValues`
+
+`bind()`方法进行数据绑定。其主要逻辑为：
+
+* 将传入的`PropertyValues`转换为`MutablePropertyValues`
+* 校验允许字段，遍历`MutablePropertyValues`中的`PropertyValue`
+  * 判断属性名是否允许绑定，满足下面两个条件，属性名才允许绑定：
+    * `this.allowedFields`字段为空，或者属性名与`this.allowedFields`中的模式匹配
+    * `this.disallowedFields`字段为空，或者属性名与`this.disallowedFields`中的模式不匹配
+  * 如果当前属性名不允许绑定：
+    * 将当前`PropertyValue`从`MutablePropertyValues`中移除
+    * 调用`getBindingResult().recordSuppressedField()`记录移除的字段名
+
+* 校验必填字段，如果`this.requiredFields`不为空，遍历`this.requiredFields`：遍历项为`field`
+  * 判断当前`field`字段是否为空，
+    * 获取`MutablePropertyValues`中属性名为`field`的`PropertyValue`，如果`PropertyValue`为`null`则当前字段为空
+    * 如果`PropertyValue`的`value`值为`null`，则当前字段为空
+    * 如果当前字段类型为`String`,若为空字符串，则当前字段为空
+    * 若当前字段类型为`String[]`,若数组长度为0，或者第一个数组值为`null`或者空字符串，则当前字段为空
+  * 如果当前`field`字段为空：调用`this.bindingErrorProcessor.processMissingFieldError()`.将错误信息注册到`this.bindingResult`中
+* 应用属性值到目标对象中
+  * 调用`getPropertyAccessor().setPropertyValues()`将`MutablePropertyValues`代表的属性值设置到对象中
+  * 上一步如果有抛出`PropertyBatchUpdateException`异常，则调用`this.bindingErrorProcessor.processPropertyAccessException()`注册该异常到`this.bindingResult`中
+
+### `validate()`
+
+`validate()`对绑定好的对象进行校验，其主要逻辑为：
+
+
+
