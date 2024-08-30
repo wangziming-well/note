@@ -588,14 +588,6 @@ void validate(Object target, Errors errors); //对target进行验证，验证结
 default Errors validateObject(Object target); //对target进行验证，返回Errors验证结果
 ~~~
 
-
-
-
-
-
-
-
-
 # 数据绑定
 
 `DataBinder`是Spring框架中提供对象数据绑定和校验的基础设置类，常用于网络请求中的对象绑定，如`WebDatBinder`.提供对象属性的设置,允许类型转换，也提供校验。通过`PropertyValues`提供的属性信息对目标类进行绑定，绑定结果抽象为`BindingResult`
@@ -730,5 +722,45 @@ protected ConfigurablePropertyAccessor getPropertyAccessor() {
 
 `validate()`对绑定好的对象进行校验，其主要逻辑为：
 
+* 获取可用的`Validator`
+  * 对`this.validators`数组中的每个`Validator`，调用谓词`this.excludedValidators`,返回`true`则为可用的`Validator`
+* 遍历可用的`Validator`，调用其`validate()`方法，传入目标对象和`this.bindingResult`（它也是`Errors`）
 
+### `construct()`
+
+当创建`DataBinder`时没有提供`target`目标对象实例时，可以调用`setTargetType()`设置`this.targetType`目标对象类型，然后调用`construct()`方法根据该类型创建一个`target`实例。
+
+`construct()`方法需要一个`ValueResolver`:这个`ValueResolver`会根据`NameResolver`解析参数类型得到的参数名生成对应的参数值。
+
+调用`construct()`需要保证`this.target`为`null`,并且`this.targetType`不为`null`，否则将抛出异常。
+
+`construct()`中创建目标对象实例是通过调用`createObject()`实现的，这个方法主要逻辑如下：
+
+* 根据`this.targetType`解析出目标对象的`Class`类型和对应的`Constructor`
+* 如果该`Constructor`没有入参，直接调用其`newInstance()`方法创建实例并返回。否则需要进入下一步
+* 根据`Constructor`提供的信息创建其参数列表对应的`MethodParameter`列表
+* 遍历这个`MethodParameter`列表，获取参数值列表`Object [] args`
+  * 如果`this.nameResolver`不为`null`，调用`this.nameResolver.resolveName()`解析出参数列表对应的`lookupName`路径名
+  * 如果上一步获取的`lookupName`为空，则直接使用构造器的参数名作为`lookupName`
+  * 将入参`nestedPath`和`lookupName`拼接为`paramPath`，该参数路径用于解析参数值。
+  * 调用`this.valueResolver.resolveValue()`传入参数的`Class`类型和`paramPath`解析出一个参数值`value`
+  * 处理`value`到当前参数值：
+    * 如果`value`为`null`并且当前参数类型需要构造参数(不是简单类型、`Map`、`Collection`、数组、`java.`包下的类)并且`paramPath`作为父路径时在`this.valueResolver`中有值(`ValueResolver`的`names`中有以`paramPath`+`.`作为前缀的)。说明可以通过嵌套路径构造出一个`value`的对象，那么递归调用`createObject()`方法，将`paramPath`作为嵌套路径传入，递归得到的值就为当前参数值
+    * 如果`value`为`null`并且参数类型为`Optional`，那么当前参数值就为`Optional.empty()`
+    * 如果`value`为`null`并且`this.bindingResult`有错误(由其他参数产生)，那么当前参数值为`null`
+    * 否则，调用`convertIfNecessary()`将`value`转换为参数类型指定的值作为当前参数值
+    * 如果上面三步有抛出异常：
+      * 那么当前参数值就置为`null`
+      * 记录当前`paramPath`到`failedParamNames`集合
+      * 调用`this.bindingResult.recordFieldValue()`方法记录属性值
+      * 调用`this.bindingErrorProcessor.processPropertyAccessException()`注册该异常到`this.bindingResult`中
+* 如果此时`this.bindingResult`中有`Errors`：
+  * 遍历参数列表，拼接`nestedPath`和当前参数值为一个`paramPath`，如果当前`paramPath`不在`failedParamNames`中：
+    * 调用`this.bindingResult.recordFieldValue()`方法记录方法记录属性值
+    * 使用可用`Validator`中的`SmartValidator`来校验当前参数值，校验结果记录到`this.bindingReuslt`中
+  * 如果`target`目标对象类型不是`Optional`，根据当前的`args`调用`Constructor.newInstance()`构建`target`实例并返回
+  * 上一步创建实例过程中如果有抛出`BeanInstantiationException`异常，吞下异常并返回`null`
+* 如果此时`this.bindingResult`中没有`Errors`：
+  * 根据当前的`args`调用`Constructor.newInstance()`构建`target`实例并返回
+  * 如果上一步构建过程中有抛出`BeanInstantiationException`异常，直接抛出该异常
 

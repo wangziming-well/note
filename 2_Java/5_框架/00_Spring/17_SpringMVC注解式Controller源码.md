@@ -728,43 +728,88 @@ private List<HandlerMethodArgumentResolver> customArgumentResolvers;
 private HandlerMethodArgumentResolverComposite argumentResolvers;
 //参数解析器组，用于处理HandlerMethod的参数，可以通过对应的setter方法设置，使用该方法设置会覆盖默认的解析器
 private HandlerMethodArgumentResolverComposite initBinderArgumentResolvers;
+//用于处理@InitBinder方法入参的参数解析器组
 private List<HandlerMethodReturnValueHandler> customReturnValueHandlers;
+//自定义的方法返回值处理器，通过对应的setter方法设置，在不覆盖默认的返回值处理器的基础上添加自定义的处理器
 private HandlerMethodReturnValueHandlerComposite returnValueHandlers;
+//用于处理处理器方法返回值的处理器组，调用对应的setter方法将覆盖默认的处理器
 private List<ModelAndViewResolver> modelAndViewResolvers;
+//ModelAndView解析器，会被处理器包装为ModelAndViewResolverMethodReturnValueHandler
 private ContentNegotiationManager contentNegotiationManager = new ContentNegotiationManager();
+//内容协商管理器，提供给部分需要内容协商的HandlerMethodReturnValueHandler
 private final List<HttpMessageConverter<?>> messageConverters = new ArrayList<>();
+//HTTP消息和Java对象之间的转换器，用于提供给需要消息转换的HandlerMethodReturnValueHandler和HandlerMethodArgumentResolver
 private final List<Object> requestResponseBodyAdvice = new ArrayList<>();
+//为RequestBodyAdvice和ResponseBodyAdvice的实例
 private WebBindingInitializer webBindingInitializer;
+//提供给WebDataBinderFactory用于初始化WebDataBinder
 private MethodValidator methodValidator;
+//用于校验HandlerMethod的入参和返回值
 private AsyncTaskExecutor taskExecutor = new MvcSimpleAsyncTaskExecutor();
-private Long asyncRequestTimeout;
+//供异步处理用的线程池
 private CallableProcessingInterceptor[] callableInterceptors = new CallableProcessingInterceptor[0];
+//提供给WebAsyncManager的Callable拦截器
 private DeferredResultProcessingInterceptor[] deferredResultInterceptors = new DeferredResultProcessingInterceptor[0];
+//提供给WebAsyncManager的DeferredResult拦截器
 private ReactiveAdapterRegistry reactiveAdapterRegistry = ReactiveAdapterRegistry.getSharedInstance();
-private boolean ignoreDefaultModelOnRedirect = true;
-private int cacheSecondsForSessionAttributeHandlers = 0;
-private boolean synchronizeOnSession = false;
+//提供给ResponseBodyEmitterReturnValueHandler
 private SessionAttributeStore sessionAttributeStore = new DefaultSessionAttributeStore();
+//提供给SessionAttributesHandler
 private ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
+//提供给InvocableHandlerMethod
 private ConfigurableBeanFactory beanFactory;
-private final Map<Class<?>, SessionAttributesHandler> sessionAttributesHandlerCache = new ConcurrentHashMap<>(64);
+//所在的容器
 private final Map<Class<?>, Set<Method>> initBinderCache = new ConcurrentHashMap<>(64);
+//缓存@InitBinder方法对应的Method
 private final Map<ControllerAdviceBean, Set<Method>> initBinderAdviceCache = new LinkedHashMap<>();
+//缓存@InitBinder方法和其所在的@ControllerAdvice类
 private final Map<Class<?>, Set<Method>> modelAttributeCache = new ConcurrentHashMap<>(64);
+//缓存@ModelAttribute方法对应的Method
 private final Map<ControllerAdviceBean, Set<Method>> modelAttributeAdviceCache = new LinkedHashMap<>();
+//缓存@ModelAttribute方法和其所在的@ControllerAdvice类
 ~~~
-
-
 
 ### 初始化
 
 `RequestMappingHandlerAdapter`实现了`InitializingBean`接口，在`afterPropertiesSet()`方法中完成初始化，主要逻辑如下:
 
+* 初始化`@ControllerAdvice`相关的缓存：
+  * 获取容器中所有的`@ControllerAdvice`类
+  * 遍历所有的`@ControllerAdvice`实例，将这些类和其方法存储到各个字段：
+    * `@ModelAttribute`方法添加到`this.modelAttributeAdviceCache`中
+    * `@InitBinder`方法添加到`this.initBinderAdviceCache`中
+    * 如果当前`@ControllerAdvice`类还是`RequestBodyAdvice`或者`ResponseBodyAdvice`,将其添加到`this.requestResponseBodyAdvice`中
+* 初始化`HttpMessageConverter`:
+  * 如果`this.messageConverters`字段不为空，说明用户已经设置，直接返回
+  * 否则，添加下面`HttpMessageConverter`到`this.messageConverters`中：
+    * `ByteArrayHttpMessageConverter`
+    * `StringHttpMessageConverter`
+    * `AllEncompassingFormHttpMessageConverter`
+* 初始化`this.argumentResolvers`：如果该字段为空，那么使用默认的参数解析器，调用`getDefaultArgumentResolvers()`方法获取默认参数解析器，并据此创建一个`HandlerMethodArgumentResolverComposite`实例赋值给`this.argumentResolvers`
+* 初始化`this.initBinderArgumentResolvers`:如果该字段为空，那么使用默认的参数解析器调用`getDefaultInitBinderArgumentResolvers()`方法获取默认参数解析器，并据此创建一个`HandlerMethodArgumentResolverComposite`实例赋值给`this.initBinderArgumentResolvers`
 
+* 初始化`this.returnValueHandlers`：如果该字段为空，那么使用默认的返回值处理器调用`getDefaultReturnValueHandlers()`方法获取默认返回值处理器，并据此创建一个`HandlerMethodReturnValueHandlerComposite`实例赋值给`this.returnValueHandlers`
 
+* 初始化`this.methodValidator`:如果项目中存在`jakarta.validation.Validator`，则通过`this.webBindingInitializer`中的校验器创建一个`MethodValidator`实例赋值给`this.methodValidator`
 
+### `invokeHandlerMethod()`
 
+`RequestMethodArgumentResolver`的核心方法是`invokeHandlerMethod()`，这个方法在`HandlerAdapter.handle()`中被调用，是处理`HandlerMethod`的核心方法，其主要逻辑为：
 
+* 配置`WebAsyncManager`:
+  * 获取请求对应的`WebAsyncManager`实例
+  * 调用`WebAsyncManager`的下面方法配置字段：
+    * `setTaskExecutor()`
+    * `setAsyncWebRequest()`
+    * `registerCallableInterceptors()`
+    * `registerDeferredResultInterceptors()`
+* 包装`HandlerMethod`:
+  * 根据当前的`HandlerMethod`创建一个`ServletInvocableHandlerMethod`实例
+  * 调用`ServletInvocableHandlerMethod`的下面`setter`方法配置其字段：
+    * `setHandlerMethodArgumentResolvers()`
+    * `setHandlerMethodReturnValueHandlers()`
+    * `setDataBinderFactory()`
+    * 
 
 
 

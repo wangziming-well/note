@@ -339,3 +339,36 @@ public void startDeferredResultProcessing(final DeferredResult<?> deferredResult
 
 * 从`requset`域中获取名为`WebAsyncUtils.WEB_ASYNC_MANAGER_ATTRIBUTE`的属性,该属性为一个`WebAsyncManager`
 * 如果该属性为`null`，那么新建一个`WebAsyncManager`实例，并绑定到`WebAsyncUtils.WEB_ASYNC_MANAGER_ATTRIBUTE`请求域属性上
+
+
+
+#  Web数据绑定
+
+
+
+
+
+Web场景下有数据绑定的需求：从Web请求到JavaBean对象的数据绑定，所以SpringMVC提供了`WebDataBinder`专门用于Web环境的数据绑定，它拓展自`DataBinder`，在绑定时会对字段进行一些请求相关的预处理
+
+`WebDataBinder`重写了父类的`doBind()`方法，在调用`super.doBind()`前新增了三个相关的逻辑，对传入的`MutablePropertyValues`做了一些预处理：
+
+* `checkFieldDefaults()`检查字段默认值，如果传入的`PropertyValue`的字段名以`!`(可配置)开头，那么该`PropertyValue`的字段值将为默认值，可以被其他`PropertyValue`覆盖。
+
+  例如：传入`!city=Shanghai`,则默认值被设置，如果没有其他`PropertyValue`设置`city`字段，那么`city`字段取默认值`Shanghai`。
+
+  用于
+
+* `checkFieldMarkers()`检查字段标记，如果字段名以`_`(可配置)开头，那么该字段将被设置一个空值(如果字段类型为`boolean`，空值为`false`，如果是集合、数组、映射，空值为一个空集合、数组、映射)。
+
+* `adaptEmptyArrayIndices()`处理空数组，如果传入的字段以`[]`结尾，将删除`[]`
+
+
+
+
+
+
+
+
+
+
+
