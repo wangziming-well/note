@@ -102,6 +102,28 @@ public class Person {
 
 这样在加载bean时，会调用一次这个`demo()`方法，并将参数中的对象注入。
 
+### 构造器注入
+
+你可以将 `@Autowired` 注解应用于构造函数：
+
+~~~java
+public class MovieRecommender {
+
+    private final CustomerPreferenceDao customerPreferenceDao;
+
+    @Autowired
+    public MovieRecommender(CustomerPreferenceDao customerPreferenceDao) {
+        this.customerPreferenceDao = customerPreferenceDao;
+    }
+
+    // ...
+}
+~~~
+
+如果目标Bean只定义了一个构造函数，那么在这样的构造函数上就不再需要 `@Autowired` 注解，也会实现自动注入。
+
+如果有几个构造函数，而且没有主要/默认构造函数，那么至少有一个构造函数必须用 `@Autowired` 注解，以便指示容器使用哪一个。
+
 ### 复合注入
 
 可以在数组或者`Set`对象上注释`@Autowired`,这样Spring的Ioc容器会将容器中所有符合的类型都注入指定数组：
