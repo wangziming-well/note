@@ -106,7 +106,7 @@ org.springframework.context.ApplicationListener=com.example.project.MyListener
 
 也可以通过调用 `setApplicationContextFactory(…)` 来完全控制使用的 `ApplicationContext` 类型。
 
-## 访问应用阐述
+## 访问应用参数
 
 如果需要访问传递给 `SpringApplication.run(..)` 的命令行参数，你可以注入一个 `org.springframework.boot.ApplicationArguments` bean。 通过 `ApplicationArguments` 接口，你可以访问原始的 `String[]` 参数以及经过解析的 `option` 和 `non-option` 参数，例如：
 

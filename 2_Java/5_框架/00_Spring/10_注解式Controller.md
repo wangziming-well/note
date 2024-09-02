@@ -13,7 +13,7 @@ public class HelloController {
 }
 ~~~
 
-示例中方法接受一个 `Model`，并返回一个 `String` 的视图名称，但这不是固定了，可以指定灵活的方法入参和返回值，后面会详细介绍。
+示例中方法接受一个 `Model`，并返回一个 `Stri@ng` 的视图名称，但这不是固定了，可以指定灵活的方法入参和返回值，后面会详细介绍。
 
 这样，一个`@Controller`方法注释的类中的每个`@RequestMapping`注释的方法都对应一个handler请求处理器，所以被`@RequestMapping`注释的方法也可以叫处理器方法或者处理方法(Handler Method)
 

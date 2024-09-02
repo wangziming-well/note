@@ -340,15 +340,15 @@ public void startDeferredResultProcessing(final DeferredResult<?> deferredResult
 * 从`requset`域中获取名为`WebAsyncUtils.WEB_ASYNC_MANAGER_ATTRIBUTE`的属性,该属性为一个`WebAsyncManager`
 * 如果该属性为`null`，那么新建一个`WebAsyncManager`实例，并绑定到`WebAsyncUtils.WEB_ASYNC_MANAGER_ATTRIBUTE`请求域属性上
 
-
-
 #  Web数据绑定
 
-
-
-
-
 Web场景下有数据绑定的需求：从Web请求到JavaBean对象的数据绑定，所以SpringMVC提供了`WebDataBinder`专门用于Web环境的数据绑定，它拓展自`DataBinder`，在绑定时会对字段进行一些请求相关的预处理
+
+一般不会直接创建`WebDataBinder`实例，主要通过工厂模式生产：
+
+`WebDataBinderFactory`根据`WebBindingInitializer`初始化并创建`WebDataBinder`实例
+
+## `WebDataBinder`
 
 `WebDataBinder`重写了父类的`doBind()`方法，在调用`super.doBind()`前新增了三个相关的逻辑，对传入的`MutablePropertyValues`做了一些预处理：
 
@@ -362,9 +362,83 @@ Web场景下有数据绑定的需求：从Web请求到JavaBean对象的数据绑
 
 * `adaptEmptyArrayIndices()`处理空数组，如果传入的字段以`[]`结尾，将删除`[]`
 
+`WebDataBinder`的主要继承体系如下：
 
+![WebDataBinder](https://gitee.com/wangziming707/note-pic/raw/master/img/WebDataBinder.png)
 
+其中
 
+* `ServletRequestDataBinder`:用来执行`ServletRequest`请求参数到JavaBean的数据绑定
+* `ExtendedServletRequestDataBinder`:`ServletRequestDataBinder`的子类，将URI 模板变量添加到用于数据绑定的值中。
+* `WebRequestDataBinder`：用来执行`WebRequest`参数到JavaBean的数据绑定
+
+我们只详细了解其中的一个：
+
+### `ServletRequestDataBinder`
+
+`ServletRequestDataBinder`提供了`bind()`的重载方法：
+
+~~~java
+public void bind(ServletRequest request);
+~~~
+
+该方法直接通过`ServletRequest`进行绑定，方法的主要逻辑为：
+
+* 创建一个`MutablePropertyValues`实例，向`MutablePropertyValues`种添加下面属性值：
+  * 所有的请求参数：`ServletRequest.getParameterMap()`返回的所有参数
+  * 所有的`MultiFile`文件参数：`HttpServletRequest.getParts()`中所有的`MultipartFile`
+* 根据上面的`MutablePropertyValues`调用父类的`WebDataBinder.doBind()`方法
+
+## `WebBindingInitializer`
+
+`WebBindingInitializer`用于对`WebDataBinder`实例进行初始化，其定义如下：
+
+~~~java
+public interface WebBindingInitializer {
+
+	void initBinder(WebDataBinder binder);
+
+}
+
+~~~
+
+它只有一个实现类`ConfigurableWebBindingInitializer`.该类有如下可配置字段：
+
+~~~java
+private boolean autoGrowNestedPaths = true;
+private boolean directFieldAccess = false;
+private Boolean declarativeBinding;
+private MessageCodesResolver messageCodesResolver;
+private BindingErrorProcessor bindingErrorProcessor;
+private Validator validator;
+private ConversionService conversionService;
+private PropertyEditorRegistrar[] propertyEditorRegistrars;
+~~~
+
+在`initBinder()`方法中，会根据这些字段对`WebDataBinder`进行初始化
+
+## `WebDataBinderFactory`
+
+`WebDataBinderFactory`是`WebDataBinder`的工厂，定义如下:
+
+~~~java
+public interface WebDataBinderFactory {
+
+	WebDataBinder createBinder(NativeWebRequest webRequest, @Nullable Object target, String objectName)
+			throws Exception;
+
+}
+~~~
+
+它根据`NativeWebRequest`和目标对象实例创建一个`WebDataBinder`,它的继承体系如下：
+
+![WebDataBinderFactory](https://gitee.com/wangziming707/note-pic/raw/master/img/WebDataBinderFactory.png)
+
+其中：
+
+* `DefaultDataBinderFactory`:提供了基础的创建并根据`WebBindingInitializer`初始化`WebDataBinder`的功能，提供的是`WebRequestDataBinder`实例。
+* `InitBinderDataBinderFactory`：在`DefaultDataBinderFactory`的基础上：提供根据`@InitBinder`方法对`WebDataBinder`进行初始化
+* `ServletRequestDataBinderFactory`：与父类不同，提供的是`ExtendedServletRequestDataBinder`实例
 
 
 

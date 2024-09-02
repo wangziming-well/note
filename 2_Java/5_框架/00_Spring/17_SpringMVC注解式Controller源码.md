@@ -760,13 +760,13 @@ private ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNa
 private ConfigurableBeanFactory beanFactory;
 //所在的容器
 private final Map<Class<?>, Set<Method>> initBinderCache = new ConcurrentHashMap<>(64);
-//缓存@InitBinder方法对应的Method
+//缓存本地的@InitBinder方法对应的Method
 private final Map<ControllerAdviceBean, Set<Method>> initBinderAdviceCache = new LinkedHashMap<>();
-//缓存@InitBinder方法和其所在的@ControllerAdvice类
+//缓存全局的@InitBinder方法和其所在的@ControllerAdvice类
 private final Map<Class<?>, Set<Method>> modelAttributeCache = new ConcurrentHashMap<>(64);
-//缓存@ModelAttribute方法对应的Method
+//缓存本地的@ModelAttribute方法对应的Method
 private final Map<ControllerAdviceBean, Set<Method>> modelAttributeAdviceCache = new LinkedHashMap<>();
-//缓存@ModelAttribute方法和其所在的@ControllerAdvice类
+//缓存全局的@ModelAttribute方法和其所在的@ControllerAdvice类
 ~~~
 
 ### 初始化
@@ -794,7 +794,7 @@ private final Map<ControllerAdviceBean, Set<Method>> modelAttributeAdviceCache =
 
 ### `invokeHandlerMethod()`
 
-`RequestMethodArgumentResolver`的核心方法是`invokeHandlerMethod()`，这个方法在`HandlerAdapter.handle()`中被调用，是处理`HandlerMethod`的核心方法，其主要逻辑为：
+`RequestMappingHandlerAdapter`的核心方法是`invokeHandlerMethod()`，这个方法在`HandlerAdapter.handle()`中被调用，是处理`HandlerMethod`的核心方法，其主要逻辑为：
 
 * 配置`WebAsyncManager`:
   * 获取请求对应的`WebAsyncManager`实例
@@ -803,18 +803,36 @@ private final Map<ControllerAdviceBean, Set<Method>> modelAttributeAdviceCache =
     * `setAsyncWebRequest()`
     * `registerCallableInterceptors()`
     * `registerDeferredResultInterceptors()`
-* 包装`HandlerMethod`:
+* 创建并配置一个`WebDataBinderFactory`:
+  * 获取所有`@InitBinder`方法，到`initBinderMethods`列表中：
+    * 获取当前`HandlerMethod`所在类的类型`handlerType`
+    * 获取全局`@InitBinder`方法：遍历`this.initBinderAdviceCache`，如果当前`ControllerAdviceBean`支持`handlerType`，则将对应的`InvocableHandlerMethod`添加到`initBinderMethods`中
+    * 获取当前`HandlerMethod`所在的类的所有`@InitBinder`方法，添加到`initBinderMethods`中
+
+  * 根据`initBinderMethods`和`this.webBindingInitializer`创建一个`ServletRequestDataBinderFactory`
+
+* 将当前`HandlerMethod`包装为一个`ServletInvocableHandlerMethod`
   * 根据当前的`HandlerMethod`创建一个`ServletInvocableHandlerMethod`实例
   * 调用`ServletInvocableHandlerMethod`的下面`setter`方法配置其字段：
-    * `setHandlerMethodArgumentResolvers()`
-    * `setHandlerMethodReturnValueHandlers()`
-    * `setDataBinderFactory()`
-    * 
+    * `setHandlerMethodArgumentResolvers()`传入`this.argumentResolvers`字段
+    * `setHandlerMethodReturnValueHandlers()`传入`this.returnValueHandlers`字段
+    * `setDataBinderFactory()`传入上一步生成的`WebDataBinderFactory`
+    * `setParameterNameDiscoverer()`传入`this.parameterNameDiscoverer`字段
+    * `setMethodValidator()`传入`this.methodValidator`字段
 
+* 创建并初始化一个`ModelAndViewContainer`实例：
+  * 创建一个`ModelAndViewContainer`实例
+  * 如果当前请求是重定向的目标请求，那么获取一个输入的`FlashMap`，将其中的键值对添加到`ModelAndViewContainer`的`model`属性中
+  * 从session中获取`@SessionAttributes`的`value`指示的model属性，添加到`ModelAndViewContainer`的`model`属性中
+  * 处理`@ModelAttribute`方法：
+    * 获取`this.modelAttributeAdviceCache`中的全局`@ModelAttribute`方法，和当前`HandlerMethod`所在对象的本地`@ModelAttribute`方法
+    * 调用这些方法，用户可能在这些方法为`ModelAndViewContainer`添加`model`属性
+    * 将这些方法的返回值添加到`ModelAndViewContainer`的`model`属性
+* 处理异步请求，如果`WebAsyncManager.hasConcurrentResult()`为`true`,则说明当前请求是异步请求中被派发的第二个请求，所以当前请求只需要处理第一个请求产生的异步结果即可，所以进行下面调用前的预处理：
+  * 调用`WebAsyncManager.getConcurrentResultContext()`获取异步请求中第一个请求的`ModelAndViewContainer`，覆盖上一步产生的`ModelAndViewContainer`实例
+  * 调用`WebAsyncManager.getConcurrentResult()`获取异步处理结果`result`
+  * 调用`ServletInvocableHandlerMethod.wrapConcurrentResult()`将当前`invocableMethod`包装成一个`ConcurrentResultHandlerMethod`,这个方法代表的处理器会直接返回`result`
 
-
-# TODO
-
- `ModelAndViewContainer`
-
-`ModelAndViewResolver`
+* 进行方法调用，调用：`ServletInvocableHandlerMethod.invokeAndHandle()`方法，实际调用处理器方法对应的底层`Method`
+* 如果此时`WebAsyncManager.isConcurrentHandlingStarted()`为`true`，说明当前请求开启了异步处理，异步处理的结果会派发给第二个请求，当前方法直接返回
+* 根据`ModelAndViewContainer`返回一个`ModelAndView`
