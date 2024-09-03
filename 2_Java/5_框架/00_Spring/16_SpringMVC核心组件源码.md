@@ -226,7 +226,6 @@ org.springframework.web.servlet.FlashMapManager=org.springframework.web.servlet.
     * 如果请求请求处于异步模式，调用`HandlerExecutionChain.applyAfterConcurrentHandlingStarted()`进行异步拦截器回调
     * 如果第一步包装了`multipart`请求，调用`MultipartResolver.cleanupMultipart()`清除释放资源：最终删除缓存文件
 
-
 ### `DispatcherServlet.processDispatchResult()`
 
 `processDispatchResult()`方法处理异常并渲染视图返回结果，方法入参的`exception`为`doDispatch()`中抛出的异常。其主要逻辑为：

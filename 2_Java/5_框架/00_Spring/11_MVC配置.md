@@ -180,11 +180,26 @@ public class WebConfig implements WebMvcConfigurer {
 </mvc:interceptors>
 ~~~
 
-# Content Type
+# 内容协商
 
 可以配置Spring MVC如何从请求中确定所请求的媒体类型（例如，`Accept` 头、URL路径扩展、查询参数，以及其他）
 
-Java配置中，你可以自定义请求的 content type 解析：
+默认请求下，MVC配置的 `ContentNegotiationManager`只支持`HeaderContentNegotiationStrategy`策略。
+
+可以通过重写`WebMvcConfigurer.configureContentNegotiation()`方法，配置`ContentNegotiationConfigurer`来自定义内容协商的相关策略：
+
+* `this.strategies`直接配置想要注册的内容协商策略，如果该字段不为空，那么下面其他设置将失效，默认为`null`
+* `this.favorPathExtension`:启用解析路径拓展名，为`true`时将添加一个`PathExtensionContentNegotiationStrategy`
+* `this.favorParameter`:启用解析参数策略，默认为`false`,为`true`时将添加一个`ParameterContentNegotiationStrategy`
+  * `this.parameterName`指定解析参数的参数名，默认为`format`
+  * `this.useRegisteredExtensionsOnly`:默认情况下`false`，使用`/org/springframework/http/mime.types`文件和的`this.mediaTypes`Map中指定的拓展名到媒体类型的映射进行解析。如果该值为`true`,那么将仅使用`this.mediaTypes`定义的映射关系进行解析
+* `this.ignoreAcceptHeader`，忽略Accept解析策略。默认为`false`，为`true`时，将不注册`HeaderContentNegotiationStrategy`
+* `this.defaultNegotiationStrategy`,添加一个默认策略，可以由`setDefaultContentType()`、`setDefaultContentTypes()`和`setDefaultContentTypeStrategy()`方法设置，前两个方法将生成一个`FixedContentNegotiationStrategy`
+* `this.mediaTypes`用于解析文件拓展名/参数名到媒体类型的额外映射
+
+
+
+例如：
 
 ~~~java
 @Configuration
@@ -193,18 +208,23 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void configureContentNegotiation(ContentNegotiationConfigurer configurer) {
-        configurer.mediaType("json", MediaType.APPLICATION_JSON);
-        configurer.mediaType("xml", MediaType.APPLICATION_XML);
+        configurer.favorParameter(true)
+                .parameterName("type")
+                .useRegisteredExtensionsOnly(true)
+            .mediaType("json", MediaType.APPLICATION_JSON)
+            .mediaType("xml", MediaType.APPLICATION_XML);
     }
 }
 ~~~
 
-XML配置：
+等价下面XML配置：
 
 ~~~xml
 <mvc:annotation-driven content-negotiation-manager="contentNegotiationManager"/>
-
-<bean id="contentNegotiationManager" class="org.springframework.web.accept.ContentNegotiationManagerFactoryBean">
+<bean id="contentNegotiationManager"  class="org.springframework.web.accept.ContentNegotiationManagerFactoryBean">
+    <property name="favorParameter" value="true"/>
+    <property name="parameterName" value="type"/>
+    <property name="useRegisteredExtensionsOnly" value="true"/>
     <property name="mediaTypes">
         <value>
             json=application/json
@@ -370,9 +390,9 @@ XML配置：
 
 # Default Servlet
 
-Spring MVC允许将 `DispatcherServlet` 映射到 `/`（从而覆盖容器的默认Servlet的映射），同时仍然允许静态资源请求由容器的默认Servlet处理。它配置了一个 `DefaultServletHttpRequestHandler`，其URL映射为 `/**`，相对于其他URL映射，其优先级最低。
+Spring MVC允许将 `DispatcherServlet` 映射到 `/`（从而覆盖容器的默认Servlet的映射）如果请求都没有匹配到这些静态资源，那么对于这样的请求可以由`ServletContext`的default servlet来处理。
 
-这个 handler 将所有请求转发到默认的Servlet。因此，它必须在所有其他URL `HandlerMappings` 的顺序中保持最后。
+可以通过MVC配置为当前Servlet容器配置一个default servlet来处理静态资源。它配置了一个 `DefaultServletHttpRequestHandler`，其URL映射为 `/**`，相对于其他URL映射，其优先级最低。
 
 Java配置：
 
