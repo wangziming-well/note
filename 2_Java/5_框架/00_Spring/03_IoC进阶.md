@@ -211,8 +211,6 @@ Spring内部通过JavaBean的`PropertyEditor`来帮助进行String类型到其�
 
 `BeanWrapperImpl`的继承关系如下：
 
-![BeanWrapperImpl](https://gitee.com/wangziming707/note-pic/raw/master/img/BeanWrapperImpl.png)
-
 * `BeanWrapper`继承了`PropertyAccessor`接口，可以以统一的方式对对象属性进行访问，设置对象属性值  
 
 * `BeanWrapper`定义同时又直接或者间接继承了`PropertyEditorRegistry`和`TypeConverter`接口
