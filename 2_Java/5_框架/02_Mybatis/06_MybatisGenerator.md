@@ -14,8 +14,6 @@
 * 编写启动generator的java代码
 * 执行代码以生成mabaits代码，注意代码执行的工作目录必须是当前项目的根目录
 
-
-
 mybatis generator通过targetRuntime配置不同的代码风格，这个属性有如下可选项：
 
 * `MyBatis3DynamicSql`:默认值，生成Java代码;不生成XML文件，使用Mapper注解，生成的代码量较小；生成的代码依赖于 MyBatis 动态 SQL 库
@@ -28,11 +26,6 @@ mybatis generator通过targetRuntime配置不同的代码风格，这个属性�
 首先引入下面依赖：
 
 ~~~xml
-<dependency>
-    <groupId>org.mybatis</groupId>
-    <artifactId>mybatis</artifactId>
-    <version>3.5.16</version>
-</dependency>
 <dependency>
     <groupId>org.mybatis.generator</groupId>
     <artifactId>mybatis-generator-core</artifactId>
@@ -96,6 +89,8 @@ public class App {
 
 以上就是整个过程
 
+**注意**:`generator`生成mapper配置文件和接口后，并不会将其自动加入mybatis的配置文件中。所以需要将其手动添加到`mybatis-config.xml`配置文件中。
+
 # 通过maven运行MybatisGenerator
 
 可以以多种方式运行`MybatisGenerator`:
@@ -131,15 +126,147 @@ Mybatis生成器提供一个maven插件：mybatis-generator-maven-plugin，用�
 </project>
 ~~~
 
+可以通过下面命令行来执行插件：
+
+~~~shell
+mvn mybatis-generator:generate
+~~~
+
+也可以附加一些参数：
+
+~~~shell
+mvn -Dmybatis.generator.overwrite=true mybatis-generator:generate
+~~~
+
+但是像这样的配置无法直接运行，因为`mybatis-generator-maven-plugin`插件依赖于数据库驱动，可以在`plugin`标签中添加依赖：
+
+~~~xml
+<plugin>
+    <groupId>org.mybatis.generator</groupId>
+    <artifactId>mybatis-generator-maven-plugin</artifactId>
+    <version>1.4.2</version>
+    <dependencies>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.3.0</version>
+        </dependency>     
+    </dependencies>
+</plugin>
+~~~
+
+但是generator提供了更好的方法：可以使用配置参数`includeCompileDependencies`将当前项目的依赖项都作为插件的依赖项，如：
+
+~~~xml
+<plugin>
+    <groupId>org.mybatis.generator</groupId>
+    <artifactId>mybatis-generator-maven-plugin</artifactId>
+    <version>1.4.2</version>
+    <configuration>
+        <includeCompileDependencies>true</includeCompileDependencies>
+    </configuration>
+</plugin>
+~~~
+
+插件提供的配置参数如下：
+
+| Parameter                    | Type               | Comments                                                     |
+| ---------------------------- | ------------------ | ------------------------------------------------------------ |
+| `configurationFile`          | `java.io.File`     | 生成器配置文件地址，默认值为:`${basedir}/src/main/resources/generatorConfig.xml` |
+| `contexts`                   | `java.lang.String` | 要运行的上下文，可以用逗号`,`分隔来指定多个上下文。指定后，将运行配置文件中`id`与之匹配的`context`标签。默认为空，即运行所有上下文。 |
+| `jdbcDriver`                 | `java.lang.String` | 如果指定 sqlScript，指定完全限定的JDBC驱动程序类名           |
+| `jdbcPassword`               | `java.lang.String` | 如果指定 sqlScript，指定JDBC连接数据库的密码                 |
+| `jdbcURL`                    | `java.lang.String` | 如果指定 sqlScript，指定JDBC连接数据库的URL                  |
+| `jdbcUserId`                 | `java.lang.String` | 如果指定 sqlScript，指定JDBC连接数据库的用户名               |
+| `outputDirectory`            | `java.io.File`     | MBG 生成的文件的配置目录。当配置文件中的 `targetProject` 设置为`MAVEN`时，会用到该目录。 |
+| `overwrite`                  | `boolean`          | 如果为 true，则如果发现现有 Java 文件与生成的文件同名，则现有 Java 文件将被覆盖。如果未指定，并且已经存在与生成的文件同名的 Java 文件，则 MBG 会将新生成的 Java 文件写入具有唯一名称的适当目录（例如 MyClass.java.1、MyClass.java.2 等）。**重要说明：MBG 将始终合并和覆盖 XML 文件。**默认为`false` |
+| `sqlScript`                  | `java.lang.String` | 在生成代码之前要运行的 SQL 脚本文件的位置。默认为`null`，如果该值不为`null`，则必须指定``jdbcDriver`, `jdbcURL`，如果数据库需要验证，还需指定`jdbcUserId` 和`jdbcPassword` |
+| `tableNames`                 | `java.lang.String` | 用逗号分隔的字符串，指定多个表名。用于进一步限定配置中指定生效的表。该属性中指定的表名必须在配置文件中的表中；默认为空，即`context`中所有的表都会生效。如果不为空，则只有该字段指定的表会生效。 |
+| `verbose`                    | `boolean`          | 如果为 true，则 MBG 会将进度消息写入构建日志。               |
+| `includeCompileDependencies` | `boolean`          | 如果为 true，则范围为 “compile”、“provided” 和 “system” 的依赖项将被添加到生成器的 Classpath 中。 |
+| `includeAllDependencies`     | `boolean`          | 如果为 true，则具有任何范围的依赖项都将添加到生成器的 Classpath 中。 |
 
 
 
+# MybatisGenerator配置文件
 
+MyBatis Generator 是由 XML 配置文件驱动的。配置文件告诉 MBG：
 
+*  如何连接到数据库
+* 要生成哪些对象以及如何生成它们
+*  应该使用哪些表来生成对象
 
+一个典型的配置文件结构如下：
 
+~~~xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE generatorConfiguration
+        PUBLIC "-//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN"
+        "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
+<generatorConfiguration>
+    <!--targetRuntime用MyBatis3Simple-->
+    <context id="mysqlTables" targetRuntime="MyBatis3Simple">
+        <commentGenerator>
+            <!-- 是否去除自动生成的注释 true：是 ： false:否 -->
+            <property name="suppressAllComments" value="true"/>
+        </commentGenerator>
+        <!--jdbc的数据库连接-->
+        <jdbcConnection driverClass="com.mysql.jdbc.Driver"
+                        connectionURL="jdbc:mysql://localhost:3306/mybatis_demo?useUnicode=true;characterEncoding=utf8;useSSL=true;serverTimezone=GMT"
+                        userId="root"
+                        password="123456">
+        </jdbcConnection>
 
+        <!--非必须，Java类型解析器，在数据库类型和java类型之间的转换控制-->
+        <javaTypeResolver>
+            <!--
+                true：使用BigDecimal对应DECIMAL和 NUMERIC数据类型
+                false：默认,
+                    scale>0;length>18：使用BigDecimal;
+                    scale=0;length[10,18]：使用Long；
+                    scale=0;length[5,9]：使用Integer；
+                    scale=0;length<5：使用Short；      -->
+            <property name="forceBigDecimals" value="false"/>
+        </javaTypeResolver>
 
+        <!-- java模型创建器，即配置生成java POJO实体类的位置
+               负责：1，key类（见context的defaultModelType）；2，java类；3，查询类
+               targetPackage：生成的类要放的包，真实的包受enableSubPackages属性控制；
+               targetProject：目标项目，指定一个存在的目录下，生成的内容会放到指定目录中，如果目录不存在，MBG不会自动建目录
+        -->
+        <javaModelGenerator targetPackage="cn.jq.jqmybatis.model" targetProject=".\src\main\java">
+            <!-- 在targetPackage的基础上，根据数据库的schema再生成一层package，最终生成的类放在这个package下(即是否允许子包)，默认为false -->
+            <property name="enableSubPackages" value="true"/>
+            <!-- 设置是否在getter方法中，对String类型字段调用trim()方法 -->
+            <property name="trimStrings" value="true"/>
+        </javaModelGenerator>
 
+        <!-- Mapper映射生成器，即配置生成生成XxxMapper.xml的位置 -->
+        <sqlMapGenerator targetPackage="cn.jq.jqmybatis.dao" targetProject=".\src\main\java">
+            <!-- 在targetPackage的基础上，根据数据库的schema再生成一层package，最终生成的类放在这个package下，默认为false -->
+            <property name="enableSubPackages" value="true"/>
+        </sqlMapGenerator>
 
+        <!--Mapper接口生成器, 即配置生成生成的 Mapper接口的位置，注意，如果没有配置该元素，那么默认不会生成Mapper接口
+                type：选择怎么生成mapper接口（在MyBatis3/MyBatis3Simple下）：
+                    1，ANNOTATEDMAPPER：会生成使用Mapper接口+Annotation的方式创建（SQL生成在annotation中），不会生成对应的XML；
+                    2，MIXEDMAPPER：使用混合配置，会生成Mapper接口，并适当添加合适的Annotation，但是XML会生成在XML中；
+                    3，XMLMAPPER：会生成Mapper接口，接口完全依赖XML；
+                注意，如果context是MyBatis3Simple：只支持ANNOTATEDMAPPER和XMLMAPPER
+        -->
+        <javaClientGenerator type="XMLMAPPER" targetPackage="cn.jq.jqmybatis.dao" targetProject=".\src\main\java">
+            <!-- 在targetPackage的基础上，根据数据库的schema再生成一层package，最终生成的类放在这个package下，默认为false -->
+            <property name="enableSubPackages" value="true"/>
+        </javaClientGenerator>
+
+        <!-- 指定数据库中的数据表（可同时指定多张表）进行生成 -->
+        <!--字段命名策略过程: table标签对应数据库中的table表-->
+        <table tableName="t_user" domainObjectName="User"></table>
+        <table tableName="t_role" domainObjectName="Role"></table>
+
+    </context>
+</generatorConfiguration>
+~~~
+
+完整属性配置项请参照<a href="https://mybatis.org/generator/configreference/xmlconfig.html ">官方文档</a>
 
