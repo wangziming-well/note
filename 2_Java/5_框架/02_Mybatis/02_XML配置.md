@@ -577,7 +577,7 @@ dataSource 元素使用标准的 JDBC 数据源接口来配置 JDBC 连接对象
 
     这将通过` DriverManager.getConnection(url, driverProperties)` 方法传递值为 `UTF8` 的 `encoding` 属性给数据库驱动。
 
-* `POOLED`种数据源的实现利用“池”的概念将 JDBC 连接对象组织起来，避免了创建新的连接实例时所必需的初始化和认证时间。 这种处理方式很流行，能使并发 Web 应用快速响应请求。
+* `POOLED`使用mybatis内置的一个简单的数据库连接池作为数据源，避免了创建新的连接实例时所必需的初始化和认证时间。 这种处理方式很流行，能使并发 Web 应用快速响应请求。
 
     除了上述提到 UNPOOLED 下的属性外，还有更多属性用来配置 POOLED 的数据源：
 
@@ -601,7 +601,7 @@ dataSource 元素使用标准的 JDBC 数据源接口来配置 JDBC 连接对象
 
     这就会在 InitialContext 实例化时往它的构造方法传递值为 `UTF8` 的 `encoding` 属性。
 
-
+#### 使用三方数据库连接池
 
 你可以通过实现接口 `org.apache.ibatis.datasource.DataSourceFactory` 来使用第三方数据源实现：
 
