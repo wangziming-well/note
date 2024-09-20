@@ -199,47 +199,6 @@ MyBatis Generator 是由 XML 配置文件驱动的。配置文件告诉 MBG：
 一个典型的配置文件结构如下：
 
 ~~~xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE generatorConfiguration
-        PUBLIC "-//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN"
-        "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
-<generatorConfiguration>
-    <!--targetRuntime用MyBatis3Simple-->
-    <context id="mysqlTables" targetRuntime="MyBatis3Simple">
-        <commentGenerator>
-            <!-- 是否去除自动生成的注释 true：是 ： false:否 -->
-            <property name="suppressAllComments" value="true"/>
-        </commentGenerator>
-        <!--jdbc的数据库连接-->
-        <jdbcConnection driverClass="com.mysql.jdbc.Driver"
-                        connectionURL="jdbc:mysql://localhost:3306/mybatis_demo?useUnicode=true;characterEncoding=utf8;useSSL=true;serverTimezone=GMT"
-                        userId="root"
-                        password="123456">
-        </jdbcConnection>
-
-        <!--非必须，Java类型解析器，在数据库类型和java类型之间的转换控制-->
-        <javaTypeResolver>
-            <!--
-                true：使用BigDecimal对应DECIMAL和 NUMERIC数据类型
-                false：默认,
-                    scale>0;length>18：使用BigDecimal;
-                    scale=0;length[10,18]：使用Long；
-                    scale=0;length[5,9]：使用Integer；
-                    scale=0;length<5：使用Short；      -->
-            <property name="forceBigDecimals" value="false"/>
-        </javaTypeResolver>
-
-        <!-- java模型创建器，即配置生成java POJO实体类的位置
-               负责：1，key类（见context的defaultModelType）；2，java类；3，查询类
-               targetPackage：生成的类要放的包，真实的包受enableSubPackages属性控制；
-               targetProject：目标项目，指定一个存在的目录下，生成的内容会放到指定目录中，如果目录不存在，MBG不会自动建目录
-        -->
-        <javaModelGenerator targetPackage="cn.jq.jqmybatis.model" targetProject=".\src\main\java">
-            <!-- 在targetPackage的基础上，根据数据库的schema再生成一层package，最终生成的类放在这个package下(即是否允许子包)，默认为false -->
-            <property name="enableSubPackages" value="true"/>
-            <!-- 设置是否在getter方法中，对String类型字段调用trim()方法 -->
-            <property name="trimStrings" value="true"/>
-        </javaModelGenerator>
 
         <!-- Mapper映射生成器，即配置生成生成XxxMapper.xml的位置 -->
         <sqlMapGenerator targetPackage="cn.jq.jqmybatis.dao" targetProject=".\src\main\java">
@@ -264,6 +223,128 @@ MyBatis Generator 是由 XML 配置文件驱动的。配置文件告诉 MBG：
         <table tableName="t_user" domainObjectName="User"></table>
         <table tableName="t_role" domainObjectName="Role"></table>
 
+    </context>
+</generatorConfiguration>
+~~~
+
+~~~xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE generatorConfiguration
+        PUBLIC "-//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN"
+        "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
+<generatorConfiguration>
+
+    <!--指定mysql数据库驱动-->
+    <!--<classPathEntry location="E://repository-p2p//mysql//mysql-connector-java//5.1.43//mysql-connector-java-5.1.43.jar"/>-->
+
+    <!--导入属性配置   配置信息中有链接数据库的参数-->
+    <!--<properties resource="generator.properties"></properties>-->
+
+    <!--指定特定数据库的jdbc驱动jar包的位置
+        注意：驱动类需要找到他在本机的绝对位置   不能有空格和中文路径
+    -->
+    <!--TODO 需要修改-->
+    <classPathEntry location="D:/Data/Learning/Java/repository/mysql/mysql-connector-java/8.0.15/mysql-connector-java-8.0.15.jar"/>
+
+    <context id="default" targetRuntime="MyBatis3">
+
+        <!-- optional，旨在创建class时，对注释进行控制，false生成注释,true无注释 -->
+        <commentGenerator>
+            <property name="suppressDate" value="true"/>
+            <property name="suppressAllComments" value="true"/>
+        </commentGenerator>
+
+        <!--jdbc的数据库连接
+            逆向工程会扫描你数据库中的指定表  你多个数据库可能会出现同名的表
+            他会找第一个出现的表名
+            nullCatalogMeansCurrent：无视其他同名表  只生成指定数据库中的表
+            在url上配置参数
+            jdbc:mysql://localhost:3306/sh2203?serverTimezone=UTC&nullCatalogMeansCurrent=true
+         -->
+        <jdbcConnection
+                driverClass="com.mysql.cj.jdbc.Driver"
+                connectionURL="jdbc:mysql://localhost:3306/empproject?serverTimezone=UTC"
+                userId="root"
+                password="root">
+            <property name="nullCatalogMeansCurrent" value="true"/>
+        </jdbcConnection>
+
+
+        <!-- 非必需，类型处理器，在数据库类型和java类型之间的转换控制-->
+        <javaTypeResolver>
+            <!--
+                true：使用BigDecimal对应DECIMAL和 NUMERIC数据类型
+                false：默认,
+                    scale>0;length>18：使用BigDecimal;
+                    scale=0;length[10,18]：使用Long；
+                    scale=0;length[5,9]：使用Integer；
+                    scale=0;length<5：使用Short；      
+			-->
+            <property name="forceBigDecimals" value="false"/>
+        </javaTypeResolver>
+
+
+        <!-- java模型创建器，即配置生成java POJO实体类的位置
+               负责：1，key类（见context的defaultModelType）；2，java类；3，查询类
+               targetPackage：生成的类要放的包，真实的包受enableSubPackages属性控制；
+               targetProject：目标项目，指定一个存在的目录下，生成的内容会放到指定目录中，如果目录不存在，MBG不会自动建目录
+        -->
+        <javaModelGenerator targetPackage="com.bjpn.bean"
+                            targetProject="D:/Data/Learning/Java/workspace/ssm/src/main/java">
+
+            <!-- 是否允许根据数据库的schema生成子包，即targetPackage.schemaName.tableName -->
+            <property name="enableSubPackages" value="false"/>
+            <!-- 是否对model添加 构造函数 true添加，false不添加
+                不生成有参构造  否则mapper.xml文件的关系映射会使用有参构造  不利于我们操作
+            -->
+            <property name="constructorBased" value="false"/>
+            <!-- 是否对类CHAR类型的列的数据进行trim操作 -->
+            <property name="trimStrings" value="true"/>
+            <!-- 建立的Model对象是否 不可改变  即生成的Model对象不会有 setter方法，只有构造方法 -->
+            <property name="immutable" value="false"/>
+        </javaModelGenerator>
+
+        <!-- Mapper映射生成器，即配置生成生成XxxMapper.xml的位置 -->
+        <sqlMapGenerator targetPackage="com.bjpn.mapper"
+                         targetProject="D:/Data/Learning/Java/workspace/ssm/src/main/java">
+            <property name="enableSubPackages" value="false"/>
+        </sqlMapGenerator>
+
+        <!--Mapper接口生成器, 即配置生成生成的 Mapper接口的位置，注意，如果没有配置该元素，那么默认不会生成Mapper接口
+                type：选择怎么生成mapper接口（在MyBatis3/MyBatis3Simple下）：
+                    1，ANNOTATEDMAPPER：会生成使用Mapper接口+Annotation的方式创建（SQL生成在annotation中），不会生成对应的XML；
+                    2，MIXEDMAPPER：使用混合配置，会生成Mapper接口，并适当添加合适的Annotation，但是XML会生成在XML中；
+                    3，XMLMAPPER：会生成Mapper接口，接口完全依赖XML；
+                注意，如果context是MyBatis3Simple：只支持ANNOTATEDMAPPER和XMLMAPPER
+        -->
+        <javaClientGenerator targetPackage="com.bjpn.mapper"
+                             targetProject="D:/Data/Learning/Java/workspace/ssm/src/main/java" type="XMLMAPPER">
+            <property name="enableSubPackages" value="true"/>
+        </javaClientGenerator>
+        <!--4、根据指定的表  生成对应的信息
+            tableName：表名
+            domainObjectName：根据这个表生成的实体类的名字
+            enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false"
+               selectByExampleQueryId="false"
+               不会产生一个额外的Example类
+               只会产生基本增删改查方法
+        -->
+        <table tableName="emp" domainObjectName="Employee"
+               enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false"
+               selectByExampleQueryId="false">
+        </table>
+        <table tableName="dept" domainObjectName="Department"
+               enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false"
+               selectByExampleQueryId="false">
+        </table>
+        <table tableName="admin" domainObjectName="Administrator"
+               enableCountByExample="false" enableUpdateByExample="false"
+               enableDeleteByExample="false" enableSelectByExample="false"
+               selectByExampleQueryId="false">
+        </table>
     </context>
 </generatorConfiguration>
 ~~~
