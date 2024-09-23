@@ -1,76 +1,10 @@
-# Spring事务管理概述
-
-Spring框架提供综合的事务支持。它为我们提供了一致的事务管理抽象，这带来了以下好处：
-
-* 为不同的事务API提供一致的编程模型，如JTA，JDBC，JPA等
-* 提供声明式事务管理
-* 提供一个相对简单的编程式事务管理
-* 与Spring的数据访问抽象无缝集成
-
-# Spring事务抽象
-
-## `TranactionManager`
-
-事务策略是Spring事务抽象的核心概念。`TranactionManager`定义了事务策略。他有如下主要子类：
-
-* `PlatformTransactionManager`，命令式事务管理接口
-* `ReactiveTransactionManager`，反应式事务管理接口，为反应式类型或 Kotlin 协程提供服务。
-
-我们主要关注`PlatformTransactionManager`，
-
-`PlatformTransactionManager`定义的Api如下:
-
-~~~java
-public interface PlatformTransactionManager extends TransactionManager {
-
-	TransactionStatus getTransaction(TransactionDefinition definition) throws TransactionException;
-
-	void commit(TransactionStatus status) throws TransactionException;
-
-	void rollback(TransactionStatus status) throws TransactionException;
-}
-~~~
-
-`PlatformTransactionManager`方法可以抛出任意unchecked的`TransactionException`,这种由事务基础设施抛出的异常几乎总是致命的。只有在少部分情况应用代码可以从这些异常中恢复。
-
-`getTransaction()`方法根据一个`TransactionDefinition`返回一个`TransactionStatus`,返回的`TransactionStatus`可能代表一个新事务，或者代表一个已经存在的事务(如果当前调用栈中存在匹配的事务)。后一种情况表明，`TransactionStatus`会与执行线程绑定。
-
-## `TransactionDefinition`
-
-`TransactionDefinition`可以指定：
-
-* 传播行为：通常情况下，在当前事务范围内的所有代码都会运行在该事务中。但是，当已经存在事务上下文时，可以指定事务方法的运行行为。例如：代码可以运行在已经存在的事务，或者挂起已经存在的事务，然后创建一个新事务。
-* 隔离级别：选择数据库定义的事务隔离级别。
-* 超时：事务超时并回滚的时限
-* 只读事务：如果代码只访问而不修改数据，那么可以使用只读事务。
-
-这些设置基于标准的事务概念。可以参阅一些讨论隔离级别或者其他核心事务概念的资料，如mysql对事务的讨论。
-
-##  `TransactionStatus` 
-
-
-
-
-
-
-
-
-
-
-
-# 其他
-
-
-
-# Spring事务管理实现
-
 Spring规定了三个主要接口来规范Spring事务管理的框架：
 
 * `PlatformTransactionManager`：界定事务边界
 * `TransactionDefinition`：负责定义事务相关属性，如隔离级别、传播行为等
 * `TransactionStatus`：负责的事务状态
 
-## TransactionDefinition
+# TransactionDefinition
 
 `TransactionDefinition`定义如下:
 
@@ -117,49 +51,51 @@ public interface TransactionDefinition {
 }
 ~~~
 
-### 事务属性
+## 事务属性
 
 `TransactionDefinition`主要定义了可以指定的事务属性：
 
 * 事务隔离级别
+
   * ISOLATION_DEFAULT：数据库的默认隔离级别，通常是读已提交
   * ISOLATION_READ_UNCOMMITTED:读未提交
   * ISOLATION_READ_COMMITTED :读已提交
   * ISOLATION_REPEATABLE_READ:不可重复读
   * ISOLATION_SERIALIZABLE :可串行化
-  
+
 * 事务的传播行为
+
   * PROPAGATION_REQUIRED：如果当前存在一个事务，则加入当前事务。如果不存在任何事务，则创建一个新的事务。总之当前业务处于事务中。通常为默认的事务传播行为
-  
+
   * PROPAGATION_SUPPORTS：如果当前存在一个事务，则加入当前事务。如果当前不存在事务，则直接执行。
-  
+
     这种传播行为适合一些查询方法：如果当前查询方法直接执行，则不需要事务，如果当前查询方法别其他的方法调用，而其他方法开启了事务，则能加入该事务，并能获取当前事务对数据的更新。
-  
+
     如果没加入改事务的话，查询方法就不能获取事务中的最新更新的数据(除非隔离级别时读未提交)
-  
+
   * PROPAGATION_MANDATORY：强制要求当前存在一个事务。如果不存在，则抛出异常。
-  
+
     如果一个方法需要事务的支持，但自身又不管理事务提交或回滚，则适合使用该隔离级别。
-  
+
   * PROPAGATION_REQUIRES_NEW：不管当前是否存在事务，都会创建新的事务。如果当前存在事务，会将当前的事务挂起。
-  
+
     如果某个业务对象所作的事情不想影响到外层事务，则适合该传播行为
-  
+
     例如：当前业务方法的错误回滚不想影响到外层事务时
-  
+
   * PROPAGATION_NOT_SUPPORTED：不支持当前事务，再没有事务的情况下执行。如果存在当前事务，当前事务原则上会被挂起。
-  
+
   * PROPAGATION_NEVER：不需要当前存在事务，如果存在事务，则抛出异常
-  
+
   * PROPAGATION_NESTED：如果存在当前事务，则在当前事务的一个嵌套事务(在进入该方法是，设置一个外部事务的savepoint)中执行，如果不存在当前事务，则创建新的事务，再新创建的事务中执行。
-  
+
     该传播行为创建的嵌套事务时外层事务的子事务，当子事务活动时，外层事务不会挂起，而是继续活动
-  
+
 * 是否为只读事务:isReadOnly()
 
 * 事务的超时时间:TIMEOUT_DEFAULT
 
-### 继承体系
+## 继承体系
 
 ![TransactionAttribute](https://gitee.com/wangziming707/note-pic/raw/master/img/TransactionAttribute.png)
 
@@ -168,13 +104,13 @@ public interface TransactionDefinition {
 * 适用于编程式事务场景:`DefaultTransactionDefiniton`
 * 适用于声明式事务场景:`TransactionAttribute`
 
-#### 编程式事务场景
+### 编程式事务场景
 
 * `DefaultTransactionDefiniton`是`TransactionDefiniton`的默认实现类，它提供了各事务属性的默认值，并可以通过它的setter方法改变这些默认值
 
 * `TransactionTemplate`是Spring提供的进行编程式事务管理的模板方法类，它直接继承了`DefaultTransactionDefiniton`
 
-#### 声明式事务场景
+### 声明式事务场景
 
 * `TransactionAttribute`是继承自`TransactionDefinition`的接口定义，主要面向使用Spring AOP进行声明式事务管理的场合。它自己定义了一个rollbackOn方法：
 
@@ -194,7 +130,7 @@ public interface TransactionDefinition {
 
 * `DelegatingTransactionAttribute `是抽象类，它的目的就是为了被子类化。
 
-## TransactionStatus
+# TransactionStatus
 
 TransactionStatus表示整个事务处理过程中的事务状态，我们更多的在编程式事务中使用它
 
@@ -211,7 +147,7 @@ TransactionStatus表示整个事务处理过程中的事务状态，我们更多
 * DefaultTransactionStatus：是Spring事务框架内部使用的主要TransactionStatus实现类
 * SimpleTransactionStatus：没有使用，仅测试用
 
-## PlatformTransactionManager
+# PlatformTransactionManager
 
 PlatformTransactionManager是Spring事务抽象框架的核心组件，通过它来开启事务和提交回滚事务以界定事务边界。
 
@@ -230,17 +166,17 @@ public interface PlatformTransactionManager extends TransactionManager {
 }
 ~~~
 
-### 继承体系
+## 继承体系
 
 PlatformTransactionManager的整个抽象体系基于策略模式，由PlatformTransactionManager对事务界定进行统一抽象，而具体的界定策略的实现由具体的实现类。它的实现类可以划分为面向局部事务和分布式事务两个分支，而它的具体实现类基本会先继承AbstractPlatformTransactionManager抽象类，间接继承PlatformTransactionManager
 
-### 概念
+## 概念
 
 * transaction object :承载了当前事务的必要信息，PlatformTransactionManager实现类可以根据transaction object所提供的信息来决定如何处理当前事务
 * TransactionSynchronization：是可以注册到事务处理过程中的回调接口，像是事务处理的事件监听器，当事务发生回滚，提交等事件时，会调用TransactionSynchronization上的一些方法来执行相应的回调逻辑
 * TransactionSynchronizationManager:通过它来管理和持有TransactionSynchronization、当前事务状态以及具体的事务资源。
 
-### AbstractPlatformTransactionManager
+## AbstractPlatformTransactionManager
 
 AbstractPlatformTransactionManager作为PlatformTransactionManager实现类的抽象父类，以模板方法的方式封装了固定的事务处理逻辑，它替各个子类实现了固定的事务内部处理逻辑：
 
@@ -262,7 +198,7 @@ protected final SuspendedResourcesHolder suspend(Object transaction)
 protected final void resume( Object transaction,  SuspendedResourcesHolder resourcesHolder)
 ~~~
 
-#### getTransaction()
+### getTransaction()
 
 该方法的主要目的是开启一个事务，在这之前需要判断之前是否存在事务。根据情况根据传播行为的具体语义处理事务状态。
 
@@ -411,7 +347,7 @@ private TransactionStatus handleExistingTransaction(
 }
 ~~~
 
-#### rollback()
+### rollback()
 
 ~~~java
 public final void rollback(TransactionStatus status) throws TransactionException {
@@ -494,7 +430,7 @@ private void processRollback(DefaultTransactionStatus status, boolean unexpected
 }
 ~~~
 
-#### commit()
+### commit()
 
 ~~~java
 public final void commit(TransactionStatus status) throws TransactionException {
@@ -603,486 +539,4 @@ private void processCommit(DefaultTransactionStatus status) throws TransactionEx
     }
 }
 ~~~
-
-
-
-### 面向局部事务
-
-Spring为各种数据访问框架技术提供了现成的PlatformTransactionManager支持：
-
-| 数据访问技术 | PlatformTransactionManager实现类 |
-| ------------ | -------------------------------- |
-| JDBC         | DataSourceTransactionManager     |
-| JPA          | JpaTransactionManager            |
-| JMS          | JmsTransactionManager            |
-| ……           | ……                               |
-
-### 面向分布式事务
-
-JtaTransactionManager是Spring提供的支持分布式事务
-
-==todo==
-
-# 使用Spring进行事务管理
-
-要使用spring进行事务管理，首先需要先引入相关的依赖：
-
-~~~xml
-<!--做spring事务用到的-->
-<dependency>
-    <groupId>org.springframework</groupId>
-    <artifactId>spring-tx</artifactId>
-    <version>5.2.5.RELEASE</version>
-</dependency>
-<dependency>
-    <groupId>org.springframework</groupId>
-    <artifactId>spring-jdbc</artifactId>
-    <version>5.2.5.RELEASE</version>
-</dependency>
-~~~
-
-事务管理的实施通常由两种方式：
-
-* 编程式事务管理
-* 声明式事务管理
-
-## 编程式事务管理
-
-可以使用PlatformTransactionManager的实现类直接进行事务管理，使用模板如下：
-
-~~~java
-TransactionStatus status = transactionManager.getTransaction(definition);
-try{
-    //业务逻辑
-} catch (RuntimeException e){
-    transactionManager.rollback(status);
-} 
-transactionManager.commit(status);
-~~~
-
-使用TransactionDefinition开启事务并获取事务状态TransactionStatus
-
-使用PlatformTransactionManager 的结合TransactionStatus来回滚或者提交事务，实现事务管理
-
-### 基于savepoint的嵌套事务
-
-在一个事务中，如果进行了大量的修改，我们不希望有一处错误就使得之前的全部修改被回滚掉，这时候可以使用savepoint，在进行大量修改时，可以在修改期间设置保存点，如果出现异常，可以直接回滚到上个保存点，而不是整个事务，具体模板如下：
-
-~~~java
-TransactionStatus status = transactionManager.getTransaction(definition);
-Object savepoint = status.createSavepoint();
-try{
-    for (int i = 0; i < 1000; i++) {
-        User user = new User(null, "test", "000"+i, new Date());
-        userMapper.insert(user);
-        if(i%100 == 0)
-            savepoint= status.createSavepoint();
-    }
-} catch (RuntimeException e ){
-    status.rollbackToSavepoint(savepoint);
-}
-transactionManager.commit(status);
-~~~
-
-## 声明式事务管理
-
-直接使用编程式事务管理会导致事务管理代码和业务逻辑代码相互混杂，而声明式事务管理可以避免这种不同关注点之间的耦合，这种解耦很显然是通过aop的方式实现的
-
-### 原型代码
-
-将事务管理的横切关注点封装到advice中，然后织入到系统中需要进行事务管理的Joinpoint处即可，我们通过SpringAOP的拦截器实现一个声明式事务的原型代码：
-
-~~~java
-public class PrototypeTransactionInterceptor implements MethodInterceptor {
-    
-    private PlatformTransactionManager transactionManager;
-
-    @Override
-    public Object invoke(MethodInvocation invocation) throws Throwable {
-        //根据关注点的方法信息，获取TransactionDefinition，并开启事务
-        Method method = invocation.getMethod();
-        TransactionDefinition txDefinition = getTransactionDefinitionByMethod(method);
-        TransactionStatus txStatus = transactionManager.getTransaction(txDefinition);
-        Object result = null;
-        //执行专注点方法，如果抛出异常，则根据情况回滚或者提交
-        try{
-            result = invocation.proceed();
-        } catch (Throwable t){
-            if(needRollbackOn(t,method)){
-                transactionManager.rollback(txStatus);
-            } else{
-                transactionManager.commit(txStatus);
-            }
-            throw t;
-        }
-        //没有抛出异常，则正常提交
-        transactionManager.commit(txStatus);
-        return result;
-    }
-
-    private TransactionDefinition getTransactionDefinitionByMethod(Method method){
-        //根据方法上的信息，获取该方法需要什么样的TransactionDefinition
-        return null;
-    }
-
-    private boolean needRollbackOn(Throwable t,Method method){
-        //同样需要根据方法上的信息，判断抛出的异常是否需要回滚
-        return true;
-    }
-}
-~~~
-
-可以看到，我们至少需要从方法上了获取以下信息：
-
-* 创建TransactionDefinition的信息
-* 抛出什么异常才需要回滚(TransactionAttribute提供的rollbackon)
-
-我们需要通过一些手段，将这些事务相关的信息映射到方法上，这些映射信息叫做驱动事务的元数据(Metadate)
-
-我们可以通过外部配置文件(XML等)或者注解来映射元数据，实际上Spring提供的声明式事务管理就是通过这两种方式实现的，具体的实现由Spring提供的拦截器TransactionInterceptor完成
-
-### TransactionAttributeSource
-
-由原型代码可以看出，TransactionInterceptor需要有方法和事务管理信息的映射，Spring提供了接口TransactionAttributeSource以维护该映射
-
-TransactionAttributeSource维护业务方法的事务管理信息的映射关系，它常用的实现类：
-
-* `NameMatchTransactionAttributeSource`:通过方法名映射TransactionAttribute
-* `MethodMapTransactionAttributeSource`:通过Method类型映射`TransactionAttribute`
-
-* `AnnotationTransactionAttributeSource`:通过注解类型映射`TransactionAttribute`
-
-以`NameMatchTransactionAttributeSource`为例，它内部会维护映射关系：
-
-~~~java
-private final Map<Method, TransactionAttribute> transactionAttributeMap = new HashMap<>();
-private final Map<Method, String> methodNameMap = new HashMap<>();
-~~~
-
-来维护方法与TransactionAttribute的映射关系
-
-**注意1:**
-
-NameMatchTransactionAttributeSource的methodname可以进行完全匹配，也可以使用格式`*xxx*`、`*xxx`、`xxx*`来匹配多个方法
-
-**注意2:**
-
-在用spring的xml配置文件定义TransactionAttribute时，可以直接使用规定格式的string字符串来定义TransactionAttribute，spring会通过`TransactionAttributeEditor`类将字符串转化为TransactionAttribute对象
-
-String形式的TransactionAttribute规则如下：
-
-~~~
-PROPAGATION_NAME[,ISOLATION_NAME][,readOnly][,timeout_NNNN][,+Exception1][,-Exception2]
-~~~
-
-除了PROPAGATION_NAME是必须的，其他的都是可选的
-
-* PROPAGATION_NAME 对应TransactionDefinition接口中定义的事务传播行为
-* ISOLATION_NAME 对应TransactionDefinition接口中定义的事务隔离级别
-* readOnly:如果需要指定的事务是只读的，追加该字段就可以
-* timeout_NNNN:指定事务的超时时间，NNNN表示指定的具体超时时间，单位为秒
-* +Exception1 :表示即使该方法抛出了Exception1 类型的异常，也同样提交事务
-* -Exception2 :表示方法抛出Exception2类型的异常时，回滚事务。
-
-### TransactionInterceptor
-
-`TransactionInterceptor`是声明式事务的主体，要让它发挥事务管理的职能
-
-在`TransactionInterceptor`内部：
-
-通过如下字段维护需要的管理器和映射信息：
-
-~~~java
-private TransactionManager transactionManager;
-private TransactionAttributeSource transactionAttributeSource;
-~~~
-
-在定义时，可以通过如下方法设置TransactionAttributeSource：
-
-~~~java
-public void setTransactionAttributes(Properties transactionAttributes) ;
-//提供TransactionAttributeSource对应的Properties对象
-public void setTransactionAttributeSources(TransactionAttributeSource... transactionAttributeSources) ;
-//直接提供TransactionAttributeSource对象list
-~~~
-
-即可通过如下两种方式，在spring配置文件中定义TransactionInterceptor：
-
-~~~xml
-<bean id="transactionInterceptor" class="org.springframework.transaction.interceptor.TransactionInterceptor">
-    <property name="transactionManager" ref="transactionManager"/>
-    <property name="transactionAttributes">
-        <props>
-            <prop key="get*">PROPAGATION_SUPPORTS,readOnly,timeout_20</prop>
-            <prop key="updateUser">PROPAGATION_REQUIRED</prop>
-            <prop key="addUser">PROPAGATION_REQUIRED</prop>
-        </props>
-    </property>
-</bean>
-~~~
-
-或者：
-
-~~~xml
-<bean id="transactionInterceptor2" class="org.springframework.transaction.interceptor.TransactionInterceptor">
-    <property name="transactionManager" ref="transactionManager"/>
-    <property name="transactionAttributeSource" value="com.wzm.spring.dao.UserDao.addUser=PROPAGATION_SUPPORTS,readOnly,timeout_20"/>
-</bean>
-
-~~~
-
-### XML元数据驱动的声明式事务
-
-配置好TransactionInterceptor，就可以通过SpringAOP的手段将其织入到需要的目标类上，至于织入的方法，可以通过SpringAOP常用的Weaver，或者Spring为事务管理提供的专门Weaver，或者专门的xml配置
-
-* 使用ProxyFactoryBean织入事务拦截器
-* 使用TransactionProxyFactoryBean织入事务拦截器
-* 使用BeanNameAutoProxyCreator
-* 使用Spring2.x的声明式事务配置方式
-
-但不管怎样，都需要先声明数据源和事务管理器
-
-~~~xml
-<!--配置数据源   -->
-<bean id="dataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
-    <property name="driverClassName" value="com.mysql.cj.jdbc.Driver"/>
-    <property name="url" value="jdbc:mysql://localhost:3306/test"/>
-    <property name="username" value="root"/>
-    <property name="password" value="123456"/>
-</bean>
-<!--配置事务管理器   -->
-<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
-    <property name="dataSource" ref="dataSource"/>
-</bean>
-
-<!--这里使用mybatis框架访问数据库-->
-<bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
-    <property name="dataSource" ref="dataSource"/>
-    <property name="configLocation" value="classpath:mybatis.xml"/>
-</bean>
-
-<bean id="mapperScan" class="org.mybatis.spring.mapper.MapperScannerConfigurer">
-    <property name="basePackage" value="com.wzm.spring.mapper"/>
-    <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
-</bean>
-~~~
-
-
-
-#### 使用ProxyFactoryBean
-
-通过aop常用的ProxyFactoryBean织入器进行织入：
-
-~~~XML
-<!--配置事务管理拦截器   -->
-<bean id="transactionInterceptor" class="org.springframework.transaction.interceptor.TransactionInterceptor">
-    <property name="transactionManager" ref="transactionManager"/>
-    <property name="transactionAttributes">
-        <props>
-            <prop key="get*">PROPAGATION_SUPPORTS,readOnly,timeout_20</prop>
-            <prop key="updateUser">PROPAGATION_REQUIRED</prop>
-            <prop key="addUser">PROPAGATION_REQUIRED</prop>
-        </props>
-    </property>
-</bean>
-<!--将事务管理拦截器通过ProxyFactoryBean织入到目标Dao类   -->
-<bean id="userDaoProxy" class="org.springframework.aop.framework.ProxyFactoryBean">
-    <property name="target" ref="userDao"/>
-    <property name="interceptorNames">
-        <list>
-            <idref bean="transactionInterceptor"/>
-        </list>
-    </property>
-</bean>
-~~~
-
-#### 使用TransactionProxyFactoryBean
-
-TransactionProxyFactoryBean是专门面向事务管理的ProxyFactoryBean，它直接将TransactionIntercepter,这样就不用单独声明TransactionIntercepter的定义了:
-
-~~~xml
-<!--直接使用TransactionProxyFactoryBean将事务管理拦截器织入到目标Dao类   -->
-<bean id="userDaoProxy" class="org.springframework.transaction.interceptor.TransactionProxyFactoryBean">
-    <property name="target" ref="userDao"/>
-    <property name="transactionManager" ref="transactionManager"/>
-    <property name="transactionAttributes">
-        <props>
-            <prop key="get*">PROPAGATION_SUPPORTS,readOnly,timeout_20</prop>
-
-            <prop key="updateUser">PROPAGATION_REQUIRED</prop>
-            <prop key="addUser">PROPAGATION_REQUIRED</prop>
-        </props>
-    </property>
-</bean>
-~~~
-
-#### 使用BeanNameAutoProxyCreator
-
-使用SpringAOP提供的自动代理类，来进行自动代理
-
-~~~xml
-<!--配置事务管理拦截器   -->
-<bean id="transactionInterceptor" class="org.springframework.transaction.interceptor.TransactionInterceptor">
-    <property name="transactionManager" ref="transactionManager"/>
-    <property name="transactionAttributes">
-        <props>
-            <prop key="get*">PROPAGATION_SUPPORTS,readOnly,timeout_20</prop>
-            <prop key="updateUser">PROPAGATION_REQUIRED</prop>
-            <prop key="addUser">PROPAGATION_REQUIRED</prop>
-        </props>
-    </property>
-</bean>
-<bean id="autoProxyCreator" class="org.springframework.aop.framework.autoproxy.BeanNameAutoProxyCreator">
-    <property name="interceptorNames">
-        <list>
-            <idref bean="transactionInterceptor"/>
-        </list>
-    </property>
-    <property name="beanNames">
-        <list>
-            <idref bean="userDao"/>
-        </list>
-    </property>
-</bean>
-~~~
-
-#### 使用XMLSchema
-
-Spring2.x后提供了基于XML Schema的配置方式，专门为事务管理提供了一个单独的命名空间用于简化配置，结合新的tx命名空间，可以清晰便捷的声明事务
-
-注意头文件引入命名空间：
-
-~~~xml
-<?xml version="1.0" encoding="UTF-8"?>
-<beans xmlns="http://www.springframework.org/schema/beans"
-       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-       xmlns:context="http://www.springframework.org/schema/context"
-       xmlns:aop="http://www.springframework.org/schema/aop"
-       xmlns:tx="http://www.springframework.org/schema/tx"
-xsi:schemaLocation="http://www.springframework.org/schema/beans
-       http://www.springframework.org/schema/beans/spring-beans.xsd
-       http://www.springframework.org/schema/context
-       https://www.springframework.org/schema/context/spring-context.xsd
-       http://www.springframework.org/schema/aop
-       http://www.springframework.org/schema/aop/spring-aop-4.3.xsd
-       http://www.springframework.org/schema/tx
-       http://www.springframework.org/schema/tx/spring-tx-4.3.xsd">
-</beans>
-~~~
-
-声明事务：
-
-~~~xml
-<!--定义事务advice-->
-<tx:advice id="txAdvice" transaction-manager="transactionManager"  >
-    <tx:attributes>
-        <tx:method name="get*" propagation="SUPPORTS" read-only="true"/>
-        <tx:method name="updateUser"/>
-        <tx:method name="addUser" />
-    </tx:attributes>
-</tx:advice>
-<!--将事务advice绑定到指定的pointcut-->
-<aop:config>
-    <aop:pointcut id="userDaoPointcut" expression="execution(* *..UserDao.*(..))"/>
-    <aop:advisor pointcut-ref="userDaoPointcut" advice-ref="txAdvice"/>
-</aop:config>
-~~~
-
-`<tx:advice>`是专门为声明事务Advice而设置的配置元素，它的底层实现仍然是TransactionInterceptor，只是配置方式变化而已
-
-它的transaction-manager属性的默认值就是transactionManager，如果你的ioc容器中定义的事务管理器的beanName就是transactionManager，那么这个属性设置可以省略
-
-`</tx:advice>`提供声明式事务所需要的元数据映射信息，每条映射信息对应一个`<tx:method>`元素声明
-
-`<tx:method>`除了name属性，其他的属性都是非必须的，它的属性如下：
-
-* name：事务元数据将要加之于上的业务方法名称，可以使用*通配符
-* propagation：事务的传播行为，默认值为REQUIRED。
-* isolation：事务的隔离度。默认值采用DEFAULT
-* timeout：事务的超时时间，默认值为-1
-* read-only：指定事务是否为只读事务，默认值为false
-* rollback-for：用于指定能够触发事务回滚的异常类型
-* no-rollback-for： 指定即使抛出no-rollback-for指定的异常类型也不回滚事务
-
-### 注解元数据驱动的声明式事务
-
-注解元数据驱动的声明式事务管理的基本原理是，将对应业务方法的是事务元数据，直接通过注解标注到业务方法或者业务方法所在的对象上，然后再业务方法执行期间，通过反射读取标注在方法上的注解所包含的元数据信息，根据读取到的信息为业务方法构建事务管理的支持。
-
-Spring定义了注解`Transactional`用于标注业务方法所对应的事务元数据信息，它提供了许多参数，可以指定与`<tx:method>`几乎相同的信息，定义如下：
-
-~~~java
-@Target({ElementType.TYPE, ElementType.METHOD})
-@Retention(RetentionPolicy.RUNTIME)
-@Inherited
-@Documented
-public @interface Transactional {
-	@AliasFor("transactionManager")
-	String value() default "";
-	@AliasFor("value")
-	String transactionManager() default "";
-	String[] label() default {};
-	Propagation propagation() default Propagation.REQUIRED;
-	Isolation isolation() default Isolation.DEFAULT;
-	int timeout() default TransactionDefinition.TIMEOUT_DEFAULT;
-	String timeoutString() default "";
-	boolean readOnly() default false;
-	Class<? extends Throwable>[] rollbackFor() default {};
-	String[] rollbackForClassName() default {};
-	Class<? extends Throwable>[] noRollbackFor() default {};
-	String[] noRollbackForClassName() default {};
-
-}
-~~~
-
-如果将`@Transactional`标注在对象上，对象上的所有方法将“继承”该对象上的  `  @Transactional`的事务管理元数据信息，如果对象方法上也有`@Transcational`注解，方法上的注解将覆盖对象上的注解。
-
-要启用读取`@Transactional`注解信息以开启事务管理，需要在容器的配置文件中指定如下配置：
-
-~~~xml
-<tx:annotation-driven transaction-manager="transactionManager"/>
-~~~
-
-该标签的transaction-manager属性默认值为transactionManager
-
-如果容器中的事务管理器类的beanName就为transactionManager，那么transaction-manager属性配置可以省略
-
-使用示例如下：
-
-~~~java
-@Component
-@Transactional
-public class UserDao {
-
-    private final UserMapper userMapper;
-    @Autowired
-    public UserDao(UserMapper userMapper) {
-        this.userMapper = userMapper;
-    }
-    @Transactional(propagation = Propagation.SUPPORTS)
-    public List<User> getAll(){
-        return userMapper.selectAll();
-    }
-    @Transactional(propagation = Propagation.SUPPORTS)
-    public User getUser(int id){
-        return userMapper.selectByUserId(id);
-    }
-    @Transactional(timeout = 20,propagation = Propagation.REQUIRED)
-    public void updateUser(User user){
-        userMapper.updateByUserId(user);
-    }
-    @Transactional(timeout = 20,propagation = Propagation.REQUIRED)
-    public void addUser(User user){
-        userMapper.insert(user);
-        int x = 1/0;
-    }
-}
-~~~
-
-
-
-
-
-
-
-
 
