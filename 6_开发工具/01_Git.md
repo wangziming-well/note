@@ -354,7 +354,7 @@ git commit
 
 
 
-# Git相关工具安装配置
+# Git工具
 
 ## posh-git
 
@@ -398,3 +398,68 @@ Import-Module : 无法加载文件 C:\Users\xxx\Documents\WindowsPowerShell\Modu
 
 
 ## git crypt
+
+window环境下安装配置：
+
+* 在git crypt对应的<a href="https://github.com/oholovko/git-crypt-windows/releases">github仓库</a>中下载对应的`git-crypt.exe`可执行文件
+
+* 将该可执行文件放入git文件夹的bin目录中，以加入环境变量
+
+### 首次加密
+
+* 在需要加密的仓库根目录执行：
+
+  ~~~shell
+  git-crypt init
+  ~~~
+
+  
+
+* 在仓库的根目录下新建一个名为“.gitattributes”的文件。
+
+* 打开“.gitattributes”文件，设置加密范围，语法如下：
+
+  ~~~shell
+  文件名或文件范围 filter=git-crypt diff=git-crypt
+  ~~~
+
+  可以使用表示的bash通配符进行配置，例如：
+
+  ~~~shell
+  FT/file01.txt filter=git-crypt diff=git-crypt   #将特定文件加密，这里加密的是FT文件夹下的file01.txt
+  *.java filter=git-crypt diff=git-crypt   #将 .java类型文件加密
+  G* filter=git-crypt diff=git-crypt       #将 文件名为 G 开头的文件加密
+  ForTest/** filter=git-crypt diff=git-crypt #将 ForTest 文件夹下的文件加密 
+  ~~~
+
+* 进行文件加密，在仓库根目录执行下面命令完成加密：
+
+  ~~~shell
+  git-crypt status
+  ~~~
+
+加密执行后，在您的本地仓库仍能明文方式打开和编辑这些加密文件，这是因为您本地仓库有密钥存在。
+
+这时你可以使用add 、commit、push组合将仓库推送到代码托管仓库，此时加密文件将一同被推送。
+
+加密文件在代码托管仓库中将以加密二进制方式存储，无法直接查看。如果没有密钥，就算将其下载到本地，也无法解密。
+
+**说明**：`git-crypt status`只会加密本次待提交的文件，对本次未发生修改的历史文件不会产生加密作用，Git会对此设定涉及的未加密文件做出提示（见上图中的Warning），如果想将仓库中的对应类型文件全部加密，请使用`git-crypt status -f`
+
+在让团队合作中 -f （强制执行）具有一定的风险，请谨慎使用。
+
+执行下面命令导出加密密钥，以供其他电脑解密用
+
+~~~shell
+git-crypt export-key /path/to/keyfile
+~~~
+
+### 解密
+
+拉取有加密文件的仓库到本地后，在仓库根目录执行下面命名：
+
+~~~shell
+git-crypt unlock /C/test/KeyFile     #请将 /C/test/KeyFile 更换为您实际的密钥存储路径
+~~~
+
+初始化git-crypt并解密
