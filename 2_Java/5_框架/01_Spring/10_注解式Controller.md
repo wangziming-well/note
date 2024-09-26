@@ -1410,7 +1410,7 @@ Spring MVC `HandlerMapping` 实现提供了对CORS的内置支持。在成功地
 
 ## `@CrossOrigin`
 
-`@CrossOrigin` 注解允许注解的 controller 方法进行跨域请求，例如：
+`@CrossOrigin` 注解允许注解的 controller 方法接受跨域请求，例如：
 
 ~~~java
 @RestController
