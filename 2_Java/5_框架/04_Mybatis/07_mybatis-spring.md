@@ -142,7 +142,7 @@ public class FooServiceImpl implements FooService {
 </bean>
 ```
 
-# 事务
+# 加入Spring事务管理
 
 MyBatis-Spring 使用 Spring 中的 `DataSourceTransactionManager` 来实现事务管理。
 
@@ -169,4 +169,78 @@ public class DataSourceConfig {
 ~~~
 
 **注意**：为事务管理器指定的 `DataSource` **必须**和用来创建 `SqlSessionFactoryBean` 的是同一个数据源，否则事务管理器就无法工作了。
+
+# 自动发现注册映射器
+
+在快速开始中，我们使用`MapperFactoryBean`显式地声明注册了需要使用的Mapper接口。
+
+为了方便注册映射器，mybatis-spring提供映射器类路径扫描机制来自动发现和注册映射器。提供以下几种方式：
+
+* 使用 `@MapperScan` 注解
+* 使用 `<mybatis:scan/>` 元素
+* 在经典 Spring XML 配置文件中注册一个 `MapperScannerConfigurer`
+
+## `<mybatis:scan>`
+
+如果spring使用的是xml文件配置，那么可以使用`<mybatis:scan>`
+
+`<mybatis:scan/>` 元素会发现映射器，它发现映射器的方法与 Spring 内建的 `<context:component-scan/>` 发现 bean 的方法非常类似。示例：
+
+~~~xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:mybatis="http://mybatis.org/schema/mybatis-spring"
+  xsi:schemaLocation="
+  http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+  http://mybatis.org/schema/mybatis-spring http://mybatis.org/schema/mybatis-spring.xsd">
+
+  <mybatis:scan base-package="org.mybatis.spring.sample.mapper" />
+
+  <!-- ... -->
+
+</beans>
+~~~
+
+`base-package` 属性允许设置映射器接口文件的基础包。通过使用逗号或分号分隔，你可以设置多个包。并且会在你所指定的包中递归搜索映射器。
+
+使用`<mybatis:scan>`时不需要指定`SqlSessionFactory`或 `SqlSessionTemplate`,因为该元素会使用能够被自动注入的 `MapperFactoryBean`。
+
+所以当使用多个数据源时这种自动注入行为就不适用了。可以通过`<mybatis:scan>`元素的 `factory-ref` 或 `template-ref` 属性指定你想使用的 bean 名称
+
+`<mybatis:scan/>` 支持基于标记接口或注解的过滤操作:
+
+*  `annotation` 属性，指定映射器必须拥有特定注解。
+*  `marker-interface` 属性，可以指定映射器必须继承的父接口。
+
+默认情况下，这两个属性为空，因此在基础包中的所有接口都会被作为映射器被发现。
+
+被发现的映射器会按照 Spring 对自动发现组件的默认命名策略进行命名 。也就是说，如果没有使用注解显式指定名称，将会使用映射器的首字母小写非全限定类名作为名称。但如果发现映射器具有 `@Component` 或 JSR-330 标准中 `@Named` 注解，会使用注解中的名称作为名称。 
+
+## `@MapperScan`
+
+如果spring使用的是java配置，那么可以在`@Configuraiton`类上使用`@MapperScan`来实现映射器自动注册：
+
+~~~java
+@Configuration
+@MapperScan("org.mybatis.spring.sample.mapper")
+public class AppConfig {
+  // ...
+}
+~~~
+
+这个注解与的 `<mybatis:scan/>` 的工作方式一样。它也可以通过 `markerInterface` 和 `annotationClass` 属性设置标记接口或注解类。 通过配置 `sqlSessionFactory` 和 `sqlSessionTemplate` 属性，你还能指定一个 `SqlSessionFactory` 或 `SqlSessionTemplate`。
+
+**NOTE** 如果 `basePackageClasses` 或 `basePackages` 没有定义， 扫描将基于声明这个注解的类所在的包。
+
+## `MapperScannerConfigurer`
+
+`MapperScannerConfigurer `是一个 `BeanDefinitionRegistryPostProcessor`,可以在Spring容器启动时进行类路径扫描并将Mapper注册到容器中。实际上上面两个方式底层还是使用的`MapperScannerConfigurer `
+
+它的使用示例：
+
+~~~xml
+<bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+  <property name="basePackage" value="org.mybatis.spring.sample.mapper" />
+</bean>
+~~~
 
