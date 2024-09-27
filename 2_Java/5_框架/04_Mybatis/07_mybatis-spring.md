@@ -170,7 +170,36 @@ public class DataSourceConfig {
 
 **注意**：为事务管理器指定的 `DataSource` **必须**和用来创建 `SqlSessionFactoryBean` 的是同一个数据源，否则事务管理器就无法工作了。
 
-# 自动发现注册映射器
+# 注册映射器
+
+来快速开始中我们使用`MapperFactoryBean`将映射器注册到了Spring中，这里再次展示一遍：
+
+~~~xml
+<bean id="userMapper" class="org.mybatis.spring.mapper.MapperFactoryBean">
+  <property name="mapperInterface" value="org.mybatis.spring.sample.mapper.UserMapper" />
+  <property name="sqlSessionFactory" ref="sqlSessionFactory" />
+</bean>
+~~~
+
+对应的Java配置：
+
+~~~java
+@Configuration
+public class MyBatisConfig {
+  @Bean
+  public MapperFactoryBean<UserMapper> userMapper() throws Exception {
+    MapperFactoryBean<UserMapper> factoryBean = new MapperFactoryBean<>(UserMapper.class);
+    factoryBean.setSqlSessionFactory(sqlSessionFactory());
+    return factoryBean;
+  }
+}
+~~~
+
+接下来我们需要了解`MapperFactoryBean` 的一个**重要细节**：
+
+如果注册的Mapper接口在相同的类路径下有对应的 XML映射器配置文件，并且该XML文件名称与接口文件类名相同。那么该配置文件将被`MapperFactoryBean`自动解析。不需要再显式配置映射器文件位置。
+
+# 自动注册映射器
 
 在快速开始中，我们使用`MapperFactoryBean`显式地声明注册了需要使用的Mapper接口。
 
@@ -179,6 +208,8 @@ public class DataSourceConfig {
 * 使用 `@MapperScan` 注解
 * 使用 `<mybatis:scan/>` 元素
 * 在经典 Spring XML 配置文件中注册一个 `MapperScannerConfigurer`
+
+需要注意到，上面前两种方式底层仍然使用的第三种方式，而`MapperScannerConfigurer`最终还是通过`MapperFactoryBean` 来实现映射器的注册的。所以：使用映射器自动扫描时，仍然可以让XML Mapper配置文件和Mapper接口放在同一类路径下，这样就可以避免显式声明Mapper配置文件位置。
 
 ## `<mybatis:scan>`
 
