@@ -70,6 +70,7 @@ git commit -am "第一次提交"
 # 查看仓库提交记录
 git log
 git log --online #查看简洁提交记录
+git log --graph #查看分支图
 ~~~
 
 
@@ -314,47 +315,130 @@ git fetch <远程仓库名> <远程分支名>:<本地分支名>
 
 分支的存在让不同功能的开发测试互不影响，保证了项目的正常运行和高效协作。
 
-
-
-
+下面是分支的一些基本操作：
 
 ~~~bash
-# 创建分支
-git branch <branchname>
-
-# 删除分支
-git branch -d <branchname>
-
-# 切换分支
-git checkout <branchname>
-
-# 创建并切换分支
-git checkout -b <branchname>
-
-# 合并分支 当前分支与指定分支，如果为指定，默认如主分支
-git merge <branchname>
-
 # 查看所有分支
 git branch
+# 创建分支
+git branch <branchname>
+# 切换分支
+git checkout <branchname>
+# 创建并切换分支
+git checkout -b <branchname>
+# 注意，checkout命令有潜在的风险，它不止可以用来切换分支，也可以用于恢复文件，所以当要切换的分支名和文件名相同是就会出现歧义，此时checkout命令会默认切换分支，而不是恢复文件，为了避免这种歧义，git为我们提供了新的命令专门用于切换分支这就是switch命令
+git switch <branchname>
+# 合并分支 将指定的分支合并到当前所在的分支，
+git merge <branchname>
+# 删除分支，只能删除已经合并的分支
+git branch -d <branchname>
+# 删除分支，可以删除未合并的分支
+git branch -D <branchname>
+# 删除恢复的分支,并恢复到指定的提交
+git checkout -b <分支名称> <提交id>
 
 ~~~
 
-## 合并冲突
+**注意**:合并分支后，如果不手动删除它，那么分支仍然是存在的
 
-创建分支后，当前分支和主分支在同一文件的同一地方都做了修改
+# 合并冲突
 
-此时合并当前分支会出现合并冲突，分支进入(master|MERGING)提示正在合并
+一般情况下，如果两个分支的修改内容没有重合的部分的话，那么合并会非常简单，git会为我们自动完成合并
+
+但是如果两个分支修改了同一个文件的同一行代码，git就无法判断保留哪个分支的修改内容了，即发生了合并冲突
+
+这个时候就需要手动解决冲突
+
+此时可以用下面命名查看冲突的情况：
+
+~~~shell
+git status # 查看冲突文件的位置
+git diff # 查看具体冲突
+~~~
 
 Git会将冲突的地方标记在文件中，此时根据需要进行修改
 
-修改完成后提交该文件,告诉Git冲突解决，git会用此时提交的文件作为合并后的文件
+修改完成后提交该文件,告诉Git冲突解决，git会用此时提交的文件作为合并后的文件:
 
 ~~~bash
-git add fileName
+git add . # 表示冲突修改完成
 git commit
 ~~~
 
+如果在解决并提交冲突之前想要中断这次合并，也可以使用下面命令终止合并：
 
+~~~shell
+git merge --abort
+~~~
+
+# rebase
+
+rebase操作如下：
+
+~~~shell
+git rebase <branch-name>
+~~~
+
+rebase变基操作会将当前分支的提交记录变基到目标分支上
+
+
+
+对于下面当前git分支状态：
+
+![git-branch-status0](https://gitee.com/wangziming707/note-pic/raw/master/img/git-branch-status0.png)
+
+如果使用merge操作：
+
+~~~shell
+git merge dev #在main分支上
+~~~
+
+那么合并的结果就是在main分支上会多出一个提交记录，两个分支会汇聚到一起：
+
+![git-branch-status-1](https://gitee.com/wangziming707/note-pic/raw/master/img/git-branch-status-1.png)
+
+如果执行以下rebase操作：
+
+~~~shell
+git rebase main # 在dev分支上
+~~~
+
+那么dev分支上在节点根处以后的提交就会变基到main分支上：
+
+![git-branch-status-2](https://gitee.com/wangziming707/note-pic/raw/master/img/git-branch-status-2.png)
+
+如果在main分支上执行rebase操作：
+
+~~~shell
+git rebase dev # 在main分支上
+~~~
+
+那么main分支与dev分支的分叉处之后的提交(main4和main5)就会变基到dev上：
+
+![git-branch-status-3](https://gitee.com/wangziming707/note-pic/raw/master/img/git-branch-status-3.png)
+
+## 总结
+
+执行rebase操作时:git会先找到当前分支和目标分支的共同祖先，这里就是main3,然后再把当前分支上从共同祖先到最新提交记录的所有提交都移动到目标分支的最新提交的后面。
+
+## rebase冲突
+
+1. 如果在应用提交的过程中发生冲突，Git会自动停止rebase，并提示冲突的文件。
+2. 解决冲突后，使用`git add`命令将解决后的文件标记为已解决。
+3. 继续执行`git rebase --continue`命令，继续应用剩余的提交。
+4. 如果还有冲突，重复步骤4和步骤5，直到所有提交都被应用到目标分支上。
+
+## 对比
+
+merge：
+
+* 优点：不会破坏原分支的提交记录，方便回溯和查看
+* 缺点：会产生额外的提交节点，分支图比较复杂
+
+rebase:
+
+* 优点：不需要新增额外的提交记录，形成线性历史，比较直观和干净
+* 缺点：会改变提交历史，所以应该避免在共享分支中使用
 
 
 
