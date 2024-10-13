@@ -293,3 +293,102 @@ Ractor是反应式编程范式的实现，所谓反应式编程范式即：
 
 ### 阻塞的缺点
 
+现代应用可能会同时服务大量用户，尽管当前硬件性能仍然在进步，但是软件的性能仍然是关键问题。
+
+通常有两种方式提升程序性能：
+
+* 并行使用更多的线程和更大的硬件资源
+* 在目前的条件下寻找更高效的利用硬件资源的方式
+
+同时Java使用阻塞的代码。这种实践很好但是它有性能瓶颈。因此引入了多线程来并行运行相同的代码块。但这同时造成了资源的竞争和线程并发问题。
+
+更有甚者，阻塞会造成资源的浪费：当程序涉及一些延迟操作时(例如数据库请求和网络IO)资源会被浪费，因为此时线程会闲置，等待资源。
+
+所以并不是万能的解决方案。需要进一步全面利用硬件资源，
+
+### 异步方案
+
+异步时第二种更简单，更高效的方法来解决等待资源造成的浪费问题。
+
+通过异步非阻塞代码，可以让代码的执行切换到另一个使用相同的底层资源的活动任务上。当异步执行结束后，会返回结果给当前进程。
+
+Java提供两种异步编程模型：
+
+* `Callbacks`：没有具有额外callback参数的异步方法。一般回调callback为lambda表达式或者匿名类。回调会在何时的时候被调用。一个典型的例子时Swing的`EventListener`体系
+* `Future`:会立即返回一个`Future<T>`的异步方法。匿名的进程会计算`T`的值，`Future`对象包装了对异步计算结果的访问。当异步计算还为结束时，`Future`代表的结果不可用。可以轮询知道计算完成，结果可用。
+
+以上方法并不适用于所有用例，并且都有各自的限制。
+
+多个`Callback`回调很难组合在一起，多个回调嵌套在一起会让代码难以阅读和调试。
+
+通过一个示例就可以直观的看到当回调多起来后会多糟糕：
+
+下面示例向用户展示其5个收藏夹，如果没有收藏夹，则展示推荐：
+
+~~~java
+//获取收藏夹
+userService.getFavorites(userId, new Callback<List<String>>() { 
+  public void onSuccess(List<String> list) { 
+    //如果没有收藏夹则展示推荐
+    if (list.isEmpty()) { 
+      suggestionService.getSuggestions(new Callback<List<Favorite>>() {
+        public void onSuccess(List<Favorite> list) { 
+          UiUtils.submitOnUiThread(() -> { 
+            list.stream()
+                .limit(5)
+                .forEach(uiList::show); 
+            });
+        }
+
+        public void onError(Throwable error) { 
+          UiUtils.errorPopup(error);
+        }
+      });
+    } else {
+      list.stream() 
+          .limit(5)
+          .forEach(favId -> favoriteService.getDetails(favId, 
+            new Callback<Favorite>() {
+              public void onSuccess(Favorite details) {
+                UiUtils.submitOnUiThread(() -> uiList.show(details));
+              }
+
+              public void onError(Throwable error) {
+                UiUtils.errorPopup(error);
+              }
+            }
+          ));
+    }
+  }
+
+  public void onError(Throwable error) {
+    UiUtils.errorPopup(error);
+  }
+});
+~~~
+
+以上代码繁琐且难以理解且有可复用的部分。
+
+相同的功能如果用`Reactor`来实现将十分清晰简单：
+
+~~~java
+userService.getFavorites(userId) //获取一个生产收藏夹id的Flow
+           .flatMap(favoriteService::getDetails) //异步地根据id获取收藏夹详情
+           .switchIfEmpty(suggestionService.getSuggestions()) //如果收藏夹为空，则使用推荐 
+           .take(5) 
+           .publishOn(UiUtils.uiThreadScheduler()) //在Ui线程中处理每条数据
+           .subscribe(uiList::show, UiUtils::errorPopup); //订阅数据
+~~~
+
+
+
+
+
+
+
+
+
+
+
+
+
