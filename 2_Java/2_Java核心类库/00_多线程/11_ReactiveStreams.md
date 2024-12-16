@@ -319,6 +319,8 @@ Java提供两种异步编程模型：
 
 以上方法并不适用于所有用例，并且都有各自的限制。
 
+#### Callback
+
 多个`Callback`回调很难组合在一起，多个回调嵌套在一起会让代码难以阅读和调试。
 
 通过一个示例就可以直观的看到当回调多起来后会多糟糕：
@@ -379,6 +381,79 @@ userService.getFavorites(userId) //获取一个生产收藏夹id的Flow
            .publishOn(UiUtils.uiThreadScheduler()) //在Ui线程中处理每条数据
            .subscribe(uiList::show, UiUtils::errorPopup); //订阅数据
 ~~~
+
+#### Future
+
+使用`Future`会比Callback回调好点，但不考虑`CompletableFuture`时，直接组合使用`Future`时仍然表现不佳。将多个`Future`组合使用是可行的但并不简单，并且`Future`还有其他问题：
+
+* 通过调用`Future.get()`方法，很容易就在其他地方进入阻塞。
+* 不支持惰性计算
+* 缺乏对多值和高级异常处理的支持
+
+考虑如下示例：根据一个ID列表，异步地获取对应的名称和统计数据，并将它们组合。下例使用`CompletableFuture`来实现：
+
+~~~java
+CompletableFuture<List<String>> ids = ifhIds(); 
+
+CompletableFuture<List<String>> result = ids.thenComposeAsync(l -> { 
+	Stream<CompletableFuture<String>> zip =
+			l.stream().map(i -> { 
+				CompletableFuture<String> nameTask = ifhName(i); 
+				CompletableFuture<Integer> statTask = ifhStat(i); 
+
+				return nameTask.thenCombineAsync(statTask, (name, stat) -> "Name " + name + " has stats " + stat); 
+			});
+	List<CompletableFuture<String>> combinationList = zip.collect(Collectors.toList()); 
+	CompletableFuture<String>[] combinationArray = combinationList.toArray(new CompletableFuture[combinationList.size()]);
+
+	CompletableFuture<Void> allDone = CompletableFuture.allOf(combinationArray); 
+	return allDone.thenApply(v -> combinationList.stream()
+			.map(CompletableFuture::join) 
+			.collect(Collectors.toList()));
+});
+
+List<String> results = result.join(); 
+assertThat(results).contains(
+		"Name NameJoe has stats 103",
+		"Name NameBart has stats 104",
+		"Name NameHenry has stats 105",
+		"Name NameNicole has stats 106",
+		"Name NameABSLAJNFOAJNFOANFANSF has stats 121");
+~~~
+
+`Reactor `有很多开箱即用的组合运算符，所以可以用它简化上面的实现:
+
+~~~java
+Flux<String> ids = ifhrIds(); 
+
+Flux<String> combinations =
+		ids.flatMap(id -> { 
+			Mono<String> nameTask = ifhrName(id); 
+			Mono<Integer> statTask = ifhrStat(id); 
+
+			return nameTask.zipWith(statTask, 
+					(name, stat) -> "Name " + name + " has stats " + stat);
+		});
+
+Mono<List<String>> result = combinations.collectList(); 
+
+List<String> results = result.block(); 
+assertThat(results).containsExactly( 
+		"Name NameJoe has stats 103",
+		"Name NameBart has stats 104",
+		"Name NameHenry has stats 105",
+		"Name NameNicole has stats 106",
+		"Name NameABSLAJNFOAJNFOANFANSF has stats 121"
+);
+~~~
+
+## 从命令式到反应式编程
+
+
+
+
+
+
 
 
 
